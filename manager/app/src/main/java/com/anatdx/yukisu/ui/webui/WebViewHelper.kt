@@ -87,6 +87,7 @@ internal suspend fun prepareWebView(activity: Activity, moduleId: String, state:
                             File("${state.modDir}/webroot"), shell,
                             { state.currentInsets },
                             { webView.post { state.isInsetsEnabled = true } },
+                            { state.colorsCss },
                         )
                     )
                     .build()

@@ -34,6 +34,8 @@ class WebUIState {
     var isUrlLoaded = false
     @Volatile
     var currentInsets: Insets = Insets(0, 0, 0, 0)
+    @Volatile
+    var colorsCss: String = ""
     var isInsetsEnabled by mutableStateOf(false)
     var webCanGoBack by mutableStateOf(false)
     var filePathCallback: android.webkit.ValueCallback<Array<Uri>>? = null

@@ -39,6 +39,7 @@ class SuFilePathHandler(
     private val shell: Shell,
     private val insetsSupplier: InsetsSupplier,
     private val onInsetsRequested: () -> Unit,
+    private val colorsSupplier: () -> String,
 ) : WebViewAssetLoader.PathHandler {
 
     private val directory: File
@@ -100,6 +101,13 @@ class SuFilePathHandler(
                 "text/css",
                 "utf-8",
                 ByteArrayInputStream(css.toByteArray(StandardCharsets.UTF_8))
+            )
+        }
+        if (path == "internal/colors.css") {
+            return WebResourceResponse(
+                "text/css",
+                "utf-8",
+                ByteArrayInputStream(colorsSupplier().toByteArray(StandardCharsets.UTF_8))
             )
         }
 

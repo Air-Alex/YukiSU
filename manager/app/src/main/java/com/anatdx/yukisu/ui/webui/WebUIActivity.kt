@@ -10,13 +10,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
+import com.anatdx.yukisu.ui.theme.ThemeManager
 import kotlinx.coroutines.CancellationException
 
 class WebUIActivity : ComponentActivity() {
@@ -31,9 +34,17 @@ class WebUIActivity : ComponentActivity() {
             return
         }
 
+        ThemeManager.loadThemeMode(this)
+        ThemeManager.loadThemeColors(this)
+        ThemeManager.loadDynamicColorState(this)
+        ThemeManager.loadUiStyle(this)
+
         setContent {
             KernelSUTheme {
                 val state = remember { WebUIState() }
+                val colorScheme = MaterialTheme.colorScheme
+                val colorsCss = remember(colorScheme) { MonetColorsProvider.getColorsCss(colorScheme) }
+                SideEffect { state.colorsCss = colorsCss }
 
                 LaunchedEffect(moduleId) {
                     try {
