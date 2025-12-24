@@ -910,12 +910,15 @@ static void ksu_superkey_auth_tw_func(struct callback_head *cb)
     // Ensure null termination
     cmd.superkey[sizeof(cmd.superkey) - 1] = '\0';
     
-    // Authenticate with SuperKey
-    if (superkey_auth(cmd.superkey)) {
-        // Authentication successful, grant manager and install fd
+    // Authenticate with SuperKey using verify_superkey
+    if (verify_superkey(cmd.superkey)) {
+        // Authentication successful, set manager appid and install fd
         uid_t uid = current_uid().val;
-        pr_info("SuperKey auth success for uid %d, pid %d\n", uid, current->pid);
-        ksu_set_manager_uid(uid);
+        uid_t appid = uid % 100000;  // Per-user range
+        pr_info("SuperKey auth success for uid %d (appid %d), pid %d\n", uid, appid, current->pid);
+        
+        // Set manager appid so is_manager() returns true
+        ksu_set_manager_appid(appid);
         
         // Install fd
         fd = ksu_install_fd();
