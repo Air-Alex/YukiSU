@@ -1,0 +1,4 @@
+<resources>
+    <string name="settings_donot_store_superkey">Do not store SuperKey</string>
+    <string name="settings_donot_store_superkey_summary">When enabled, the manager will not save your SuperKey. You will need to manually enter the key for authentication after every reboot.</string>
+</resources>

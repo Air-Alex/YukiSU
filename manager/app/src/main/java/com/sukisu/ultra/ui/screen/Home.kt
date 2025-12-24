@@ -152,8 +152,12 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                     onAuthenticate = { superKey ->
                         val success = Natives.authenticateSuperKey(superKey)
                         if (success) {
-                            // 保存 SuperKey 到本地
-                            superKeyPrefs.edit().putString("saved_superkey", superKey).apply()
+                            // 检查是否允许保存 SuperKey
+                            val skipStore = superKeyPrefs.getBoolean("skip_store_superkey", false)
+                            if (!skipStore) {
+                                // 保存 SuperKey 到本地
+                                superKeyPrefs.edit().putString("saved_superkey", superKey).apply()
+                            }
                         }
                         success
                     },
