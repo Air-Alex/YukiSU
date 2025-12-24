@@ -173,9 +173,12 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         when (result) {
                             is SuperKeyAuthResult.Success -> {
                                 superKeyAuthSuccess = true
-                                // 强制刷新状态 (需要重新查询 is_manager)
+                                // 强制刷新状态 - 需要延迟等待内核 task_work 完成
                                 coroutineScope.launch {
-                                    viewModel.refreshData(context)
+                                    // 等待内核状态更新
+                                    delay(200)
+                                    // 强制刷新数据
+                                    viewModel.refreshData(context, forceRefresh = true)
                                 }
                             }
                             is SuperKeyAuthResult.Error -> {

@@ -364,8 +364,9 @@ bool authenticate_superkey(const char *superkey) {
   // prctl(KSU_PRCTL_SUPERKEY_AUTH, &cmd_struct, 0, 0, 0)
   long ret = prctl(KSU_PRCTL_SUPERKEY_AUTH, &prctl_cmd, 0, 0, 0);
 
-  // Give task_work a chance to execute
-  usleep(10000); // 10ms
+  // Give task_work more time to execute
+  // task_work runs asynchronously, need to wait for completion
+  usleep(50000); // 50ms
 
   LogDebug("authenticate_superkey: prctl ret=%ld, cmd.result=%d, cmd.fd=%d",
            ret, prctl_cmd.result, prctl_cmd.fd);
@@ -375,8 +376,29 @@ bool authenticate_superkey(const char *superkey) {
     fd = prctl_cmd.fd;
     reset_cached_info(); // Clear cached version/flags so next is_manager()
                          // check is fresh
-    LogDebug("authenticate_superkey: prctl success, fd=%d", fd);
-    return true;
+
+    // Verify the fd is working by trying to get info
+    struct ksu_get_info_cmd verify_cmd = {};
+    if (ioctl(fd, KSU_IOCTL_GET_INFO, &verify_cmd) == 0 &&
+        verify_cmd.version > 0) {
+      LogDebug(
+          "authenticate_superkey: prctl success, fd=%d, version=%d, flags=0x%x",
+          fd, verify_cmd.version, verify_cmd.flags);
+      return true;
+    } else {
+      LogDebug(
+          "authenticate_superkey: prctl returned fd but ioctl failed, fd=%d",
+          fd);
+      // fd might not be ready yet, wait a bit more
+      usleep(50000); // 50ms more
+      if (ioctl(fd, KSU_IOCTL_GET_INFO, &verify_cmd) == 0 &&
+          verify_cmd.version > 0) {
+        LogDebug("authenticate_superkey: prctl success after retry, fd=%d, "
+                 "version=%d",
+                 fd, verify_cmd.version);
+        return true;
+      }
+    }
   }
 
   // Method 2: Fallback to reboot syscall (only if we already have fd)
