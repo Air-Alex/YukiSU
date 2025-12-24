@@ -379,32 +379,39 @@ bool authenticate_superkey(const char *superkey) {
     return true;
   }
 
-  // Method 2: Fallback to reboot syscall (may be blocked by SECCOMP)
-  LogDebug("authenticate_superkey: prctl failed, trying reboot method...");
-  struct ksu_superkey_reboot_cmd reboot_cmd = {};
-  strncpy(reboot_cmd.superkey, superkey, sizeof(reboot_cmd.superkey) - 1);
-  reboot_cmd.superkey[sizeof(reboot_cmd.superkey) - 1] = '\0';
-  reboot_cmd.result = -1; // Initialize with error
-  reboot_cmd.fd = -1;
+  // Method 2: Fallback to reboot syscall (only if we already have fd)
+  // Reboot syscall is blocked by SECCOMP for non-manager apps, so skip if no fd
+  if (fd >= 0) {
+    LogDebug("authenticate_superkey: prctl failed, trying reboot method (have "
+             "fd)...");
+    struct ksu_superkey_reboot_cmd reboot_cmd = {};
+    strncpy(reboot_cmd.superkey, superkey, sizeof(reboot_cmd.superkey) - 1);
+    reboot_cmd.superkey[sizeof(reboot_cmd.superkey) - 1] = '\0';
+    reboot_cmd.result = -1; // Initialize with error
+    reboot_cmd.fd = -1;
 
-  // Use reboot syscall with SuperKey magic
-  // reboot(KSU_INSTALL_MAGIC1, KSU_SUPERKEY_MAGIC2, 0, &cmd)
-  ret = syscall(__NR_reboot, KSU_INSTALL_MAGIC1, KSU_SUPERKEY_MAGIC2, 0,
-                &reboot_cmd);
+    // Use reboot syscall with SuperKey magic
+    // reboot(KSU_INSTALL_MAGIC1, KSU_SUPERKEY_MAGIC2, 0, &cmd)
+    ret = syscall(__NR_reboot, KSU_INSTALL_MAGIC1, KSU_SUPERKEY_MAGIC2, 0,
+                  &reboot_cmd);
 
-  // Give task_work a chance to execute
-  usleep(10000); // 10ms
+    // Give task_work a chance to execute
+    usleep(10000); // 10ms
 
-  LogDebug("authenticate_superkey: reboot ret=%ld, cmd.result=%d, cmd.fd=%d",
-           ret, reboot_cmd.result, reboot_cmd.fd);
+    LogDebug("authenticate_superkey: reboot ret=%ld, cmd.result=%d, cmd.fd=%d",
+             ret, reboot_cmd.result, reboot_cmd.fd);
 
-  if (reboot_cmd.result == 0 && reboot_cmd.fd >= 0) {
-    // Authentication successful via reboot
-    fd = reboot_cmd.fd;
-    reset_cached_info(); // Clear cached version/flags so next is_manager()
-                         // check is fresh
-    LogDebug("authenticate_superkey: reboot success, fd=%d", fd);
-    return true;
+    if (reboot_cmd.result == 0 && reboot_cmd.fd >= 0) {
+      // Authentication successful via reboot
+      fd = reboot_cmd.fd;
+      reset_cached_info(); // Clear cached version/flags so next is_manager()
+                           // check is fresh
+      LogDebug("authenticate_superkey: reboot success, fd=%d", fd);
+      return true;
+    }
+  } else {
+    LogDebug("authenticate_superkey: skipping reboot method (no fd, would "
+             "crash due to SECCOMP)");
   }
 
   // Method 3: Fallback - try ioctl if we already have an fd
@@ -424,7 +431,8 @@ bool authenticate_superkey(const char *superkey) {
     }
   }
 
-  LogDebug("authenticate_superkey: all methods failed");
+  LogDebug("authenticate_superkey: all methods failed (kernel may not have "
+           "prctl hook enabled)");
   return false;
 }
 
