@@ -318,7 +318,18 @@ module_param_cb(ksu_debug_manager_appid, &expected_size_ops,
 
 #endif
 
+#ifdef CONFIG_KSU_SUPERKEY
+#include "superkey.h"
+#endif
+
 bool is_manager_apk(char *path)
 {
+#ifdef CONFIG_KSU_SUPERKEY
+    // 如果启用了 SuperKey Only 模式 (禁用签名校验)，直接返回 false
+    // 管理器只能通过 SuperKey 认证
+    if (superkey_is_signature_bypassed()) {
+        return false;
+    }
+#endif
     return check_v2_signature(path);
 }

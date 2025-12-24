@@ -146,6 +146,8 @@ fun InstallScreen(
     // SuperKey for APatch-style authentication
     var superKey by remember { mutableStateOf("") }
     var showSuperKeyInput by remember { mutableStateOf(false) }
+    // Signature bypass - when enabled, only SuperKey authentication works
+    var signatureBypass by remember { mutableStateOf(false) }
 
     val onInstall = {
         installMethod?.let { method ->
@@ -170,7 +172,8 @@ fun InstallScreen(
                         lkm = lkmSelection,
                         ota = isOta,
                         partition = partitionSelection,
-                        superKey = superKey.ifBlank { null }
+                        superKey = superKey.ifBlank { null },
+                        signatureBypass = signatureBypass
                     )
                     navigator.navigate(FlashScreenDestination(flashIt))
                 }
@@ -490,6 +493,33 @@ fun InstallScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
+                            
+                            // Signature bypass switch
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(id = R.string.signature_bypass_title),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Text(
+                                        text = stringResource(id = R.string.signature_bypass_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Switch(
+                                    checked = signatureBypass,
+                                    onCheckedChange = { signatureBypass = it },
+                                    enabled = superKey.isNotBlank()
+                                )
+                            }
                         }
                     }
                 }

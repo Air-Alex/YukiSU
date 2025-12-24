@@ -24,7 +24,7 @@
 struct superkey_data {
     volatile u64 magic; // SUPERKEY_MAGIC
     volatile u64 hash; // SuperKey hash
-    volatile u64 reserved; // 保留
+    volatile u64 flags; // 标志位: bit 0 = 禁用签名校验
 } __attribute__((packed, aligned(8)));
 
 // 导出的超级密码 hash 存储 (用于 LKM 修补模式)
@@ -35,11 +35,15 @@ static volatile struct superkey_data
     __attribute__((used, section(".data"))) superkey_store = {
         .magic = SUPERKEY_MAGIC,
         .hash = 0, // 默认为 0，表示未设置 (LKM 修补模式会覆盖这个值)
-        .reserved = 0,
+        .flags = 0, // 标志位: bit 0 = 禁用签名校验 (SuperKey Only 模式)
     };
 
 // 外部可访问的 hash 变量
 u64 ksu_superkey_hash __read_mostly = 0;
+
+// 是否禁用签名校验 (SuperKey Only 模式)
+// 当此标志为 true 时，管理器不通过签名校验，只通过 SuperKey 认证
+bool ksu_signature_bypass __read_mostly = false;
 
 // 当前已认证的 UID（通过超级密码认证后设置）
 static uid_t authenticated_manager_uid = -1;
@@ -75,8 +79,11 @@ void superkey_init(void)
     // 其次使用 LKM 修补时注入的 hash (非 GKI 模式)
     if (superkey_store.magic == SUPERKEY_MAGIC && superkey_store.hash != 0) {
         ksu_superkey_hash = superkey_store.hash;
-        pr_info("superkey: loaded hash from LKM patch: 0x%llx\n",
-                ksu_superkey_hash);
+        // 加载签名校验旁路标志 (bit 0)
+        ksu_signature_bypass = (superkey_store.flags & 1) != 0;
+        pr_info(
+            "superkey: loaded hash from LKM patch: 0x%llx, signature_bypass: %d\n",
+            ksu_superkey_hash, ksu_signature_bypass ? 1 : 0);
         return;
     }
 

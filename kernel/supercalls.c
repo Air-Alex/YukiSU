@@ -714,8 +714,8 @@ static int do_superkey_status(void __user *arg)
     // 检查当前进程是否通过 SuperKey 认证
     cmd.is_authenticated = superkey_is_manager() ? 1 : 0;
 
-    // 目前不支持仅 SuperKey 模式（签名验证和 SuperKey 可以共存）
-    cmd.signature_bypassed = 0;
+    // 检查是否启用了 SuperKey Only 模式 (禁用签名校验)
+    cmd.signature_bypassed = superkey_is_signature_bypassed() ? 1 : 0;
     cmd.reserved = 0;
 
     if (copy_to_user(arg, &cmd, sizeof(cmd))) {

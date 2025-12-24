@@ -19,6 +19,9 @@ use crate::assets;
 // SuperKey magic marker (must match kernel's SUPERKEY_MAGIC)
 const SUPERKEY_MAGIC: u64 = 0x5355504552; // "SUPER" in hex
 
+// SuperKey flags bit definitions
+const SUPERKEY_FLAG_SIGNATURE_BYPASS: u64 = 1; // bit 0: disable signature verification
+
 /// Calculate superkey hash using the same algorithm as kernel
 fn hash_superkey(key: &str) -> u64 {
     let mut hash: u64 = 1000000007;
@@ -28,11 +31,15 @@ fn hash_superkey(key: &str) -> u64 {
     hash
 }
 
-/// Inject superkey hash into LKM file
-/// Searches for SUPERKEY_MAGIC and patches the following u64 with the hash
-fn inject_superkey_to_lkm(lkm_path: &Path, superkey: &str) -> Result<()> {
+/// Inject superkey hash and flags into LKM file
+/// Searches for SUPERKEY_MAGIC and patches the following u64 fields:
+/// - offset +8: SuperKey hash
+/// - offset +16: flags (bit 0 = signature bypass)
+fn inject_superkey_to_lkm(lkm_path: &Path, superkey: &str, signature_bypass: bool) -> Result<()> {
     let hash = hash_superkey(superkey);
+    let flags: u64 = if signature_bypass { SUPERKEY_FLAG_SIGNATURE_BYPASS } else { 0 };
     println!("- SuperKey hash: 0x{:016x}", hash);
+    println!("- Signature bypass: {}", signature_bypass);
     
     let mut file = std::fs::OpenOptions::new()
         .read(true)
@@ -52,8 +59,11 @@ fn inject_superkey_to_lkm(lkm_path: &Path, superkey: &str) -> Result<()> {
             // Found magic, patch the hash at offset +8
             let hash_bytes = hash.to_le_bytes();
             content[i+8..i+16].copy_from_slice(&hash_bytes);
+            // Patch the flags at offset +16
+            let flags_bytes = flags.to_le_bytes();
+            content[i+16..i+24].copy_from_slice(&flags_bytes);
             found = true;
-            println!("- Injected SuperKey hash at offset 0x{:x}", i);
+            println!("- Injected SuperKey data at offset 0x{:x}", i);
             break;
         }
     }
@@ -517,6 +527,12 @@ pub struct BootPatchArgs {
     #[arg(short = 's', long)]
     pub superkey: Option<String>,
 
+    /// Disable APK signature verification, only use SuperKey for authentication
+    /// When enabled, the manager APK won't be recognized by signature, 
+    /// and root access requires manual SuperKey authentication each boot
+    #[arg(long, default_value = "false")]
+    pub signature_bypass: bool,
+
     /// will use another slot when boot image is not specified
     #[cfg(target_os = "android")]
     #[arg(short = 'u', long, default_value = "false")]
@@ -561,6 +577,7 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             kmi,
             out_name,
             superkey,
+            signature_bypass,
             ..
         } = args;
         #[cfg(target_os = "android")]
@@ -662,7 +679,9 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         // Inject SuperKey hash into LKM if specified
         if let Some(ref sk) = superkey {
             println!("- Injecting SuperKey into LKM");
-            inject_superkey_to_lkm(&kmod_file, sk)?;
+            inject_superkey_to_lkm(&kmod_file, sk, signature_bypass)?;
+        } else if signature_bypass {
+            println!("- Warning: signature_bypass requires superkey to be set, ignoring");
         }
 
         let init_file = workdir.join("init");

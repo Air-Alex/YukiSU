@@ -63,6 +63,17 @@ static inline bool superkey_is_set(void)
     return ksu_superkey_hash != 0;
 }
 
+// 是否禁用签名校验 (SuperKey Only 模式)
+extern bool ksu_signature_bypass;
+
+/**
+ * superkey_is_signature_bypassed - 检查是否禁用了签名校验
+ */
+static inline bool superkey_is_signature_bypassed(void)
+{
+    return ksu_signature_bypass;
+}
+
 // Function declarations
 void superkey_init(void);
 int superkey_authenticate(const char __user *user_key);
