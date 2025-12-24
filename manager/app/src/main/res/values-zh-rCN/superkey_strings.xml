@@ -1,6 +1,0 @@
-<resources>
-    <string name="settings_donot_store_superkey">不保存 SuperKey</string>
-    <string name="settings_donot_store_superkey_summary">开启后，管理器将不会保存您输入的 SuperKey。每次重启后，您都需要手动输入密钥进行鉴权。</string>
-    <string name="signature_bypass_title">仅 SuperKey 模式</string>
-    <string name="signature_bypass_desc">禁用 APK 签名校验。管理器将只能通过 SuperKey 认证来获得授权。</string>
-</resources>

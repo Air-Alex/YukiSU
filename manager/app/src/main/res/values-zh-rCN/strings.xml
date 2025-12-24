@@ -724,4 +724,10 @@
     <string name="hide_password">隐藏密码</string>
     <string name="superkey_optional_title">超级密钥（可选）</string>
     <string name="superkey_optional_desc">设置超级密钥用于 APatch 风格的认证。留空则使用签名认证。</string>
+    
+    <!-- SuperKey 设置 -->
+    <string name="settings_donot_store_superkey">不存储超级密钥</string>
+    <string name="settings_donot_store_superkey_summary">启用后，管理器不会保存您的超级密钥。每次重启后都需要手动输入密钥进行认证。</string>
+    <string name="signature_bypass_title">仅超级密钥模式</string>
+    <string name="signature_bypass_desc">禁用 APK 签名验证。管理器将仅通过超级密钥认证来识别。</string>
 </resources>

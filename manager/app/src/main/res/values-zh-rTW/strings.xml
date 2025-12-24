@@ -709,4 +709,25 @@
     <string name="group_contains_apps">包含 %d 個應用程式</string>
     <string name="settings_disable_sulog">停用超級使用者紀錄</string>
     <string name="settings_disable_sulog_summary">停用 KernelSU 超級使用者的存取紀錄</string>
+    
+    <!-- SuperKey 認證 -->
+    <string name="superkey_auth_title">超級密鑰認證</string>
+    <string name="superkey_auth_subtitle">輸入您的超級密鑰以認證為管理器</string>
+    <string name="superkey_input_hint">超級密鑰</string>
+    <string name="superkey_input_placeholder">請輸入超級密鑰</string>
+    <string name="superkey_authenticate">認證</string>
+    <string name="superkey_auth_success">認證成功</string>
+    <string name="superkey_auth_failed">認證失敗</string>
+    <string name="superkey_required">需要超級密鑰認證</string>
+    <string name="superkey_not_configured">核心未設定超級密鑰</string>
+    <string name="show_password">顯示密碼</string>
+    <string name="hide_password">隱藏密碼</string>
+    <string name="superkey_optional_title">超級密鑰（選填）</string>
+    <string name="superkey_optional_desc">設定超級密鑰用於 APatch 風格的認證。留空則使用簽名認證。</string>
+    
+    <!-- SuperKey 設定 -->
+    <string name="settings_donot_store_superkey">不儲存超級密鑰</string>
+    <string name="settings_donot_store_superkey_summary">啟用後，管理器不會儲存您的超級密鑰。每次重新啟動後都需要手動輸入密鑰進行認證。</string>
+    <string name="signature_bypass_title">僅超級密鑰模式</string>
+    <string name="signature_bypass_desc">停用 APK 簽名驗證。管理器將僅透過超級密鑰認證來識別。</string>
 </resources>
