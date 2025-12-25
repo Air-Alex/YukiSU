@@ -154,6 +154,27 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
+                        // 清除 SuperKey
+                        val clearKeyDialog = rememberConfirmDialog(onConfirm = {
+                            superKeyPrefs.edit().remove("saved_superkey").apply()
+                            scope.launch {
+                                snackBarHost.showSnackbar(context.getString(R.string.clear_super_key) + " ✓")
+                            }
+                        })
+                        val clearKeyDialogTitle = stringResource(R.string.clear_super_key)
+                        val clearKeyDialogContent = stringResource(R.string.settings_clear_super_key_dialog)
+                        SettingItem(
+                            icon = Icons.Filled.Key,
+                            title = stringResource(R.string.clear_super_key),
+                            onClick = {
+                                clearKeyDialog.showConfirm(
+                                    title = clearKeyDialogTitle,
+                                    content = clearKeyDialogContent,
+                                    markdown = false
+                                )
+                            }
+                        )
+
                         val modeItems = listOf(
                             stringResource(id = R.string.settings_mode_default),
                             stringResource(id = R.string.settings_mode_temp_enable),
