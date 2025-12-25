@@ -14,6 +14,7 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/reboot.h>
+#include <linux/delay.h>
 
 // 防暴力破解: 最大认证失败次数
 #define SUPERKEY_MAX_FAIL_COUNT 3
@@ -27,7 +28,7 @@
 // 使用 packed 确保没有填充，aligned(8) 确保 8 字节对齐
 struct superkey_data {
 	volatile u64 magic; // SUPERKEY_MAGIC
-	volatile u64 hash;  // SuperKey hash
+	volatile u64 hash; // SuperKey hash
 	volatile u64 flags; // 标志位: bit 0 = 禁用签名校验
 } __attribute__((packed, aligned(8)));
 
