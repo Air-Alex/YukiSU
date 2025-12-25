@@ -50,7 +50,7 @@
     <string name="home_click_to_learn_kernelsu">了解如何安裝 KernelSU 以及如何開發模組</string>
     <string name="home_support_title">支援開發</string>
     <string name="home_support_content">KernelSU 將保持免費開源，向開發者捐贈以表示支援。</string>
-    <string name="about_source_code"><![CDATA[喺 %1$s 查看源碼<br/>加入我哋嘅 %2$s 頻道]]<br/><br/>有動漫人物圖片表情包嘅圖像版權為%3$s所有，圖像中嘅知識產權由%4$s 所有。喺使用這些文件之前，除了必須遵守 %5$s 以外，還需要遵守向前兩者索要使用這些藝術內容嘅授權。]]></string>
+    <string name="about_source_code"><![CDATA[喺 %1$s 查看源碼<br/>加入我哋嘅 %2$s 頻道]]></string>
     <string name="profile_default">默認</string>
     <string name="profile_template">模版</string>
     <string name="profile_custom">自定義</string>
