@@ -18,13 +18,13 @@
 メインブランチを使用 (非 GKI のデバイスのビルドは非対応) (susfs を手動で統合が必要)
 
 ```
-curl -LSs "https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh" | bash -s main
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
 ```
 
 非 GKI のデバイスに対応するブランチを使用 (susfs を手動で統合が必要)
 
 ```
-curl -LSs "https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh" | bash -s nongki
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s nongki
 ```
 
 ## 統合された susfs の使い方
@@ -32,7 +32,7 @@ curl -LSs "https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh"
 1. susfs-main または他の susfs-\* ブランチを直接で使用、susfs の統合は不要 (非 GKI デバイスのビルドに対応)
 
 ```
-curl -LSs "https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh" | bash -s susfs-main
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s susfs-main
 ```
 
 ## フックの方式

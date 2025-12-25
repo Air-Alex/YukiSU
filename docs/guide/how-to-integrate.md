@@ -27,10 +27,17 @@ Prerequisite: An open-source, bootable kernel.
 - Main Branch (Typically used for standalone LKM builds)
 
 ```sh
-curl -LSs ‘https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh’ | bash -s main
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
 ```
 
 - Built-in Branch (for GKI/non-GKI builds, optional susfs support)
+
 ```sh
-curl -LSs ‘https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh’ | bash -s builtin
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s builtin
+```
+
+- Backup Branch (If builtin fails, try this first)
+
+```sh
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s tmp-builtin
 ```

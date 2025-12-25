@@ -27,10 +27,17 @@ YukiSU может быть интегрирован как в ядра GKI, та
 - Основная ветвь (обычно используется исключительно для сборок LKM)
 
 ```sh
-curl -LSs «https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh» | bash -s main
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
 ```
 
 - Встроенная ветвь (для сборок GKI/non-GKI, дополнительная поддержка susfs)
+
 ```sh
-curl -LSs «https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh» | bash -s builtin
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s builtin
+```
+
+- Резервная ветвь (Если builtin не работает, попробуйте сначала эту)
+
+```sh
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s tmp-builtin
 ```

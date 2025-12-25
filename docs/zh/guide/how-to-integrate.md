@@ -27,10 +27,17 @@ YukiSU 可以集成到 GKI 和 non-GKI 内核中，并且已反向移植到 4.14
 - 主分支 （一般单独用于LKM构建）
 
 ```sh
-curl -LSs "https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh" | bash -s main
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
 ```
 
 - 内置分支 （用于GKI/非GKI构建，可选susfs支持）
+
 ```sh
-curl -LSs "https://raw.githubusercontent.com/YukiSU/YukiSU/main/kernel/setup.sh" | bash -s builtin
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s builtin
+```
+
+- 备用分支 （因为builtin里混了些猫砂，如果builtin崩了，先用这个试试）
+
+```sh
+curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s tmp-builtin
 ```
