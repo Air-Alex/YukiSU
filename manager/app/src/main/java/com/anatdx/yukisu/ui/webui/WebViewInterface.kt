@@ -255,6 +255,13 @@ class WebViewInterface(
         }
         return jsonArray.toString()
     }
+
+    @JavascriptInterface
+    fun exit() {
+        webView.post {
+            activity.finish()
+        }
+    }
 }
 
 fun hideSystemUI(window: Window) =
