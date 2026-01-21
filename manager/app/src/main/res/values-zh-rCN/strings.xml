@@ -66,7 +66,7 @@
     <string name="failed_to_update_app_profile">为 %s 更新 App Profile 失败</string>
     <string name="require_kernel_version" formatted="false">当前 KernelSU 版本 %s 过低，管理器无法正常工作，请将内核 KernelSU 版本升级至 %s 或以上！</string>
     <string name="settings_umount_modules_default">默认卸载模块</string>
-    <string name="settings_umount_modules_default_summary">App Profile 中\"卸载模块\"的全局默认值，如果启用，将会为没有设置 Profile 的应用移除所有模块针对系统的修改。</string>
+    <string name="settings_umount_modules_default_summary">App Profile 中"卸载模块"的全局默认值，如果启用，将会为没有设置 Profile 的应用移除所有模块针对系统的修改。</string>
     <string name="profile_umount_modules_summary">启用该选项后将允许 KernelSU 为本应用还原被模块修改过的文件。</string>
     <string name="profile_selinux_domain">域</string>
     <string name="profile_selinux_rules">规则</string>
@@ -124,7 +124,7 @@
     <string name="settings_restore_stock_image">恢复原厂镜像</string>
     <string name="settings_uninstall_temporary_message">临时卸载 KernelSU，下次重启后恢复至原始状态。</string>
     <string name="settings_uninstall_permanent_message">完全并永久卸载 KernelSU（Root 权限和所有模块）。</string>
-    <string name="settings_restore_stock_image_message">恢复原厂镜像（若存在备份），一般在 OTA 前使用；如果你需要卸载 KernelSU，请使用\"永久卸载\"。</string>
+    <string name="settings_restore_stock_image_message">恢复原厂镜像（若存在备份），一般在 OTA 前使用；如果你需要卸载 KernelSU，请使用"永久卸载"。</string>
     <string name="flashing">刷写中</string>
     <string name="flash_success">刷写完成</string>
     <string name="flash_failed">刷写失败</string>
@@ -580,4 +580,70 @@
     <string name="hymofs_info_active_mounts">活动挂载：</string>
     <string name="hymofs_info_more_mounts">……还有 %d 个</string>
     <string name="hymofs_mismatch_default">检测到协议不匹配。请更新内核或模块。</string>
+    
+    <!-- Partition Manager -->
+    <string name="partition_manager">分区管理器</string>
+    <string name="partition_list">分区列表</string>
+    <string name="partition_slot_info">槽位信息</string>
+    <string name="partition_device_type">设备类型</string>
+    <string name="partition_current_slot">当前槽位</string>
+    <string name="partition_other_slot">其他槽位</string>
+    <string name="partition_multi_select">多选备份</string>
+    <string name="partition_cancel_select">取消多选</string>
+    <string name="partition_show_all">显示全部</string>
+    <string name="partition_collapse">收起</string>
+    <string name="partition_selected_count">已选择 %d 个分区</string>
+    <string name="partition_select_all">全选</string>
+    <string name="partition_filter_type">按类型筛选</string>
+    <string name="partition_filter_all">所有分区</string>
+    <string name="partition_filter_physical">仅物理分区</string>
+    <string name="partition_filter_logical">仅逻辑分区</string>
+    <string name="partition_map_inactive">映射非活跃槽位逻辑分区</string>
+    <string name="partition_map_inactive_desc">非活跃槽位的逻辑分区可能没有设备节点。点击创建它们。</string>
+    <string name="partition_mapping">正在映射槽位 %s 的逻辑分区…</string>
+    <string name="partition_map_success">成功映射逻辑分区</string>
+    <string name="partition_map_failed">映射逻辑分区失败：%s</string>
+    <string name="partition_deselect_all">全不选</string>
+    <string name="partition_batch_backup">批量备份</string>
+    <string name="partition_common">常用分区</string>
+    <string name="partition_all">所有分区</string>
+    <string name="partition_dangerous_warning">危险分区！操作不当可能导致设备变砖</string>
+    <string name="partition_info_title">分区信息</string>
+    <string name="partition_info_type">类型</string>
+    <string name="partition_type_physical">物理分区</string>
+    <string name="partition_type_logical">逻辑分区</string>
+    <string name="partition_info_size">大小</string>
+    <string name="partition_info_device">设备</string>
+    <string name="partition_info_slot">槽位</string>
+    <string name="partition_available_operations">可用操作</string>
+    <string name="partition_backup_to_file">备份到文件</string>
+    <string name="partition_flash_image">刷写镜像</string>
+    <string name="partition_dangerous_operation">危险操作</string>
+    <string name="partition_dangerous_operation_warning">⚠️ 危险操作警告</string>
+    <string name="partition_flash_warning">刷写分区可能导致设备无法启动！\n\n确定要刷写 %s 分区吗？</string>
+    <string name="partition_dangerous_flash_warning">⚠️ 警告：%s 是危险分区！\n\n刷写此分区可能导致：\n• 设备无法启动\n• 丢失重要数据\n• 网络/蓝牙功能失效\n\n请确保您知道自己在做什么！\n\n确定要刷写 %s 分区吗？</string>
+    <string name="partition_confirm_flash">确定刷写</string>
+    <string name="partition_backing_up">正在备份分区 %s…</string>
+    <string name="partition_backup_success">备份成功：%s</string>
+    <string name="partition_backup_failed">备份失败：%s</string>
+    <string name="partition_backup_failed_check_log">备份失败，请查看 logcat 日志</string>
+    <string name="partition_flashing">正在刷写 %s…</string>
+    <string name="partition_flash_success">刷写成功！建议立即重启。</string>
+    <string name="partition_flash_failed">刷写失败：%s</string>
+    <string name="partition_flash_failed_check_log">刷写失败，请查看 logcat 日志</string>
+    <string name="partition_cannot_read_file">无法读取文件</string>
+    <string name="partition_load_failed">加载分区信息失败：%s</string>
+    <string name="partition_ab_device">A/B 设备</string>
+    <string name="partition_a_only_device">A-only 设备</string>
+    <string name="partition_unknown">未知</string>
+    <string name="partition_batch_backup_start">开始批量备份 %d 个分区…</string>
+    <string name="partition_batch_backup_progress">备份中 (%d/%d)：%s</string>
+    <string name="partition_batch_backup_complete">批量备份完成！共 %d 个分区\n保存在：%s</string>
+    <string name="partition_batch_backup_partial">备份完成：成功 %d 个，失败 %d 个\n失败：%s</string>
+    <string name="partition_no_selection">没有选择要备份的分区</string>
+    <string name="partition_back">返回</string>
+    
+    <!-- Advanced Tools -->
+    <string name="install_advanced_tools">高级工具</string>
+    <string name="partition_manager_desc">备份/恢复分区、管理槽位</string>
 </resources>
