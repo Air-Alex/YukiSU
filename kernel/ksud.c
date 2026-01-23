@@ -87,7 +87,6 @@ EXPORT_SYMBOL(ksu_execveat_hook);
 EXPORT_SYMBOL(ksu_input_hook);
 #endif // #if !defined(CONFIG_KSU_HYMOFS) && !def...
 
-u32 ksu_file_sid;
 void on_post_fs_data(void)
 {
 	static bool done = false;

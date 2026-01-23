@@ -35,6 +35,8 @@ struct ModuleInfo {
     bool action;
     bool mount;
     bool metamodule;
+    std::string actionIcon;
+    std::string webuiIcon;
 };
 
 // Escape special characters for JSON string
@@ -77,6 +79,46 @@ static std::string escape_json(const std::string& s) {
     return result;
 }
 
+static bool file_exists(const std::string& path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+}
+
+// Resolve module icon path with security checks
+static std::string resolve_module_icon_path(const std::string& icon_value,
+                                            const std::string& module_id,
+                                            const std::string& module_path,
+                                            const std::string& key_name) {
+    if (icon_value.empty()) {
+        return "";
+    }
+
+    // Reject absolute paths
+    if (icon_value[0] == '/') {
+        LOGW("Module %s: %s contains absolute path, rejected\n", module_id.c_str(),
+             key_name.c_str());
+        return "";
+    }
+
+    // Reject parent directory traversal
+    if (icon_value.find("..") != std::string::npos) {
+        LOGW("Module %s: %s contains parent directory traversal, rejected\n", module_id.c_str(),
+             key_name.c_str());
+        return "";
+    }
+
+    // Construct full path and verify it exists
+    std::string full_path = module_path + "/" + icon_value;
+    if (!file_exists(full_path)) {
+        LOGW("Module %s: %s file does not exist: %s\n", module_id.c_str(), key_name.c_str(),
+             full_path.c_str());
+        return "";
+    }
+
+    // Return the relative path (icon_value) as it will be accessed via su://
+    return icon_value;
+}
+
 static std::map<std::string, std::string> parse_module_prop(const std::string& path) {
     std::map<std::string, std::string> props;
     std::ifstream ifs(path);
@@ -94,11 +136,6 @@ static std::map<std::string, std::string> parse_module_prop(const std::string& p
     }
 
     return props;
-}
-
-static bool file_exists(const std::string& path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0;
 }
 
 // Validate module ID - must be alphanumeric with underscores/hyphens, no path separators
@@ -790,6 +827,16 @@ int module_list() {
         info.metamodule =
             (metamodule_val == "1" || metamodule_val == "true" || metamodule_val == "TRUE");
 
+        // Resolve icon paths
+        if (props.count("actionIcon")) {
+            info.actionIcon =
+                resolve_module_icon_path(props["actionIcon"], info.id, module_path, "actionIcon");
+        }
+        if (props.count("webuiIcon")) {
+            info.webuiIcon =
+                resolve_module_icon_path(props["webuiIcon"], info.id, module_path, "webuiIcon");
+        }
+
         modules.push_back(info);
     }
 
@@ -812,8 +859,14 @@ int module_list() {
         printf("    \"web\": \"%s\",\n", m.web ? "true" : "false");
         printf("    \"action\": \"%s\",\n", m.action ? "true" : "false");
         printf("    \"mount\": \"%s\",\n", m.mount ? "true" : "false");
-        printf("    \"metamodule\": \"%s\"\n", m.metamodule ? "true" : "false");
-        printf("  }%s\n", i < modules.size() - 1 ? "," : "");
+        printf("    \"metamodule\": \"%s\"", m.metamodule ? "true" : "false");
+        if (!m.actionIcon.empty()) {
+            printf(",\n    \"actionIcon\": \"%s\"", escape_json(m.actionIcon).c_str());
+        }
+        if (!m.webuiIcon.empty()) {
+            printf(",\n    \"webuiIcon\": \"%s\"", escape_json(m.webuiIcon).c_str());
+        }
+        printf("\n  }%s\n", i < modules.size() - 1 ? "," : "");
     }
     printf("]\n");
 
