@@ -5,12 +5,10 @@ kernelsu-objs += apk_sign.o
 kernelsu-objs += sucompat.o
 
 # Tracepoint hook mode needs syscall_hook_manager and util
-# Only skip when HYMOFS or MANUAL_HOOK is explicitly enabled
-ifneq ($(CONFIG_KSU_HYMOFS), y)
+# Only skip when MANUAL_HOOK is explicitly enabled
 ifneq ($(CONFIG_KSU_MANUAL_HOOK), y)
 kernelsu-objs += syscall_hook_manager.o
 kernelsu-objs += util.o
-endif
 endif
 
 kernelsu-objs += throne_tracker.o
@@ -143,9 +141,22 @@ $(info -- Yukisu does NOT support other managers!)
 ifeq ($(CONFIG_KSU_MANUAL_HOOK), y)
 ccflags-y += -DKSU_MANUAL_HOOK
 $(info -- YukiSU: KSU_MANUAL_HOOK)
-else ifeq ($(CONFIG_KSU_HYMOFS), y)
-ccflags-y += -DCONFIG_KSU_HYMOFS
-$(info -- YukiSU: HYMOFS_INLINE_HOOK)
+
+# Manual hook integration detection (for integrity check).
+# We define KSU_HAS_MANUAL_HOOK_* macros only when the kernel source
+# actually contains the corresponding hook call-sites.
+ifeq ($(shell grep -q "ksu_handle_execveat" $(srctree)/fs/exec.c || grep -q "ksu_handle_execve_sucompat" $(srctree)/fs/exec.c; echo $$?),0)
+ccflags-y += -DKSU_HAS_MANUAL_HOOK_EXEC
+endif
+ifeq ($(shell grep -q "ksu_handle_faccessat" $(srctree)/fs/open.c; echo $$?),0)
+ccflags-y += -DKSU_HAS_MANUAL_HOOK_FACCESSAT
+endif
+ifeq ($(shell grep -q "ksu_handle_stat" $(srctree)/fs/stat.c; echo $$?),0)
+ccflags-y += -DKSU_HAS_MANUAL_HOOK_STAT
+endif
+ifeq ($(shell grep -q "ksu_handle_sys_reboot" $(srctree)/kernel/reboot.c; echo $$?),0)
+ccflags-y += -DKSU_HAS_MANUAL_HOOK_REBOOT
+endif
 else
 ccflags-y += -DKSU_KPROBES_HOOK
 ccflags-y += -DKSU_TP_HOOK

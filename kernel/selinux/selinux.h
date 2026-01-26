@@ -35,6 +35,8 @@ bool is_init(const struct cred *cred);
 
 void apply_kernelsu_rules(void);
 
+void cache_sid(void);
+
 u32 ksu_get_ksu_file_sid(void);
 
 int handle_sepolicy(unsigned long arg3, void __user *arg4);
