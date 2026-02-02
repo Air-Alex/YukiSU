@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Une version plus récente du LKM intégré est disponible. Appuyez pour mettre à jour.</string>
     <string name="home_lkm_custom">Personnalisé</string>
     <string name="require_manager_version">Mise à jour du gestionnaire requise.</string>
+    <string name="no_such_module">Le module %1$s est introuvable</string>
+    <string name="module_unavailable">Le module %1$s est désactivé, en cours de mise à jour ou en attente de suppression</string>
 </resources>

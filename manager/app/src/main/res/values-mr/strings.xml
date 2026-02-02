@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">अंगभूत LKM ची नवीन आवृत्ती उपलब्ध आहे. अपडेट करण्यासाठी टॅप करा.</string>
     <string name="home_lkm_custom">सानुकूल</string>
     <string name="require_manager_version">व्यवस्थापक अपडेट करणे आवश्यक आहे.</string>
+    <string name="no_such_module">%1$s मॉड्यूल अस्तित्वात नाही</string>
+    <string name="module_unavailable">%1$s मॉड्यूल अक्षम आहे, अपडेट होत आहे किंवा काढण्याच्या प्रतीक्षेत आहे</string>
 </resources>

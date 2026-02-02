@@ -501,4 +501,6 @@ A</string>
     <string name="home_lkm_update_available">Elérhető a beépített LKM újabb verziója. Érintse meg a frissítéshez.</string>
     <string name="home_lkm_custom">Egyedi</string>
     <string name="require_manager_version">A menedzser frissítése szükséges.</string>
+    <string name="no_such_module">A(z) %1$s modul nem létezik</string>
+    <string name="module_unavailable">A(z) %1$s modul le van tiltva, frissítés alatt áll vagy eltávolításra vár</string>
 </resources>

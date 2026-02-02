@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Доступна новіша версія вбудованого LKM. Натисніть, щоб оновити.</string>
     <string name="home_lkm_custom">Власний</string>
     <string name="require_manager_version">Потрібно оновити менеджер.</string>
+    <string name="no_such_module">Модуль %1$s не існує</string>
+    <string name="module_unavailable">Модуль %1$s вимкнено, оновлюється або очікує на видалення</string>
 </resources>

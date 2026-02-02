@@ -20,12 +20,26 @@ final class ModuleWebViewClient extends WebViewClient {
     private final Context context;
     private final WebViewAssetLoader assetLoader;
     private final Consumer<WebView> onRendererGone;
+    private final Consumer<WebView> onPageChanged;
 
     ModuleWebViewClient(Context context, WebViewAssetLoader assetLoader,
-            Consumer<WebView> onRendererGone) {
+            Consumer<WebView> onRendererGone, Consumer<WebView> onPageChanged) {
         this.context = context;
         this.assetLoader = assetLoader;
         this.onRendererGone = onRendererGone;
+        this.onPageChanged = onPageChanged;
+    }
+
+    @Override
+    public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+        onPageChanged.accept(view);
+        super.doUpdateVisitedHistory(view, url, isReload);
+    }
+
+    @Override
+    public void onPageFinished(WebView view, String url) {
+        onPageChanged.accept(view);
+        super.onPageFinished(view, url);
     }
 
     @Override

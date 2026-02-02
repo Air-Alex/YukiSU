@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Saadaval on kaasasoleva LKM-i uuem versioon. Puuduta värskendamiseks.</string>
     <string name="home_lkm_custom">Kohandatud</string>
     <string name="require_manager_version">Halduri värskendamine on vajalik.</string>
+    <string name="no_such_module">Moodulit %1$s pole olemas</string>
+    <string name="module_unavailable">Moodul %1$s on keelatud, uuendamisel või ootab eemaldamist</string>
 </resources>

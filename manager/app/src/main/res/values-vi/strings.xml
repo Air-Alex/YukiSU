@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Hiện có phiên bản LKM tích hợp mới hơn. Nhấn để cập nhật.</string>
     <string name="home_lkm_custom">Tuỳ chỉnh</string>
     <string name="require_manager_version">Cần cập nhật Trình quản lý.</string>
+    <string name="no_such_module">Mô-đun %1$s không tồn tại</string>
+    <string name="module_unavailable">Mô-đun %1$s bị tắt, đang cập nhật hoặc chờ gỡ bỏ</string>
 </resources>

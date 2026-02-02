@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">बिल्ट-इन LKM का नया वर्जन उपलब्ध है। अपडेट करने के लिए टैप करें।</string>
     <string name="home_lkm_custom">कस्टम</string>
     <string name="require_manager_version">मैनेजर को अपडेट करना आवश्यक है।</string>
+    <string name="no_such_module">मॉड्यूल %1$s मौजूद नहीं है</string>
+    <string name="module_unavailable">मॉड्यूल %1$s अक्षम है, अपडेट हो रहा है या हटाए जाने की प्रतीक्षा में है</string>
 </resources>

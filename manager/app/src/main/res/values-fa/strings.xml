@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">نسخه جدیدتری از LKM داخلی موجود است. برای به‌روزرسانی ضربه بزنید.</string>
     <string name="home_lkm_custom">شخصی‌سازی‌شده</string>
     <string name="require_manager_version">به‌روزرسانی مدیر لازم است.</string>
+    <string name="no_such_module">ماژول %1$s وجود ندارد</string>
+    <string name="module_unavailable">ماژول %1$s غیرفعال است، در حال به‌روزرسانی است یا در انتظار حذف است</string>
 </resources>

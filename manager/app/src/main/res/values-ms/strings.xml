@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Versi lebih baharu bagi LKM terbina dalam tersedia. Ketik untuk mengemas kini.</string>
     <string name="home_lkm_custom">Tersuai</string>
     <string name="require_manager_version">Pengurus perlu dikemas kini.</string>
+    <string name="no_such_module">Modul %1$s tidak wujud</string>
+    <string name="module_unavailable">Modul %1$s dinyahdayakan, sedang dikemas kini atau menunggu penyingkiran</string>
 </resources>

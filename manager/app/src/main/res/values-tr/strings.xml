@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Yerleşik LKM\'nin daha yeni bir sürümü mevcut. Güncellemek için dokunun.</string>
     <string name="home_lkm_custom">Özel</string>
     <string name="require_manager_version">Yönetici güncellemesi gerekli.</string>
+    <string name="no_such_module">%1$s modülü mevcut değil</string>
+    <string name="module_unavailable">%1$s modülü devre dışı, güncelleniyor veya kaldırılmayı bekliyor</string>
 </resources>

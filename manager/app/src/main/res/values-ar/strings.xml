@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">يتوفر إصدار أحدث من LKM المضمّن. اضغط للتحديث.</string>
     <string name="home_lkm_custom">مُخصّص</string>
     <string name="require_manager_version">يلزم تحديث المدير.</string>
+    <string name="no_such_module">الوحدة %1$s غير موجودة</string>
+    <string name="module_unavailable">الوحدة %1$s معطلة أو قيد التحديث أو بانتظار الإزالة</string>
 </resources>

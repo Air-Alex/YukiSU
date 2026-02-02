@@ -25,7 +25,7 @@ import java.io.File
 import java.util.concurrent.CompletableFuture
 
 @Suppress("unused")
-class WebViewInterface(
+open class WebViewInterface(
     wxOptions: WXOptions,
 ) : WXInterface(wxOptions) {
     override var name: String = "ksu"
@@ -172,7 +172,7 @@ class WebViewInterface(
     }
 
     @JavascriptInterface
-    fun fullScreen(enable: Boolean) {
+    open fun fullScreen(enable: Boolean) {
         if (context is Activity) {
             Handler(Looper.getMainLooper()).post {
                 if (enable) {

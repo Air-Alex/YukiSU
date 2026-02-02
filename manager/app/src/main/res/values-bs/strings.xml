@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Dostupna je novija verzija ugrađenog LKM-a. Dodirnite za ažuriranje.</string>
     <string name="home_lkm_custom">Prilagođeno</string>
     <string name="require_manager_version">Potrebno je ažurirati upravitelj.</string>
+    <string name="no_such_module">Modul %1$s ne postoji</string>
+    <string name="module_unavailable">Modul %1$s je onemogućen, ažurira se ili čeka uklanjanje</string>
 </resources>

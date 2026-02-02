@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Pasiekiama naujesnė integruoto LKM versija. Palieskite, kad atnaujintumėte.</string>
     <string name="home_lkm_custom">Pasirinktinis</string>
     <string name="require_manager_version">Reikia atnaujinti tvarkyklę.</string>
+    <string name="no_such_module">Modulis %1$s neegzistuoja</string>
+    <string name="module_unavailable">Modulis %1$s išjungtas, atnaujinamas arba laukia pašalinimo</string>
 </resources>

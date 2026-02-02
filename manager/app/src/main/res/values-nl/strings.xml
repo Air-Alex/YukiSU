@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Er is een nieuwere versie van de ingebouwde LKM beschikbaar. Tik om bij te werken.</string>
     <string name="home_lkm_custom">Aangepast</string>
     <string name="require_manager_version">Managerupdate vereist.</string>
+    <string name="no_such_module">Module %1$s bestaat niet</string>
+    <string name="module_unavailable">Module %1$s is uitgeschakeld, wordt bijgewerkt of wacht op verwijdering</string>
 </resources>

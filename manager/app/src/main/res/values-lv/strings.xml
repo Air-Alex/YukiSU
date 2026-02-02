@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Pieejama jaunāka iebūvētā LKM versija. Pieskarieties, lai atjauninātu.</string>
     <string name="home_lkm_custom">Pielāgots</string>
     <string name="require_manager_version">Nepieciešams pārvaldnieka atjauninājums.</string>
+    <string name="no_such_module">Modulis %1$s nepastāv</string>
+    <string name="module_unavailable">Modulis %1$s ir atspējots, tiek atjaunināts vai gaida noņemšanu</string>
 </resources>

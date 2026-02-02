@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">גרסה חדשה יותר של ה-LKM המובנה זמינה. הקש כדי לעדכן.</string>
     <string name="home_lkm_custom">מותאם אישית</string>
     <string name="require_manager_version">יש לעדכן את המנהל.</string>
+    <string name="no_such_module">המודול %1$s אינו קיים</string>
+    <string name="module_unavailable">המודול %1$s מושבת, מתעדכן או ממתין להסרה</string>
 </resources>

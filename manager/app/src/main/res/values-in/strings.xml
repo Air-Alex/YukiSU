@@ -504,4 +504,6 @@
     <string name="home_lkm_update_available">Versi LKM bawaan yang lebih baru tersedia. Ketuk untuk memperbarui.</string>
     <string name="home_lkm_custom">Kustom</string>
     <string name="require_manager_version">Manajer perlu diperbarui.</string>
+    <string name="no_such_module">Modul %1$s tidak ada</string>
+    <string name="module_unavailable">Modul %1$s dinonaktifkan, sedang diperbarui, atau menunggu penghapusan</string>
 </resources>

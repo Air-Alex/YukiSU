@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Este disponibilă o versiune mai nouă a LKM-ului integrat. Atingeți pentru actualizare.</string>
     <string name="home_lkm_custom">Personalizat</string>
     <string name="require_manager_version">Este necesară actualizarea managerului.</string>
+    <string name="no_such_module">Modulul %1$s nu există</string>
+    <string name="module_unavailable">Modulul %1$s este dezactivat, se actualizează sau așteaptă eliminarea</string>
 </resources>

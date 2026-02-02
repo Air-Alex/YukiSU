@@ -503,4 +503,6 @@
     <string name="home_lkm_update_available">Доступна новая версия встроенного LKM. Нажмите, чтобы обновить.</string>
     <string name="home_lkm_custom">Пользовательский</string>
     <string name="require_manager_version">Требуется обновить менеджер.</string>
+    <string name="no_such_module">Модуль %1$s не существует</string>
+    <string name="module_unavailable">Модуль %1$s отключён, обновляется или ожидает удаления</string>
 </resources>

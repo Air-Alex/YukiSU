@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Eine neuere Version des mitgelieferten LKM ist verfügbar. Zum Aktualisieren tippen.</string>
     <string name="home_lkm_custom">Benutzerdefiniert</string>
     <string name="require_manager_version">Manager-Update erforderlich.</string>
+    <string name="no_such_module">Modul %1$s existiert nicht</string>
+    <string name="module_unavailable">Modul %1$s ist deaktiviert, wird aktualisiert oder wartet auf Entfernung</string>
 </resources>

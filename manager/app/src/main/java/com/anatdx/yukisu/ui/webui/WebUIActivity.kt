@@ -1,126 +1,70 @@
 package com.anatdx.yukisu.ui.webui
 
-import android.annotation.SuppressLint
-import android.graphics.Color
 import android.os.Bundle
-import android.webkit.WebView
+import android.util.Log
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.lifecycleScope
-import androidx.webkit.WebViewAssetLoader
-import com.dergoogler.mmrl.platform.model.ModId
-import com.dergoogler.mmrl.webui.interfaces.WXOptions
-import com.anatdx.yukisu.BuildConfig
-import com.anatdx.yukisu.ui.util.createRootShell
-import com.anatdx.yukisu.ui.util.setTaskDescriptionLabel
-import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import java.io.File
+import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.theme.KernelSUTheme
+import kotlinx.coroutines.CancellationException
 
-@SuppressLint("SetJavaScriptEnabled")
 class WebUIActivity : ComponentActivity() {
-    private val rootShell by lazy { createRootShell(true) }
-
-    private lateinit var insets: Insets
-    private var webView = null as WebView?
-
     override fun onCreate(savedInstanceState: Bundle?) {
-
-        // Enable edge to edge
         enableEdgeToEdge()
         window.isNavigationBarContrastEnforced = false
-
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         super.onCreate(savedInstanceState)
 
-        setContent {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        }
-
-        lifecycleScope.launch {
-            SuperUserViewModel.isAppListLoaded.first { it }
-            setupWebView()
-        }
-    }
-
-    private fun setupWebView() {
-        val moduleId = intent.getStringExtra("id") ?: finishAndRemoveTask().let { return }
-        val name = intent.getStringExtra("name") ?: finishAndRemoveTask().let { return }
-        setTaskDescriptionLabel("YukiSU - $name")
-
-        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        // Release builds have no toggle for this, so pin it off rather than
-        // trusting a preference an older build may have left set.
-        WebView.setWebContentsDebuggingEnabled(
-            BuildConfig.DEBUG && prefs.getBoolean("enable_web_debugging", false)
-        )
-
-        val moduleDir = "/data/adb/modules/${moduleId}"
-        val webRoot = File("${moduleDir}/webroot")
-        insets = Insets(0, 0, 0, 0)
-        val webViewAssetLoader = WebViewAssetLoader.Builder()
-            .setDomain("mui.kernelsu.org")
-            .addPathHandler(
-                "/",
-                SuFilePathHandler(webRoot, rootShell) { insets }
-            )
-            .build()
-
-        val webViewClient = ModuleWebViewClient(this, webViewAssetLoader) { view ->
-            if (this.webView === view) {
-                this.webView = null
-            }
+        val moduleId = intent.getStringExtra("id") ?: run {
             finishAndRemoveTask()
+            return
         }
 
-        val webView = WebView(this).apply {
-            webView = this
+        setContent {
+            KernelSUTheme {
+                val state = remember { WebUIState() }
 
-            setBackgroundColor(Color.TRANSPARENT)
-            val density = resources.displayMetrics.density
+                LaunchedEffect(moduleId) {
+                    try {
+                        prepareWebView(this@WebUIActivity, moduleId, state)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e("WebUIActivity", "Failed to prepare module WebUI", e)
+                        state.uiEvent = WebUIEvent.Error(getString(R.string.operation_failed))
+                    }
+                }
 
-            ViewCompat.setOnApplyWindowInsetsListener(this) { _, windowInsets ->
-                val inset = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-                insets = Insets(
-                    top = (inset.top / density).toInt(),
-                    bottom = (inset.bottom / density).toInt(),
-                    left = (inset.left / density).toInt(),
-                    right = (inset.right / density).toInt()
-                )
-                WindowInsetsCompat.CONSUMED
+                DisposableEffect(state) {
+                    onDispose { state.dispose(this@WebUIActivity) }
+                }
+
+                when (val event = state.uiEvent) {
+                    is WebUIEvent.Loading -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                    is WebUIEvent.Error -> LaunchedEffect(event) {
+                        Toast.makeText(this@WebUIActivity, event.message, Toast.LENGTH_SHORT).show()
+                        finishAndRemoveTask()
+                    }
+                    is WebUIEvent.Close -> LaunchedEffect(event) { finishAndRemoveTask() }
+                    else -> WebUIScreen(state)
+                }
             }
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.allowFileAccess = false
-            addJavascriptInterface(WebViewInterface(WXOptions(this@WebUIActivity, this, ModId(moduleId))), "ksu")
-            setWebViewClient(webViewClient)
-            loadUrl("https://mui.kernelsu.org/index.html")
         }
-
-        setContentView(webView)
-    }
-
-    override fun onDestroy() {
-        rootShell.runCatching { close() }
-        webView?.apply {
-            stopLoading()
-            removeAllViews()
-            destroy()
-            webView = null
-        }
-        super.onDestroy()
     }
 }

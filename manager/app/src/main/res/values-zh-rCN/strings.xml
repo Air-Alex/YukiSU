@@ -929,4 +929,6 @@
     <string name="home_lkm_update_available">内嵌 LKM 有可用更新，点击更新</string>
     <string name="home_lkm_custom">自定义</string>
     <string name="require_manager_version">需要更新管理器</string>
+    <string name="no_such_module">模块 %1$s 不存在</string>
+    <string name="module_unavailable">模块 %1$s 被禁用、待更新或待卸载</string>
 </resources>

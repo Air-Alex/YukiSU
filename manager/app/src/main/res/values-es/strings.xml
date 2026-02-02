@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Hay disponible una versión más reciente del LKM incluido. Toca para actualizar.</string>
     <string name="home_lkm_custom">Personalizado</string>
     <string name="require_manager_version">Se requiere actualizar el gestor.</string>
+    <string name="no_such_module">El módulo %1$s no existe</string>
+    <string name="module_unavailable">El módulo %1$s está desactivado, actualizándose o pendiente de eliminación</string>
 </resources>

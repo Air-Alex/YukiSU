@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">একটি নতুন বিল্ট-ইন LKM উপলভ্য। আপডেট করতে চাপুন।</string>
     <string name="home_lkm_custom">কাস্টম</string>
     <string name="require_manager_version">ম্যানেজার আপডেট করা প্রয়োজন।</string>
+    <string name="no_such_module">%1$s মডিউলটি নেই</string>
+    <string name="module_unavailable">%1$s মডিউলটি নিষ্ক্রিয়, আপডেট হচ্ছে অথবা অপসারণের অপেক্ষায় আছে</string>
 </resources>

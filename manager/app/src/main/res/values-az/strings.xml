@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">Daxili LKM-in daha yeni versiyası mövcuddur. Yeniləmək üçün toxunun.</string>
     <string name="home_lkm_custom">Özəl</string>
     <string name="require_manager_version">Meneceri yeniləmək lazımdır.</string>
+    <string name="no_such_module">%1$s modulu mövcud deyil</string>
+    <string name="module_unavailable">%1$s modulu deaktivdir, yenilənir və ya silinməni gözləyir</string>
 </resources>

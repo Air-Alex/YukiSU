@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">అంతర్నిర్మిత LKM కొత్త వెర్షన్ అందుబాటులో ఉంది. అప్‌డేట్ చేయడానికి నొక్కండి.</string>
     <string name="home_lkm_custom">కస్టమ్</string>
     <string name="require_manager_version">మేనేజర్‌ను అప్‌డేట్ చేయడం అవసరం.</string>
+    <string name="no_such_module">%1$s మాడ్యూల్ ఉనికిలో లేదు</string>
+    <string name="module_unavailable">%1$s మాడ్యూల్ నిలిపివేయబడింది, నవీకరించబడుతోంది లేదా తొలగింపు కోసం వేచి ఉంది</string>
 </resources>

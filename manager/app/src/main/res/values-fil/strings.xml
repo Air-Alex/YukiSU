@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">May available na mas bagong naka-bundle na LKM. I-tap para mag-update.</string>
     <string name="home_lkm_custom">Pasadya</string>
     <string name="require_manager_version">Kailangang i-update ang manager.</string>
+    <string name="no_such_module">Walang module na %1$s</string>
+    <string name="module_unavailable">Naka-disable, ina-update, o naghihintay na alisin ang module na %1$s</string>
 </resources>

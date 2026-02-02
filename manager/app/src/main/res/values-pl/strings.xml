@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">Dostępna jest nowsza wersja wbudowanego LKM. Kliknij, aby zaktualizować.</string>
     <string name="home_lkm_custom">Własny</string>
     <string name="require_manager_version">Wymagana jest aktualizacja menedżera.</string>
+    <string name="no_such_module">Moduł %1$s nie istnieje</string>
+    <string name="module_unavailable">Moduł %1$s jest wyłączony, aktualizowany lub oczekuje na usunięcie</string>
 </resources>

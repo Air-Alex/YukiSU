@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">มี LKM ในตัวเวอร์ชันใหม่กว่า แตะเพื่ออัปเดต</string>
     <string name="home_lkm_custom">กำหนดเอง</string>
     <string name="require_manager_version">จำเป็นต้องอัปเดตตัวจัดการ</string>
+    <string name="no_such_module">ไม่มีโมดูล %1$s</string>
+    <string name="module_unavailable">โมดูล %1$s ถูกปิดใช้งาน กำลังอัปเดต หรือรอการลบ</string>
 </resources>

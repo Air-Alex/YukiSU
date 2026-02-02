@@ -502,4 +502,6 @@
     <string name="home_lkm_update_available">È disponibile una versione più recente dell\'LKM integrato. Tocca per aggiornare.</string>
     <string name="home_lkm_custom">Personalizzato</string>
     <string name="require_manager_version">È necessario aggiornare il gestore.</string>
+    <string name="no_such_module">Il modulo %1$s non esiste</string>
+    <string name="module_unavailable">Il modulo %1$s è disabilitato, in aggiornamento o in attesa di rimozione</string>
 </resources>

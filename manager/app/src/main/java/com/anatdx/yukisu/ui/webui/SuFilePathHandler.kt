@@ -37,7 +37,8 @@ import java.util.zip.GZIPInputStream
 class SuFilePathHandler(
     directory: File,
     private val shell: Shell,
-    private val insetsSupplier: InsetsSupplier
+    private val insetsSupplier: InsetsSupplier,
+    private val onInsetsRequested: () -> Unit,
 ) : WebViewAssetLoader.PathHandler {
 
     private val directory: File
@@ -93,6 +94,7 @@ class SuFilePathHandler(
     @WorkerThread
     override fun handle(path: String): WebResourceResponse {
         if (path == "internal/insets.css") {
+            onInsetsRequested()
             val css = insetsSupplier.get().css
             return WebResourceResponse(
                 "text/css",

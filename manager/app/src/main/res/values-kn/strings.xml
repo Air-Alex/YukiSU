@@ -500,4 +500,6 @@
     <string name="home_lkm_update_available">ಅಂತರ್ನಿರ್ಮಿತ LKM ನ ಹೊಸ ಆವೃತ್ತಿ ಲಭ್ಯವಿದೆ. ನವೀಕರಿಸಲು ಟ್ಯಾಪ್ ಮಾಡಿ.</string>
     <string name="home_lkm_custom">ಕಸ್ಟಮ್</string>
     <string name="require_manager_version">ಮ್ಯಾನೇಜರ್ ಅನ್ನು ನವೀಕರಿಸುವ ಅಗತ್ಯವಿದೆ.</string>
+    <string name="no_such_module">%1$s ಮಾಡ್ಯೂಲ್ ಅಸ್ತಿತ್ವದಲ್ಲಿಲ್ಲ</string>
+    <string name="module_unavailable">%1$s ಮಾಡ್ಯೂಲ್ ನಿಷ್ಕ್ರಿಯವಾಗಿದೆ, ನವೀಕರಿಸಲಾಗುತ್ತಿದೆ ಅಥವಾ ತೆಗೆದುಹಾಕಲು ಕಾಯುತ್ತಿದೆ</string>
 </resources>
