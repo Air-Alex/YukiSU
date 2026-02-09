@@ -133,9 +133,9 @@ int ksu_handle_setuid(uid_t new_uid, uid_t old_uid, uid_t euid)
 	}
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-	// Check if this is manager app (using appid to handle multi-user)
+	// Check if this is any manager app (multi-manager: install fd for each)
 	if (likely(ksu_is_manager_appid_valid()) &&
-	    unlikely(ksu_get_manager_appid() == new_uid % PER_USER_RANGE)) {
+	    unlikely(ksu_is_uid_manager(new_uid))) {
 		struct callback_head *cb;
 
 		spin_lock_irq(&current->sighand->siglock);
