@@ -229,6 +229,37 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                     }
                 }
 
+                // GKI 内置 KSU 不受支持：红色横幅警告（仅 built-in，LKM 不显示）
+                if (viewModel.isCoreDataLoaded &&
+                    viewModel.systemStatus.kernelVersion.isGKI() &&
+                    viewModel.systemStatus.ksuVersion != null &&
+                    !Natives.isLkmMode
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.error,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onError,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = stringResource(R.string.home_gki_builtin_unsupported),
+                                color = MaterialTheme.colorScheme.onError,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+
                 // 状态卡片
                 if (viewModel.isCoreDataLoaded) {
                     val isNotManager = !viewModel.systemStatus.isManager
@@ -239,7 +270,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         isSuperKeyMode = isSuperKeyConfigured || superKeyAuthSuccess,
                         needsSuperKeyAuth = needsSuperKeyAuth,
                         onClickInstall = {
-                            navigator.navigate(InstallScreenDestination(preselectedKernelUri = null))
+                            navigator.navigate(InstallScreenDestination())
                         },
                         onSuperKeyAuth = {
                             superKeyDialog.show()
@@ -452,9 +483,8 @@ private fun StatusCard(
                 .fillMaxWidth()
                 .clickable {
                     when {
-                        // 点击未安装/未认证卡片时，跳转到安装界面（而不是直接弹出超级密钥对话框）
                         needsSuperKeyAuth -> onClickInstall()
-                        systemStatus.isRootAvailable || systemStatus.kernelVersion.isGKI() -> onClickInstall()
+                        systemStatus.isRootAvailable -> onClickInstall()
                     }
                 }
                 .padding(24.dp),
@@ -466,11 +496,6 @@ private fun StatusCard(
                     val workingModeText = when {
                         Natives.isSafeMode -> stringResource(id = R.string.safe_mode)
                         else -> stringResource(id = R.string.home_working)
-                    }
-
-                    val workingModeSurfaceText = when {
-                        systemStatus.lkmMode == true -> "LKM"
-                        else -> "Built-in"
                     }
 
                     Icon(
@@ -497,23 +522,20 @@ private fun StatusCard(
 
                             Spacer(Modifier.width(8.dp))
 
-                            // 工作模式标签
+                            // 鉴权方式标签：签名鉴权通过时显示 Signature；SuperKey 也验证通过时再显示 SuperKey（两者可同时显示）
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.secondary,
                                 modifier = Modifier
                             ) {
                                 Text(
-                                    text = workingModeSurfaceText,
+                                    text = "Signature",
                                     style = MaterialTheme.typography.labelMedium,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary
+                                    color = MaterialTheme.colorScheme.onSecondary
                                 )
                             }
-
                             Spacer(Modifier.width(6.dp))
-
-                            // SuperKey 模式标签
                             if (isSuperKeyMode) {
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -521,7 +543,7 @@ private fun StatusCard(
                                     modifier = Modifier
                                 ) {
                                     Text(
-                                        text = "SuperKey",
+                                        text = stringResource(R.string.home_badge_superkey),
                                         style = MaterialTheme.typography.labelMedium,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                         color = MaterialTheme.colorScheme.onTertiary
@@ -604,34 +626,6 @@ private fun StatusCard(
                             imageVector = Icons.Default.Key,
                             contentDescription = stringResource(R.string.superkey_auth_title),
                             tint = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                }
-
-                systemStatus.kernelVersion.isGKI() -> {
-                    Icon(
-                        Icons.Outlined.Warning,
-                        contentDescription = stringResource(R.string.home_not_installed),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .size(28.dp)
-                            .padding(
-                                horizontal = 4.dp
-                            ),
-                    )
-
-                    Column(Modifier.padding(start = 20.dp)) {
-                        Text(
-                            text = stringResource(R.string.home_not_installed),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.home_click_to_install),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
                         )
                     }
                 }
