@@ -72,9 +72,9 @@ void log_write(LogLevel level, const char* fmt, va_list args) {
         time_buf[0] = '\0';
     }
 
-    const int err_written =
-        fprintf(stderr, "%s %s/%s: %s\n", time_buf.data(), level_str, g_log_tag.data(), msg.data());
-    (void)err_written;
+    (void)fprintf(stdout, "%s %s/%s: %s\n", time_buf.data(), level_str, g_log_tag.data(),
+                  msg.data());
+    (void)fflush(stdout);
 }
 
 }  // namespace
@@ -86,6 +86,10 @@ void log_init(const char* tag) {
 
 void log_set_level(LogLevel level) {
     g_log_level = level;
+}
+
+void log_flush() {
+    (void)fflush(stdout);
 }
 
 // C-style variadic required for LOGx("fmt", ...) call sites; implementation delegates to
