@@ -80,9 +80,10 @@ android {
     }
 
     applicationVariants.all {
+        val abi = project.findProperty("ABI")?.toString() ?: "universal"
         outputs.forEach {
             val output = it as BaseVariantOutputImpl
-            output.outputFileName = "YukiSU_${managerVersionName}_${managerVersionCode}-$name.apk"
+            output.outputFileName = "YukiSU_${managerVersionName}_${managerVersionCode}-${abi}-$name.apk"
         }
         kotlin.sourceSets {
             getByName(name) {

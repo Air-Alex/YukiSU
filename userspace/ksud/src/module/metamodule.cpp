@@ -12,12 +12,13 @@
 
 namespace ksud {
 
-static bool file_exists(const std::string& path) {
-    struct stat st;
+namespace {
+bool file_exists(const std::string& path) {
+    struct stat st{};
     return stat(path.c_str(), &st) == 0;
 }
 
-static int run_script(const std::string& script, bool block) {
+int run_script(const std::string& script, bool block) {
     if (!file_exists(script))
         return 0;
 
@@ -34,7 +35,7 @@ static int run_script(const std::string& script, bool block) {
     const char* busybox_path = busybox.c_str();
     const char* script_path = script.c_str();
 
-    pid_t pid = fork();
+    const pid_t pid = fork();
     if (pid == 0) {
         setsid();
         chdir("/");
@@ -61,6 +62,7 @@ static int run_script(const std::string& script, bool block) {
 
     return 0;
 }
+}  // namespace
 
 int metamodule_init() {
     LOGD("Metamodule init");
@@ -68,26 +70,46 @@ int metamodule_init() {
 }
 
 int metamodule_exec_stage_script(const std::string& stage, bool block) {
-    std::string script = std::string(METAMODULE_DIR) + stage + ".sh";
+    const std::string script = std::string(METAMODULE_DIR) + stage + ".sh";
     return run_script(script, block);
 }
 
 // Check if built-in hymo mount should be disabled
 // User can create /data/adb/ksu/.disable_builtin_mount to use external metamodule
-static bool should_use_builtin_mount() {
+namespace {
+bool should_use_builtin_mount() {
     const char* disable_file = "/data/adb/ksu/.disable_builtin_mount";
-    struct stat st;
+    struct stat st{};
     if (stat(disable_file, &st) == 0) {
         LOGI("Built-in mount disabled by %s", disable_file);
         return false;
     }
     return true;
 }
+}  // namespace
 
 int metamodule_exec_mount_script() {
-    std::string script = std::string(METAMODULE_DIR) + "metamount.sh";
+    const std::string script = std::string(METAMODULE_DIR) + "metamount.sh";
 
-    // Check if external metamodule exists
+    // Built-in Hymo mount check first; only use metamodule when no built-in path
+    if (should_use_builtin_mount() && !file_exists(script)) {
+        LOGI("No external metamodule found, using built-in hymo mount");
+        const int ret = hymo::cmd_hymo({"mount"});
+        if (ret == 0) {
+            LOGI("Built-in hymo mount completed successfully");
+        } else {
+            LOGE("Built-in hymo mount failed with code: %d", ret);
+        }
+        return ret;
+    }
+
+    if (!should_use_builtin_mount() && !file_exists(script)) {
+        LOGI("Built-in mount disabled, skipping (install a metamodule or remove "
+             ".disable_builtin_mount)");
+        return 0;
+    }
+
+    // External metamodule exists
     if (file_exists(script)) {
         LOGI("External metamodule found, executing metamount.sh: %s", script.c_str());
 
@@ -101,7 +123,7 @@ int metamodule_exec_mount_script() {
         const char* busybox_path = busybox.c_str();
         const char* script_path = script.c_str();
 
-        pid_t pid = fork();
+        const pid_t pid = fork();
         if (pid == 0) {
             setsid();
             chdir(METAMODULE_DIR);
@@ -123,7 +145,7 @@ int metamodule_exec_mount_script() {
 
         int status;
         waitpid(pid, &status, 0);
-        int ret = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        const int ret = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 
         if (ret == 0) {
             LOGI("External metamodule mount script executed successfully");
@@ -134,26 +156,7 @@ int metamodule_exec_mount_script() {
         return ret;
     }
 
-    // No external metamodule
-    // Check if user wants to use built-in mount
-    if (!should_use_builtin_mount()) {
-        LOGI("Built-in mount disabled, skipping built-in hymo mount");
-        LOGI("To use module mounting, install a metamodule or remove .disable_builtin_mount");
-        return 0;
-    }
-
-    LOGI("No external metamodule found, using built-in hymo mount");
-
-    // Call built-in hymo mount
-    int ret = hymo::cmd_hymo({"mount"});
-
-    if (ret == 0) {
-        LOGI("Built-in hymo mount completed successfully");
-    } else {
-        LOGE("Built-in hymo mount failed with code: %d", ret);
-    }
-
-    return ret;
+    return 0;
 }
 
 }  // namespace ksud
