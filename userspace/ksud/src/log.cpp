@@ -72,9 +72,10 @@ void log_write(LogLevel level, const char* fmt, va_list args) {
         time_buf[0] = '\0';
     }
 
-    (void)fprintf(stdout, "%s %s/%s: %s\n", time_buf.data(), level_str, g_log_tag.data(),
+    // Use stderr so stdout stays clean for CLI output (manager parses stdout for module list etc.)
+    (void)fprintf(stderr, "%s %s/%s: %s\n", time_buf.data(), level_str, g_log_tag.data(),
                   msg.data());
-    (void)fflush(stdout);
+    (void)fflush(stderr);
 }
 
 }  // namespace
@@ -89,7 +90,7 @@ void log_set_level(LogLevel level) {
 }
 
 void log_flush() {
-    (void)fflush(stdout);
+    (void)fflush(stderr);
 }
 
 // C-style variadic required for LOGx("fmt", ...) call sites; implementation delegates to
