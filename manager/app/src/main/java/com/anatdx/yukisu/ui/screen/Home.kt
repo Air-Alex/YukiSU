@@ -93,10 +93,10 @@ fun HomeScreen(navigator: DestinationsNavigator) {
             viewModel.loadExtendedData(context)
         }
 
-        // 启动数据变化监听
+        // 启动数据变化监听（降低频率减少卡顿）
         coroutineScope.launch {
             while (true) {
-                delay(5000) // 每5秒检查一次
+                delay(15000) // 每15秒检查一次
                 viewModel.autoRefreshIfNeeded(context)
             }
         }
@@ -142,10 +142,13 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                 var superKeyAuthSuccess by remember { mutableStateOf(false) }
                 val snackbarHostState = remember { SnackbarHostState() }
                 
-                // 检查内核是否配置了 SuperKey
-                val isSuperKeyConfigured = remember { Natives.isSuperKeyConfigured() }
-                // 检查内核是否认为签名有效
-                val isSignatureOk = remember { Natives.isSignatureOk() }
+                // 检查内核是否配置了 SuperKey / 签名（异步，避免阻塞主线程）
+                val isSuperKeyConfigured by produceState(initialValue = false) {
+                    value = withContext(Dispatchers.IO) { Natives.isSuperKeyConfigured() }
+                }
+                val isSignatureOk by produceState(initialValue = false) {
+                    value = withContext(Dispatchers.IO) { Natives.isSignatureOk() }
+                }
                 
                 // 保存 SuperKey 的 SharedPreferences
                 val superKeyPrefs = context.getSharedPreferences("superkey", Context.MODE_PRIVATE)
@@ -606,15 +609,16 @@ private fun StatusCard(
                                 // 其它情况（例如都没有）：不显示认证徽章
                             }
 
-                            // 架构标签
-                            if (Os.uname().machine != "aarch64") {
+                            // 架构标签（缓存避免重复 syscall）
+                            val machine = remember { Os.uname().machine }
+                            if (machine != "aarch64") {
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
                                 ) {
                                     Text(
-                                        text = Os.uname().machine,
+                                        text = machine,
                                         style = MaterialTheme.typography.labelMedium,
                                         modifier = Modifier.padding(
                                             horizontal = 6.dp,
@@ -626,11 +630,13 @@ private fun StatusCard(
                             }
                         }
 
-                        val isHideVersion = LocalContext.current.getSharedPreferences(
-                            "settings",
-                            Context.MODE_PRIVATE
-                        )
-                            .getBoolean("is_hide_version", false)
+                        val ctx = LocalContext.current
+                        val isHideVersion by produceState(initialValue = false) {
+                            value = withContext(Dispatchers.IO) {
+                                ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+                                    .getBoolean("is_hide_version", false)
+                            }
+                        }
 
                         if (!isHideVersion) {
                             Spacer(Modifier.height(4.dp))
@@ -850,7 +856,9 @@ private fun InfoCard(
     var ksudInstalledVersion by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        val (apk, installed) = KsuCli.getKsudVersionsForUi()
+        val (apk, installed) = withContext(Dispatchers.IO) {
+            KsuCli.getKsudVersionsForUi()
+        }
         ksudApkVersion = apk
         ksudInstalledVersion = installed
     }

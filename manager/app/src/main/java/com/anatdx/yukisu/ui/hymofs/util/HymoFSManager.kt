@@ -91,7 +91,7 @@ object HymoFSManager {
     )
     
     /**
-     * Config data class (aligned with meta-hymo Config)
+     * Config data class (aligned with hymo Config)
      */
     data class HymoConfig(
         val moduledir: String = MODULE_DIR,
@@ -130,7 +130,7 @@ object HymoFSManager {
      */
     suspend fun getVersion(): String = withContext(Dispatchers.IO) {
         try {
-            // meta-hymo: hymo hymofs version -> JSON
+            // hymo: hymo hymofs version -> JSON
             val result = Shell.cmd("${getKsud()} hymo hymofs version").exec()
             if (!result.isSuccess) {
                 return@withContext "Unknown"
@@ -188,7 +188,7 @@ object HymoFSManager {
     }
     
     /**
-     * Load configuration from ksud hymo config show (JSON, meta-hymo format)
+     * Load configuration from ksud hymo config show (JSON, hymo format)
      */
     suspend fun loadConfig(): HymoConfig = withContext(Dispatchers.IO) {
         try {
@@ -226,7 +226,7 @@ object HymoFSManager {
     }
     
     /**
-     * Save configuration as JSON (config.json, meta-hymo format)
+     * Save configuration as JSON (config.json, hymo format)
      */
     suspend fun saveConfig(config: HymoConfig): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -273,7 +273,7 @@ object HymoFSManager {
      */
     suspend fun getModules(): List<ModuleInfo> = withContext(Dispatchers.IO) {
         try {
-            // meta-hymo: hymo module list -> JSON
+            // hymo: hymo module list -> JSON
             val result = Shell.cmd("${getKsud()} hymo module list").exec()
             if (result.isSuccess) {
                 val json = JSONObject(result.out.joinToString("\n"))
@@ -320,7 +320,7 @@ object HymoFSManager {
      */
     suspend fun getActiveRules(): List<ActiveRule> = withContext(Dispatchers.IO) {
         try {
-            // meta-hymo: hymo hymofs list -> JSON array of rules
+            // hymo: hymo hymofs list -> JSON array of rules
             val result = Shell.cmd("${getKsud()} hymo hymofs list").exec()
             if (result.isSuccess) {
                 val arr = JSONArray(result.out.joinToString("\n"))
@@ -405,7 +405,7 @@ object HymoFSManager {
      */
     suspend fun getStorageInfo(): StorageInfo = withContext(Dispatchers.IO) {
         try {
-            // meta-hymo: hymo api storage -> JSON
+            // hymo: hymo api storage -> JSON
             val result = Shell.cmd("${getKsud()} hymo api storage").exec()
             if (result.isSuccess) {
                 val json = JSONObject(result.out.joinToString("\n"))
@@ -475,7 +475,7 @@ object HymoFSManager {
      */
     suspend fun setModuleMode(moduleId: String, mode: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            // meta-hymo: delegate to CLI: hymo module set-mode <id> <mode>
+            // hymo: delegate to CLI: hymo module set-mode <id> <mode>
             val result = Shell.cmd("${getKsud()} hymo module set-mode $moduleId $mode").exec()
             result.isSuccess
         } catch (e: Exception) {

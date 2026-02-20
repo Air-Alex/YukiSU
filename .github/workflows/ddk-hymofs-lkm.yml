@@ -1,0 +1,187 @@
+# Build HymoFS kernel module for one KMI + arch.
+# Called by build-hymofs-lkm.yml with matrix (kmi x arch).
+# Uses llvm-strip on .ko (UPX not applicable - kernel loads raw ELF).
+name: Build HymoFS Kernel Module
+
+on:
+  workflow_call:
+    inputs:
+      kmi:
+        description: "KMI version"
+        required: true
+        type: string
+      arch:
+        description: "Target arch: arm64, armv7, x86_64"
+        required: true
+        type: string
+      hymofs_ref:
+        description: "HymoFS git ref (branch/tag/commit)"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  build-hymofs-ko:
+    name: Build hymofs_lkm.ko ${{ inputs.kmi }} ${{ inputs.arch }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout YukiSU
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone HymoFS
+        run: |
+          git clone --depth 1 "https://github.com/Anatdx/HymoFS.git" hymofs_src
+          (cd hymofs_src && git fetch --depth 1 origin "${{ inputs.hymofs_ref }}" && git checkout FETCH_HEAD 2>/dev/null || true)
+          ls -la hymofs_src/src/
+
+      - name: Generate version
+        id: parse_version
+        run: |
+          COMMIT_NUM=$(cd hymofs_src && git rev-list --count HEAD)
+          VERSION=$(echo "$COMMIT_NUM + 200" | bc)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git make clang lld llvm gcc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi ccache \
+            flex bison bc rsync cpio \
+            libelf-dev libssl-dev libdw-dev pahole zip
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-hymofs-${{ inputs.kmi }}-${{ inputs.arch }}-${{ hashFiles('.github/workflows/ddk-hymofs-lkm.yml') }}
+          restore-keys: |
+            ccache-hymofs-${{ inputs.kmi }}-${{ inputs.arch }}-
+
+      - name: Cache kernel tree
+        uses: actions/cache@v4
+        with:
+          path: kernel
+          key: kernel-hymofs-${{ inputs.kmi }}-${{ inputs.arch }}
+          restore-keys: |
+            kernel-hymofs-${{ inputs.kmi }}-
+
+      - name: Ensure cache dirs exist
+        run: mkdir -p ~/.ccache kernel
+
+      - name: Fetch kernel tree
+        run: |
+          set -euo pipefail
+          KMI="${{ inputs.kmi }}"
+          ARCH="${{ inputs.arch }}"
+          KERNEL_SRC="$GITHUB_WORKSPACE/kernel"
+          if [ ! -f "$KERNEL_SRC/Makefile" ]; then
+            rm -rf "$KERNEL_SRC"
+            echo "Cloning kernel tree: $KMI"
+            git clone --depth=1 --branch "$KMI" https://android.googlesource.com/kernel/common "$KERNEL_SRC"
+          fi
+          test -f "$KERNEL_SRC/Makefile"
+
+      - name: Setup build env (ARCH, DEFCONFIG, CROSS for 5.10)
+        id: build_env
+        run: |
+          ARCH="${{ inputs.arch }}"
+          case "$ARCH" in
+            arm64)
+              echo "kern_arch=arm64" >> $GITHUB_OUTPUT
+              echo "defconfig=gki_defconfig" >> $GITHUB_OUTPUT
+              echo "cross_prefix=aarch64-linux-gnu-" >> $GITHUB_OUTPUT
+              ;;
+            armv7)
+              echo "kern_arch=arm" >> $GITHUB_OUTPUT
+              echo "defconfig=multi_v7_defconfig" >> $GITHUB_OUTPUT
+              echo "cross_prefix=arm-linux-gnueabi-" >> $GITHUB_OUTPUT
+              ;;
+            x86_64)
+              echo "kern_arch=x86" >> $GITHUB_OUTPUT
+              echo "defconfig=gki_defconfig" >> $GITHUB_OUTPUT
+              echo "cross_prefix=" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "Unknown arch: $ARCH"
+              exit 1
+              ;;
+          esac
+
+      - name: Setup ccache wrapper for GCC (5.10 kernels only)
+        if: inputs.kmi == 'android12-5.10' || inputs.kmi == 'android13-5.10'
+        run: |
+          set -euo pipefail
+          WRAP_DIR="$GITHUB_WORKSPACE/.ccache_cross"
+          mkdir -p "$WRAP_DIR"
+          CROSS="${{ steps.build_env.outputs.cross_prefix }}"
+          if [ -z "$CROSS" ]; then
+            GCC_CMD="gcc"
+          else
+            GCC_CMD="${CROSS}gcc"
+          fi
+          cat > "$WRAP_DIR/gcc" << WRAPEOF
+          #!/bin/bash
+          args=()
+          for a in "\$@"; do
+            [[ "\$a" == "-r" ]] && a="--relocatable"
+            args+=("\$a")
+          done
+          exec ccache $GCC_CMD "\${args[@]}"
+          WRAPEOF
+          chmod +x "$WRAP_DIR/gcc"
+          if [ -z "$CROSS" ]; then
+            for t in ld as ar nm objcopy objdump strip; do ln -sf "$(which $t)" "$WRAP_DIR/$t"; done
+          else
+            for t in ld as ar nm objcopy objdump strip; do
+              ln -sf "$(which ${CROSS}$t)" "$WRAP_DIR/$t"
+            done
+          fi
+          echo "CCACHE_CROSS_WRAP=$WRAP_DIR/" >> $GITHUB_ENV
+
+      - name: Build hymofs_lkm.ko
+        run: |
+          set -euo pipefail
+          KMI="${{ inputs.kmi }}"
+          KERN_ARCH="${{ steps.build_env.outputs.kern_arch }}"
+          DEFCONFIG="${{ steps.build_env.outputs.defconfig }}"
+          KERNEL_SRC="$GITHUB_WORKSPACE/kernel"
+          SRC="$GITHUB_WORKSPACE/hymofs_src/src"
+
+          if [[ "$KMI" == android12-5.10 ]] || [[ "$KMI" == android13-5.10 ]]; then
+            LLVM_ARGS=""
+            CROSS_ARGS="CROSS_COMPILE=${CCACHE_CROSS_WRAP}"
+          else
+            LLVM_ARGS="LLVM=1 LLVM_IAS=1"
+            CROSS_ARGS="CC=ccache clang"
+          fi
+
+          echo "Preparing kernel tree (KMI=$KMI, ARCH=$KERN_ARCH, defconfig=$DEFCONFIG)..."
+          make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS "$DEFCONFIG" 2>/dev/null || \
+            make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS defconfig
+          if [[ "$KMI" == *"6.12"* ]] && [ -f "$KERNEL_SRC/scripts/config" ]; then
+            $KERNEL_SRC/scripts/config --file "$KERNEL_SRC/.config" -d GENDWARFKSYMS 2>/dev/null || true
+            make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS olddefconfig 2>/dev/null || true
+          fi
+          make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS modules_prepare
+
+          VERSION="${{ steps.parse_version.outputs.VERSION }}"
+          echo "Building hymofs_lkm.ko (v0.1.${VERSION}) for $KERN_ARCH..."
+          make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
+            CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${VERSION}\\\"" modules
+          ls -la "$SRC"/hymofs_lkm.ko
+          llvm-strip -d "$SRC"/hymofs_lkm.ko 2>/dev/null || true
+
+      - name: Prepare .ko artifact
+        run: |
+          mkdir -p out
+          cp hymofs_src/src/hymofs_lkm.ko "out/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
+          ls -la out/
+
+      - name: Upload .ko
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.kmi }}-${{ inputs.arch }}-hymofs-lkm
+          path: out/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko

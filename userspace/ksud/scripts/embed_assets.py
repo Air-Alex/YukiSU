@@ -191,7 +191,8 @@ int ensure_binaries(bool ignore_if_exist) {
     
     for (const auto& name : list_assets()) {
         // Skip ksuinit and kernel modules - they are extracted on demand
-        if (name == "ksuinit" || name.find("_kernelsu.ko") != std::string::npos) {
+        if (name == "ksuinit" || name.find("_kernelsu.ko") != std::string::npos ||
+            name.find("_hymofs_lkm.ko") != std::string::npos) {
             continue;
         }
         

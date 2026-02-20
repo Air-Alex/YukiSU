@@ -1,0 +1,25 @@
+name: Build LKM for HymoFS
+on:
+  workflow_call:
+  workflow_dispatch:
+jobs:
+  build-hymofs-lkm:
+    strategy:
+      fail-fast: false
+      matrix:
+        kmi:
+          - android12-5.10
+          - android13-5.10
+          - android13-5.15
+          - android14-5.15
+          - android14-6.1
+          - android15-6.6
+          - android16-6.12
+        arch:
+          - arm64
+          - armv7
+          - x86_64
+    uses: ./.github/workflows/ddk-hymofs-lkm.yml
+    with:
+      kmi: ${{ matrix.kmi }}
+      arch: ${{ matrix.arch }}

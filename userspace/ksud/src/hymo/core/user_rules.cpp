@@ -3,13 +3,12 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include "../defs.hpp"
 #include "../mount/hymofs.hpp"
 #include "../utils.hpp"
 #include "json.hpp"
 
 namespace hymo {
-
-constexpr const char* USER_HIDE_RULES_FILE = "/data/adb/hymo/user_hide_rules.json";
 
 std::vector<UserHideRule> load_user_hide_rules() {
     std::vector<UserHideRule> rules;

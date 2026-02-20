@@ -15,6 +15,7 @@
 
 // HymoFS integration
 #include "hymo/conf/config.hpp"
+#include "hymo/core/lkm.hpp"
 #include "hymo/defs.hpp"
 #include "hymo/hymo_cli.hpp"
 
@@ -254,6 +255,9 @@ int on_post_data_fs() {
 
     // Load feature config (with init_features handling managed features)
     init_features();
+
+    // HymoFS LKM: extract embedded .ko, load via finit_module, cleanup (no shell)
+    hymo::lkm_autoload_post_fs_data();
 
     // KernelSU execution order (https://kernelsu.org/guide/metamodule.html):
     // 1. Common post-fs-data.d, prune, restorecon, sepolicy

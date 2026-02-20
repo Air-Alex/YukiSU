@@ -122,9 +122,7 @@ class ModuleViewModel : ViewModel() {
         modules.filter {
             it.id.contains(search, true) || it.name.contains(search, true) || HanziToPinyin.getInstance()
                 .toPinyinString(it.name)?.contains(search, true) == true
-        }.sortedWith(comparator).also {
-            isRefreshing = false
-        }
+        }.sortedWith(comparator)
     }
 
     var isNeedRefresh by mutableStateOf(false)
@@ -217,6 +215,7 @@ class ModuleViewModel : ViewModel() {
                 }
 
                 isNeedRefresh = false
+                isRefreshing = false
             }.onFailure { e ->
                 Log.e(TAG, "fetchModuleList: ", e)
                 isRefreshing = false

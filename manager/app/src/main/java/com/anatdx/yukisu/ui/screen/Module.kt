@@ -1101,7 +1101,10 @@ private fun ModuleList(
                 }
 
                 else -> {
-                    items(viewModel.moduleList) { module ->
+                    items(
+                        items = viewModel.moduleList,
+                        key = { it.dirId }
+                    ) { module ->
                         val scope = rememberCoroutineScope()
                         val updatedModule by produceState(initialValue = Triple("", "", "")) {
                             scope.launch(Dispatchers.IO) {
@@ -1181,10 +1184,10 @@ fun ModuleItem(
     onAddShortcut: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences("settings", MODE_PRIVATE)
-    val isHideTagRow = prefs.getBoolean("is_hide_tag_row", false)
-    // 获取显示更多模块信息的设置
-    val showMoreModuleInfo = prefs.getBoolean("show_more_module_info", false)
+    val (isHideTagRow, showMoreModuleInfo) = remember {
+        val p = context.getSharedPreferences("settings", MODE_PRIVATE)
+        Pair(p.getBoolean("is_hide_tag_row", false), p.getBoolean("show_more_module_info", false))
+    }
 
     // 剪贴板管理器和触觉反馈
     val clipboardManager = context.getSystemService(CLIPBOARD_SERVICE) as ClipboardManager

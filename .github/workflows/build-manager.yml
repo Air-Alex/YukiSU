@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/build-manager.yml'
       - '.github/workflows/build-lkm.yml'
+      - '.github/workflows/build-hymofs-lkm.yml'
       - '.github/workflows/ksud.yml'
       - '.github/workflows/ksuinit.yml'
       - 'manager/**'
@@ -17,6 +18,7 @@ on:
     paths:
       - '.github/workflows/build-manager.yml'
       - '.github/workflows/build-lkm.yml'
+      - '.github/workflows/build-hymofs-lkm.yml'
       - '.github/workflows/ksud.yml'
       - '.github/workflows/ksuinit.yml'
       - 'manager/**'
@@ -28,6 +30,9 @@ jobs:
   build-lkm:
     uses: ./.github/workflows/build-lkm.yml
     secrets: inherit
+
+  build-hymofs-lkm:
+    uses: ./.github/workflows/build-hymofs-lkm.yml
 
   build-ksuinit:
     strategy:
@@ -42,7 +47,7 @@ jobs:
       target: ${{ matrix.target }}
 
   build-ksud:
-    needs: [build-lkm, build-ksuinit]
+    needs: [build-lkm, build-hymofs-lkm, build-ksuinit]
     strategy:
       matrix:
         include:
@@ -59,7 +64,7 @@ jobs:
       os: ${{ matrix.os }}
 
   build-manager:
-    needs: build-ksud
+    needs: [build-ksud]
     strategy:
       matrix:
         include:

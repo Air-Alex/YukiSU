@@ -35,7 +35,15 @@ jobs:
       if: ${{ inputs.pack_lkm }}
       run: |
         mkdir -p ./userspace/ksud/assets
-        cp android*-lkm/*_kernelsu.ko ./userspace/ksud/assets/
+        cp android*-lkm/*_kernelsu.ko ./userspace/ksud/assets/ 2>/dev/null || true
+        # HymoFS: copy only arch-matching .ko (arm64/armv7/x86_64)
+        case "${{ inputs.target }}" in
+          aarch64|aarch64-linux-android) arch_suffix="_arm64" ;;
+          x86_64|x86_64-linux-android) arch_suffix="_x86_64" ;;
+          armv7|armv7-linux-androideabi) arch_suffix="_armv7" ;;
+          *) arch_suffix="_arm64" ;;  # default
+        esac
+        cp *-hymofs-lkm/*${arch_suffix}_hymofs_lkm.ko ./userspace/ksud/assets/ 2>/dev/null || true
     
     - name: Prepare ksuinit
       if: ${{ inputs.pack_ksuinit }}

@@ -513,7 +513,11 @@ private fun SelectInstallMethod(
     onSelected: (InstallMethod) -> Unit = {},
     selectedMethod: InstallMethod? = null
 ) {
-    val rootAvailable = rootAvailable()
+    val rootAvailable by produceState(initialValue = false) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.anatdx.yukisu.ui.util.rootAvailable()
+        }
+    }
     val isAbDevice = produceState(initialValue = false) {
         value = isAbDevice()
     }.value

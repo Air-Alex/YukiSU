@@ -1,4 +1,4 @@
-// hymo_cli.cpp - HymoFS CLI bridge for ksud (dispatches to meta-hymo logic)
+// hymo_cli.cpp - HymoFS CLI bridge for ksud (dispatches to hymo logic)
 #include "hymo_cli.hpp"
 
 #include <cstring>
@@ -10,7 +10,8 @@ namespace hymo {
 
 void print_hymo_help() {
     std::cout << "USAGE: ksud hymo [OPTIONS] <command> [args...]\n\n";
-    std::cout << "Commands: config, module, hymofs, api, debug, hide, clear, fix-mounts, mount\n";
+    std::cout << "Commands: config, module, hymofs, api, debug, hide, lkm, clear, fix-mounts, "
+                 "mount\n";
     std::cout << "Use 'ksud hymo -h' for full help.\n";
 }
 

@@ -97,12 +97,15 @@ object AppData {
         val isFullFeatured: StateFlow<Boolean> = _isFullFeatured.asStateFlow()
 
         /**
-         * 刷新所有数据计数
+         * 刷新所有数据计数（仅在实际变化时更新，减少 recomposition）
          */
         fun refreshData() {
-            _superuserCount.value = getSuperuserCountUse()
-            _moduleCount.value = getModuleCountUse()
-            _isFullFeatured.value = isFullFeatured()
+            val sc = getSuperuserCountUse()
+            val mc = getModuleCountUse()
+            val ff = isFullFeatured()
+            if (_superuserCount.value != sc) _superuserCount.value = sc
+            if (_moduleCount.value != mc) _moduleCount.value = mc
+            if (_isFullFeatured.value != ff) _isFullFeatured.value = ff
         }
     }
 
@@ -144,7 +147,7 @@ object DataRefreshUtils {
         scope.launch(Dispatchers.IO) {
             while (isActive) {
                 AppData.DataRefreshManager.refreshData()
-                delay(5000)
+                delay(10000) // 10s，减少轮询频率
             }
         }
     }
@@ -157,10 +160,13 @@ object DataRefreshUtils {
         scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val prefs = activity.getSharedPreferences("settings", Context.MODE_PRIVATE)
-                settingsStateFlow.value = MainActivity.SettingsState(
+                val newState = MainActivity.SettingsState(
                     isHideOtherInfo = prefs.getBoolean("is_hide_other_info", false)
                 )
-                delay(1000)
+                if (settingsStateFlow.value != newState) {
+                    settingsStateFlow.value = newState
+                }
+                delay(5000) // 5s，减少轮询频率
             }
         }
     }

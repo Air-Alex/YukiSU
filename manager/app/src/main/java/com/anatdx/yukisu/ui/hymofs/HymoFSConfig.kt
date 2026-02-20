@@ -1344,7 +1344,7 @@ private fun SettingsTab(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                // Mirror path / mount base presets (like meta-hymo webui)
+                // Mirror path / mount base presets (like hymo webui)
                 var mirrorPath by remember { mutableStateOf(config.mirrorPath) }
                 val effectiveMirrorPath = if (mirrorPath.isEmpty()) "/dev/hymo_mirror" else mirrorPath
 
@@ -1424,7 +1424,7 @@ private fun SettingsTab(
                     }
                 }
 
-                // Static description of presets (like meta-hymo webui)
+                // Static description of presets (like hymo webui)
                 Text(
                     text = stringResource(R.string.hymofs_mirror_path_desc),
                     style = MaterialTheme.typography.bodySmall,

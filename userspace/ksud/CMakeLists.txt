@@ -266,6 +266,7 @@ set(KSUD_OUR_SOURCES
     src/hymo/conf/config.cpp
     src/hymo/core/executor.cpp
     src/hymo/core/inventory.cpp
+    src/hymo/core/lkm.cpp
     src/hymo/core/modules.cpp
     src/hymo/core/planner.cpp
     src/hymo/core/state.cpp
