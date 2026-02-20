@@ -240,65 +240,58 @@ jobs:
             LLVM_ARGS="LLVM=1 LLVM_IAS=1"
             CROSS_ARGS="CC=ccache clang"
           fi
-
-          echo "Preparing kernel tree (KMI=$KMI, ARCH=$KERN_ARCH, defconfig=$DEFCONFIG)..."
-          make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS "$DEFCONFIG"
-          if [[ "$KMI" == *"6.12"* ]] && [ -f "$KERNEL_SRC/scripts/config" ]; then
-            $KERNEL_SRC/scripts/config --file "$KERNEL_SRC/.config" -d GENDWARFKSYMS 2>/dev/null || true
-            make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS olddefconfig 2>/dev/null || true
-          fi
-          make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS modules_prepare
-
-          VERSION="${{ steps.parse_version.outputs.VERSION }}"
-          echo "Building hymofs_lkm.ko (v0.1.${VERSION}) for $KERN_ARCH..."
-          make -C "$KERNEL_SRC" ARCH="$KERN_ARCH" "$CROSS_ARGS" $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
-            CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${VERSION}\\\"" modules
-          ls -la "$SRC"/hymofs_lkm.ko
-          llvm-strip -d "$SRC"/hymofs_lkm.ko 2>/dev/null || true
+          
+          echo "Building hymofs_lkm.ko (KMI=$KMI, ARCH=$KERN_ARCH, DEFCONFIG=$DEFCONFIG)..."
+          if [[ "$KERN_ARCH" == "arm" ]]; then
+            make -C $KERNEL_SRC ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- $CROSS_ARGS $LLVM_ARGS $DEFCONFIG 2>/dev/null || true
+            make -C $KERNEL_SRC ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- $CROSS_ARGS $LLVM_ARGS modules_prepare
+            make -C $KERNEL_SRC ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- $CROSS_ARGS $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
+              CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${{ steps.parse_version.outputs.VERSION }}\\\"" modules
+          elif [[ "$KERN_ARCH" == "x86_64" ]]; then
+            make -C $KERNEL_SRC ARCH=x86_64 defconfig 2>/dev/null || true
+            make -C $KERNEL_SRC ARCH=x86_64 modules_prepare
+            make -C $KERNEL_SRC ARCH=x86_64 M="$SRC" KBUILD_MODPOST_WARN=1 modules
+          cp $SRC/hymofs_lkm.ko $OUT/hymofs_lkm.ko
+          ls -la $OUT/hymofs_lkm.ko
+          llvm-strip -d $OUT/hymofs_lkm.ko 2>/dev/null || true
 
       - name: Prepare .ko artifact
         run: |
-          mkdir -p out
-          cp hymofs_src/src/hymofs_lkm.ko "out/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
-          echo "Size: $(du -h out/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko | cut -f1)"
-          ls -la out/
-
-      - name: Install GPG
-        run: |
-          sudo apt-get update && sudo apt-get install -y gnupg
+          mkdir -p $OUT
+          cp $SRC/hymofs_lkm.ko "$OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
+          echo "Size: $(du -h $OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko | cut -f1)"
+          ls -la $OUT/
 
       - name: Import GPG key
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          echo "$GPG_PRIVATE_KEY" > key.asc
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import key.asc
-          rm -f key.asc
-
+            mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+            echo "$GPG_PRIVATE_KEY" > key.asc
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import key.asc
+            rm -f key.asc
+    
       - name: Sign hymofs_lkm.ko with GPG
-        env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          cd out
-          KO_FILE="${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
-          echo "Signing $KO_FILE..."
-          gpg --detach-sign --local-user an@anatdx.com --batch --yes --pinentry-mode loopback \
-            --passphrase "$GPG_PASSPHRASE" \
-            --output "${KO_FILE}.sig" "$KO_FILE"
-          if [ -f "${KO_FILE}.sig" ]; then
-            echo "Signature created successfully"
-            ls -lh "${KO_FILE}.sig"
-          else
-            echo "Error: Signature file not created!"
-            exit 1
-          fi
+          cd $OUT
+            KO_FILE="${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
+            echo "Signing $KO_FILE..."
+            gpg --detach-sign --local-user an@anatdx.com --batch --yes --pinentry-mode loopback \
+              --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+              --output "${KO_FILE}.asc" "$KO_FILE"
+            if [ -f "${KO_FILE}.asc" ]; then
+              echo "Signature created successfully"
+              ls -lh "${KO_FILE}.asc"
+            else
+              echo "Error: Signature file not created!"
+              exit 1
+            fi
 
       - name: Upload .ko
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.kmi }}-${{ inputs.arch }}-hymofs-lkm
           path: |
-            out/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko
-            out/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko.sig
+            $OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko
+            $OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko.asc
