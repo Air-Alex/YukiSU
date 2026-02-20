@@ -548,6 +548,12 @@
     <string name="hymofs_tab_settings">Settings</string>
     <string name="hymofs_tab_rules">Rules</string>
     <string name="hymofs_tab_logs">Logs</string>
+    <string name="hymofs_tab_lkm">Kernel Module</string>
+    <string name="hymofs_lkm_card_title">HymoFS Loadable Kernel Module</string>
+    <string name="hymofs_lkm_loading_card_title">Loading</string>
+    <string name="hymofs_lkm_loading_desc">ksud automatically loads the matching HymoFS kernel module (.ko) at post-fs-data based on the current kernel KMI. No manual action required.</string>
+    <string name="hymofs_lkm_kernel_label">Kernel (uname -r)</string>
+    <string name="hymofs_lkm_kmi_label">uname override (uname -r)</string>
     <string name="hymofs_storage">Storage</string>
     <string name="hymofs_modules_count">Modules</string>
     <string name="hymofs_system_info">System Info</string>

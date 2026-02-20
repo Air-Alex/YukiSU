@@ -536,6 +536,12 @@
     <string name="hymofs_tab_settings">设置</string>
     <string name="hymofs_tab_rules">规则</string>
     <string name="hymofs_tab_logs">日志</string>
+    <string name="hymofs_tab_lkm">内核模块</string>
+    <string name="hymofs_lkm_card_title">HymoFS 可加载内核模块</string>
+    <string name="hymofs_lkm_loading_card_title">加载方式</string>
+    <string name="hymofs_lkm_loading_desc">由 ksud 在 post-fs-data 阶段根据当前内核 KMI 自动加载匹配的 hymofs 内核模块 (.ko)，无需手动操作。</string>
+    <string name="hymofs_lkm_kernel_label">内核 (uname -r)</string>
+    <string name="hymofs_lkm_kmi_label">uname 欺骗 (uname -r)</string>
     <string name="hymofs_storage">存储</string>
     <string name="hymofs_modules_count">模块数</string>
     <string name="hymofs_system_info">系统信息</string>

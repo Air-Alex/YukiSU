@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
  */
 enum class HymoFSTab(val displayNameRes: Int) {
     STATUS(R.string.hymofs_tab_status),
+    LKM(R.string.hymofs_tab_lkm),
     MODULES(R.string.hymofs_tab_modules),
     SETTINGS(R.string.hymofs_tab_settings),
     RULES(R.string.hymofs_tab_rules),
@@ -171,6 +172,13 @@ fun HymoFSConfigScreen(
                         systemInfo = systemInfo,
                         storageInfo = storageInfo,
                         modules = modules,
+                        onRefresh = { loadData() }
+                    )
+                    HymoFSTab.LKM -> LkmTab(
+                        hymofsStatus = hymofsStatus,
+                        version = version,
+                        systemInfo = systemInfo,
+                        config = config,
                         onRefresh = { loadData() }
                     )
                     HymoFSTab.MODULES -> ModulesTab(
@@ -590,6 +598,119 @@ private fun InfoRow(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium,
             fontFamily = FontFamily.Monospace
         )
+    }
+}
+
+// ==================== LKM Tab ====================
+@Composable
+private fun LkmTab(
+    hymofsStatus: HymoFSStatus,
+    version: String,
+    systemInfo: HymoFSManager.SystemInfo,
+    config: HymoFSManager.HymoConfig,
+    onRefresh: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // HymoFS LKM status card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = when (hymofsStatus) {
+                    HymoFSStatus.AVAILABLE -> Color(0xFF1B5E20).copy(alpha = 0.2f)
+                    HymoFSStatus.NOT_PRESENT -> MaterialTheme.colorScheme.surfaceVariant
+                    else -> Color(0xFFE65100).copy(alpha = 0.2f)
+                }
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = when (hymofsStatus) {
+                            HymoFSStatus.AVAILABLE -> Icons.Filled.CheckCircle
+                            HymoFSStatus.NOT_PRESENT -> Icons.Filled.Info
+                            else -> Icons.Filled.Warning
+                        },
+                        contentDescription = null,
+                        tint = when (hymofsStatus) {
+                            HymoFSStatus.AVAILABLE -> Color(0xFF4CAF50)
+                            HymoFSStatus.NOT_PRESENT -> MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> Color(0xFFFF9800)
+                        },
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.hymofs_lkm_card_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(
+                                when (hymofsStatus) {
+                                    HymoFSStatus.AVAILABLE -> R.string.hymofs_status_available
+                                    HymoFSStatus.NOT_PRESENT -> R.string.hymofs_status_not_present
+                                    HymoFSStatus.KERNEL_TOO_OLD -> R.string.hymofs_status_kernel_too_old
+                                    HymoFSStatus.MODULE_TOO_OLD -> R.string.hymofs_status_module_too_old
+                                }
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (hymofsStatus == HymoFSStatus.AVAILABLE) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.hymofs_version_label, version),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                InfoRow(
+                    stringResource(R.string.hymofs_lkm_kernel_label),
+                    systemInfo.kernel.ifEmpty { "-" }
+                )
+                if (config.unameRelease.isNotBlank()) {
+                    InfoRow(
+                        stringResource(R.string.hymofs_lkm_kmi_label),
+                        config.unameRelease
+                    )
+                }
+            }
+        }
+
+        // Loading / how LKM is loaded
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerLow),
+            elevation = getCardElevation()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = stringResource(R.string.hymofs_lkm_loading_card_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.hymofs_lkm_loading_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
