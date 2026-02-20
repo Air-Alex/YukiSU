@@ -1,0 +1,173 @@
+# Build HymoFS kernel module (clone kernel + make). Called by build-hymofs-lkm.yml matrix.
+name: Build HymoFS Kernel Module
+
+on:
+  workflow_call:
+    inputs:
+      kmi:
+        description: "KMI version (kernel branch)"
+        required: true
+        type: string
+      arch:
+        description: "Target arch: arm64, armv7, x86_64"
+        required: true
+        type: string
+      hymofs_ref:
+        description: "HymoFS git ref (branch/tag/commit)"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  build:
+    name: Build hymofs ${{ inputs.arch }} ${{ inputs.kmi }}
+    runs-on: ubuntu-latest
+    env:
+      OUT: ${{ github.workspace }}/out
+      SRC: ${{ github.workspace }}/hymofs_src/src
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone HymoFS
+        run: |
+          set -euo pipefail
+          echo "Cloning HymoFS (ref: ${{ inputs.hymofs_ref }})..."
+          git clone --depth 1 "https://github.com/Anatdx/HymoFS.git" hymofs_src
+          (cd hymofs_src && git fetch --depth 1 origin "${{ inputs.hymofs_ref }}" && git checkout FETCH_HEAD)
+          ls -la hymofs_src/src/
+
+      - name: Generate version
+        id: parse_version
+        run: |
+          COMMIT_NUM=$(cd hymofs_src && git rev-list --count HEAD)
+          VERSION=$(echo "$COMMIT_NUM + 200" | bc)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Clone kernel tree
+        run: |
+          set -euo pipefail
+          KMI="${{ inputs.kmi }}"
+          echo "Cloning kernel tree ($KMI)..."
+          git clone --depth 1 -b "$KMI" https://android.googlesource.com/kernel/common kernel_src
+          test -f kernel_src/Makefile
+          echo "Kernel ready at kernel_src/"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git make clang lld llvm gcc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi ccache \
+            flex bison bc rsync cpio \
+            libelf-dev libssl-dev libdw-dev pahole zip
+
+      - name: Build hymofs_lkm.ko
+        run: |
+          set -euo pipefail
+          KMI="${{ inputs.kmi }}"
+          ARCH="${{ inputs.arch }}"
+          KERNEL_SRC="$GITHUB_WORKSPACE/kernel_src"
+          SRC="$GITHUB_WORKSPACE/hymofs_src/src"
+          VERSION="${{ steps.parse_version.outputs.VERSION }}"
+
+          # 5.10: use GCC cross (no LLVM); else LLVM=1
+          CC_EXTRA=""
+          if [[ "$KMI" == android12-5.10 ]] || [[ "$KMI" == android13-5.10 ]]; then
+            LLVM_ARGS=""
+            case "$ARCH" in
+              arm64)   CROSS_ARGS="CROSS_COMPILE=aarch64-linux-gnu-" ;;
+              armv7)   CROSS_ARGS="CROSS_COMPILE=arm-linux-gnueabi-" ;;
+              x86_64)  CROSS_ARGS="" ;;
+              *) echo "Unknown arch: $ARCH"; exit 1 ;;
+            esac
+          else
+            LLVM_ARGS="LLVM=1 LLVM_IAS=1"
+            case "$ARCH" in
+              arm64)   CROSS_ARGS="" ;;
+              armv7)   CROSS_ARGS="CROSS_COMPILE=arm-linux-gnueabi-" ; CC_EXTRA='CC=ccache clang' ;;
+              x86_64)  CROSS_ARGS="" ;;
+              *) echo "Unknown arch: $ARCH"; exit 1 ;;
+            esac
+          fi
+          [ -n "$CC_EXTRA" ] && OPT_CC="$CC_EXTRA" || OPT_CC=""
+
+          unset M
+          echo "Preparing kernel tree (KMI=$KMI, ARCH=$ARCH)..."
+
+          if [[ "$ARCH" == "arm64" ]]; then
+            make -C "$KERNEL_SRC" ARCH=arm64 "$CROSS_ARGS" $LLVM_ARGS gki_defconfig 2>/dev/null || \
+              make -C "$KERNEL_SRC" ARCH=arm64 "$CROSS_ARGS" $LLVM_ARGS defconfig
+            if [[ "$KMI" == *"6.12"* ]] && [ -f "$KERNEL_SRC/scripts/config" ]; then
+              $KERNEL_SRC/scripts/config --file "$KERNEL_SRC/.config" -d GENDWARFKSYMS 2>/dev/null || true
+              make -C "$KERNEL_SRC" ARCH=arm64 "$CROSS_ARGS" $LLVM_ARGS olddefconfig 2>/dev/null || true
+            fi
+            make -C "$KERNEL_SRC" ARCH=arm64 "$CROSS_ARGS" $LLVM_ARGS modules_prepare
+            echo "Building hymofs_lkm.ko (KMI=$KMI, ARCH=arm64)..."
+            make -C "$KERNEL_SRC" ARCH=arm64 "$CROSS_ARGS" $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
+              CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${VERSION}\\\"" modules
+          elif [[ "$ARCH" == "armv7" ]]; then
+            make -C "$KERNEL_SRC" ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- "$CROSS_ARGS" $LLVM_ARGS $OPT_CC multi_v7_defconfig 2>/dev/null || \
+              make -C "$KERNEL_SRC" ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- "$CROSS_ARGS" $LLVM_ARGS $OPT_CC defconfig
+            if [[ "$KMI" == *"6.12"* ]] && [ -f "$KERNEL_SRC/scripts/config" ]; then
+              $KERNEL_SRC/scripts/config --file "$KERNEL_SRC/.config" -d GENDWARFKSYMS 2>/dev/null || true
+              make -C "$KERNEL_SRC" ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- "$CROSS_ARGS" $LLVM_ARGS $OPT_CC olddefconfig 2>/dev/null || true
+            fi
+            make -C "$KERNEL_SRC" ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- "$CROSS_ARGS" $LLVM_ARGS $OPT_CC modules_prepare
+            echo "Building hymofs_lkm.ko (KMI=$KMI, ARCH=arm)..."
+            make -C "$KERNEL_SRC" ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- "$CROSS_ARGS" $LLVM_ARGS $OPT_CC M="$SRC" KBUILD_MODPOST_WARN=1 \
+              CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${VERSION}\\\"" modules
+          else
+            # x86_64: kernel ARCH=x86
+            make -C "$KERNEL_SRC" ARCH=x86 "$CROSS_ARGS" $LLVM_ARGS gki_defconfig 2>/dev/null || \
+              make -C "$KERNEL_SRC" ARCH=x86 "$CROSS_ARGS" $LLVM_ARGS x86_64_defconfig
+            if [[ "$KMI" == *"6.12"* ]] && [ -f "$KERNEL_SRC/scripts/config" ]; then
+              $KERNEL_SRC/scripts/config --file "$KERNEL_SRC/.config" -d GENDWARFKSYMS 2>/dev/null || true
+              make -C "$KERNEL_SRC" ARCH=x86 "$CROSS_ARGS" $LLVM_ARGS olddefconfig 2>/dev/null || true
+            fi
+            make -C "$KERNEL_SRC" ARCH=x86 "$CROSS_ARGS" $LLVM_ARGS modules_prepare
+            echo "Building hymofs_lkm.ko (KMI=$KMI, ARCH=x86)..."
+            make -C "$KERNEL_SRC" ARCH=x86 "$CROSS_ARGS" $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
+              CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${VERSION}\\\"" modules
+          fi
+
+          mkdir -p "$OUT"
+          cp "$SRC/hymofs_lkm.ko" "$OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
+          llvm-strip -d "$OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko" 2>/dev/null || true
+          ls -la "$OUT/"
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "$GPG_PRIVATE_KEY" > key.asc
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import key.asc
+          rm -f key.asc
+
+      - name: Sign hymofs_lkm.ko with GPG
+        run: |
+          cd $OUT
+          KO_FILE="${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko"
+          echo "Signing $KO_FILE..."
+          gpg --detach-sign --local-user an@anatdx.com --batch --yes --pinentry-mode loopback \
+            --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+            --output "${KO_FILE}.asc" "$KO_FILE"
+          if [ -f "${KO_FILE}.asc" ]; then
+            echo "Signature created successfully"
+            ls -lh "${KO_FILE}.asc"
+          else
+            echo "Error: Signature file not created!"
+            exit 1
+          fi
+
+      - name: Upload .ko
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.kmi }}-${{ inputs.arch }}-hymofs-lkm
+          path: |
+            $OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko
+            $OUT/${{ inputs.kmi }}_${{ inputs.arch }}_hymofs_lkm.ko.asc

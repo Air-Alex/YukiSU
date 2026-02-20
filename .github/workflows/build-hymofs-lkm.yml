@@ -19,9 +19,8 @@ jobs:
           - arm64
           - armv7
           - x86_64
-    uses: ./.github/workflows/ddk-hymofs-lkm.yml
+    uses: ./.github/workflows/hymofs-lkm.yml
     secrets: inherit
     with:
       kmi: ${{ matrix.kmi }}
       arch: ${{ matrix.arch }}
-      ddk_release: '20251104'
