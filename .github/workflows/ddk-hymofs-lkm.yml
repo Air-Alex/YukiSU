@@ -113,6 +113,9 @@ jobs:
     name: Build hymofs ${{ inputs.arch }} ${{ inputs.kmi }}
     if: inputs.arch == 'armv7' || inputs.arch == 'x86_64'
     runs-on: ubuntu-latest
+    env:
+      OUT: ${{ github.workspace }}/out
+      SRC: ${{ github.workspace }}/hymofs_src/src
 
     steps:
       - name: Checkout YukiSU
@@ -248,9 +251,15 @@ jobs:
             make -C $KERNEL_SRC ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- $CROSS_ARGS $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
               CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${{ steps.parse_version.outputs.VERSION }}\\\"" modules
           elif [[ "$KERN_ARCH" == "x86_64" ]]; then
-            make -C $KERNEL_SRC ARCH=x86_64 defconfig 2>/dev/null || true
-            make -C $KERNEL_SRC ARCH=x86_64 modules_prepare
-            make -C $KERNEL_SRC ARCH=x86_64 M="$SRC" KBUILD_MODPOST_WARN=1 modules
+            # Kernel uses ARCH=x86 for both 32/64-bit; defconfig is in arch/x86/configs/
+            make -C $KERNEL_SRC ARCH=x86 $CROSS_ARGS $LLVM_ARGS $DEFCONFIG 2>/dev/null || \
+              make -C $KERNEL_SRC ARCH=x86 $CROSS_ARGS $LLVM_ARGS x86_64_defconfig 2>/dev/null || true
+            make -C $KERNEL_SRC ARCH=x86 $CROSS_ARGS $LLVM_ARGS modules_prepare
+            make -C $KERNEL_SRC ARCH=x86 $CROSS_ARGS $LLVM_ARGS M="$SRC" KBUILD_MODPOST_WARN=1 \
+              CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${{ steps.parse_version.outputs.VERSION }}\\\"" modules
+          fi
+          OUT="$GITHUB_WORKSPACE/out"
+          mkdir -p "$OUT"
           cp $SRC/hymofs_lkm.ko $OUT/hymofs_lkm.ko
           ls -la $OUT/hymofs_lkm.ko
           llvm-strip -d $OUT/hymofs_lkm.ko 2>/dev/null || true
