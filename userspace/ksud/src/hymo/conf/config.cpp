@@ -11,7 +11,7 @@ namespace hymo {
 
 Config Config::load_default() {
     Config config;
-    const fs::path default_path = fs::path(BASE_DIR) / "config.json";
+    fs::path default_path = fs::path(BASE_DIR) / "config.json";
     if (fs::exists(default_path)) {
         try {
             return from_file(default_path);
@@ -32,10 +32,10 @@ Config Config::from_file(const fs::path& path) {
 
     std::stringstream buffer;
     buffer << file.rdbuf();
-    const std::string json_str = buffer.str();
+    std::string json_str = buffer.str();
 
     try {
-        const json::Value root = json::parse(json_str);
+        json::Value root = json::parse(json_str);
         if (root.type == json::Type::Object) {
             const auto& o = root.as_object();
 
@@ -69,8 +69,6 @@ Config Config::from_file(const fs::path& path) {
                 config.uname_release = o.at("uname_release").as_string();
             if (o.count("uname_version"))
                 config.uname_version = o.at("uname_version").as_string();
-            if (o.count("mount_stage"))
-                config.mount_stage = o.at("mount_stage").as_string();
 
             if (o.count("partitions") && o.at("partitions").type == json::Type::Array) {
                 for (const auto& p : o.at("partitions").as_array()) {
@@ -118,8 +116,6 @@ bool Config::save_to_file(const fs::path& path) const {
         root["uname_release"] = json::Value(uname_release);
     if (!uname_version.empty())
         root["uname_version"] = json::Value(uname_version);
-    if (!mount_stage.empty())
-        root["mount_stage"] = json::Value(mount_stage);
 
     if (!partitions.empty()) {
         json::Value parts = json::Value::array();
@@ -159,11 +155,11 @@ void Config::merge_with_cli(const fs::path& moduledir_override, const fs::path& 
 std::map<std::string, std::string> load_module_modes() {
     std::map<std::string, std::string> modes;
 
-    const fs::path mode_file = fs::path(BASE_DIR) / "module_mode.json";
+    fs::path mode_file = fs::path(BASE_DIR) / "module_mode.json";
     if (!fs::exists(mode_file))
         return modes;
 
-    std::ifstream file(mode_file);  // NOLINT(misc-const-correctness) stream used for read
+    std::ifstream file(mode_file);
     std::stringstream buffer;
     buffer << file.rdbuf();
 
@@ -176,7 +172,7 @@ std::map<std::string, std::string> load_module_modes() {
                 }
             }
         }
-    } catch (...) {  // NOLINT(bugprone-empty-catch) ignore parse errors, return partial modes
+    } catch (...) {
     }
 
     return modes;
@@ -185,11 +181,11 @@ std::map<std::string, std::string> load_module_modes() {
 std::map<std::string, std::vector<ModuleRuleConfig>> load_module_rules() {
     std::map<std::string, std::vector<ModuleRuleConfig>> rules;
 
-    const fs::path rules_file = fs::path(BASE_DIR) / "module_rules.json";
+    fs::path rules_file = fs::path(BASE_DIR) / "module_rules.json";
     if (!fs::exists(rules_file))
         return rules;
 
-    std::ifstream file(rules_file);  // NOLINT(misc-const-correctness) stream used for read
+    std::ifstream file(rules_file);
     std::stringstream buffer;
     buffer << file.rdbuf();
 
@@ -210,14 +206,14 @@ std::map<std::string, std::vector<ModuleRuleConfig>> load_module_rules() {
                 }
             }
         }
-    } catch (...) {  // NOLINT(bugprone-empty-catch) ignore parse errors, return partial rules
+    } catch (...) {
     }
 
     return rules;
 }
 
 bool save_module_modes(const std::map<std::string, std::string>& modes) {
-    const fs::path mode_file = fs::path(BASE_DIR) / "module_mode.json";
+    fs::path mode_file = fs::path(BASE_DIR) / "module_mode.json";
     json::Value root = json::Value::object();
 
     for (const auto& [id, mode] : modes) {
@@ -232,7 +228,7 @@ bool save_module_modes(const std::map<std::string, std::string>& modes) {
 }
 
 bool save_module_rules(const std::map<std::string, std::vector<ModuleRuleConfig>>& rules) {
-    const fs::path rules_file = fs::path(BASE_DIR) / "module_rules.json";
+    fs::path rules_file = fs::path(BASE_DIR) / "module_rules.json";
     json::Value root = json::Value::object();
 
     for (const auto& [id, list] : rules) {

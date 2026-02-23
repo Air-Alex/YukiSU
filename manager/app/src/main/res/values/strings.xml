@@ -119,6 +119,7 @@
     <string name="hymofs_toast_mode_failed">Failed to update mode</string>
     <string name="hymofs_toast_settings_saved">Settings saved</string>
     <string name="hymofs_toast_settings_failed">Failed to save settings</string>
+    <string name="hymofs_saving">Saving…</string>
     <string name="hymofs_toast_kernel_debug_enabled">Kernel debug enabled</string>
     <string name="hymofs_toast_kernel_debug_disabled">Kernel debug disabled</string>
     <string name="hymofs_toast_stealth_enabled">Stealth mode enabled</string>
@@ -373,6 +374,7 @@
     <string name="kernel_flashing">Kernel Flashing</string>
     <!-- HymoFS status text -->
     <string name="hymofs_status_available">Available</string>
+    <string name="hymofs_status_builtin">HymoFS builtin</string>
     <string name="hymofs_status_not_present">Not present</string>
     <string name="hymofs_status_kernel_too_old">Kernel too old</string>
     <string name="hymofs_status_module_too_old">Module too old</string>
@@ -552,8 +554,35 @@
     <string name="hymofs_lkm_card_title">HymoFS Loadable Kernel Module</string>
     <string name="hymofs_lkm_loading_card_title">Loading</string>
     <string name="hymofs_lkm_loading_desc">ksud automatically loads the matching HymoFS kernel module (.ko) at post-fs-data based on the current kernel KMI. No manual action required.</string>
-    <string name="hymofs_lkm_kernel_label">Kernel (uname -r)</string>
-    <string name="hymofs_lkm_kmi_label">uname override (uname -r)</string>
+    <string name="hymofs_lkm_autoload_hint">When on: load LKM at boot; failures logged to /data/adb/hymo/lkm_autoload.log. When off: skip loading at boot.</string>
+    <string name="hymofs_lkm_autoload_enabled">LKM boot autoload enabled</string>
+    <string name="hymofs_lkm_autoload_disabled">LKM boot autoload disabled</string>
+    <string name="hymofs_lkm_autoload_failed">Failed to set</string>
+    <string name="hymofs_lkm_kernel_label">Kernel (SYS)</string>
+    <string name="hymofs_lkm_kmi_label">uname override</string>
+    <string name="hymofs_lkm_kmi_override">KMI Override</string>
+    <string name="hymofs_lkm_kmi_override_desc">Override KMI for LKM loading when auto-detect fails (e.g. 6.6.30-android15)</string>
+    <string name="hymofs_lkm_kmi_override_set">Set</string>
+    <string name="hymofs_lkm_kmi_override_clear">Clear</string>
+    <string name="hymofs_lkm_kmi_override_title">KMI Override</string>
+    <string name="hymofs_lkm_kmi_override_placeholder">e.g. 6.6.30-android15</string>
+    <string name="hymofs_lkm_kmi_override_current">Current: %s</string>
+    <string name="hymofs_lkm_kmi_set_success">KMI override set</string>
+    <string name="hymofs_lkm_kmi_cleared">KMI override cleared</string>
+    <string name="hymofs_lkm_kmi_failed">Failed to set KMI override</string>
+    <string name="hymofs_lkm_load">Load LKM</string>
+    <string name="hymofs_lkm_unload">Unload LKM</string>
+    <string name="hymofs_lkm_load_success">LKM loaded</string>
+    <string name="hymofs_lkm_load_failed">Failed to load LKM</string>
+    <string name="hymofs_lkm_unload_success">LKM unloaded</string>
+    <string name="hymofs_lkm_unload_failed">Failed to unload LKM</string>
+    <string name="hymofs_lkm_hooks_title">Current LKM Hooks</string>
+    <string name="hymofs_lkm_hooks_refresh">Refresh</string>
+    <string name="hymofs_lkm_hooks_empty">No hooks (expand and refresh to fetch)</string>
+    <string name="hymofs_lkm_kmi_selection_title">KMI Selection</string>
+    <string name="hymofs_lkm_kmi_selection_label">Select KMI</string>
+    <string name="hymofs_lkm_kmi_selection_placeholder">Select KMI (disabled by default)</string>
+    <string name="hymofs_lkm_kmi_selection_empty">No supported KMIs</string>
     <string name="hymofs_storage">Storage</string>
     <string name="hymofs_modules_count">Modules</string>
     <string name="hymofs_system_info">System Info</string>
@@ -584,6 +613,7 @@
     <string name="hymofs_mountsource_desc">Name to use for overlayfs mount source (default: KSU)</string>
     <string name="hymofs_logs_copy">Copy</string>
     <string name="hymofs_logs_copy_success">Log copied to clipboard</string>
+    <string name="hymofs_logs_filter">Filter</string>
     <string name="hymofs_logs_filter_all">All</string>
     <string name="hymofs_logs_filter_verbose">Verbose</string>
     <string name="hymofs_logs_filter_debug">Debug</string>
@@ -621,10 +651,11 @@
     <string name="hymofs_enable_desc">Control whether HymoFS is enabled on boot (takes effect after daemon restart)</string>
     <!-- HymoFS uname spoofing -->
     <string name="hymofs_uname_title">Kernel version spoofing</string>
-    <string name="hymofs_uname_release">uname -r override</string>
-    <string name="hymofs_uname_release_desc">Optional. When set, HymoFS will spoof this as kernel release</string>
-    <string name="hymofs_uname_version">uname -v override</string>
-    <string name="hymofs_uname_version_desc">Optional. When set, HymoFS will spoof this as kernel version string</string>
+    <string name="hymofs_uname_release">Version name</string>
+    <string name="hymofs_uname_release_desc">Kernel release (e.g. 5.15.0-generic). When set, HymoFS will spoof this.</string>
+    <string name="hymofs_uname_version">Build time</string>
+    <string name="hymofs_uname_version_desc">Kernel version/build timestamp. When set, HymoFS will spoof this.</string>
+    <string name="hymofs_uname_use_current">Use current kernel info</string>
     <string name="hymofs_fs_type_title">Storage filesystem</string>
     <string name="hymofs_fs_type_auto">Auto (let hymo choose)</string>
     <string name="hymofs_fs_type_ext4">EXT4 image</string>
@@ -642,12 +673,6 @@
     <string name="hymofs_mirror_preset_debug_ramdisk">debug_ramdisk</string>
     <string name="hymofs_mirror_preset_dev_mirror">hymo_mirror</string>
     <string name="hymofs_mirror_preset_custom">Custom</string>
-    <string name="hymofs_mount_stage">Mount stage</string>
-    <string name="hymofs_mount_stage_post_fs">post-fs-data</string>
-    <string name="hymofs_mount_stage_meta">metamount</string>
-    <string name="hymofs_mount_stage_services">services</string>
-    <string name="hymofs_create_image">Create modules.img in /data/adb</string>
-
     <!-- HymoFS user hide rules -->
     <string name="hymofs_user_hide_title">Custom hide rules</string>
     <string name="hymofs_user_hide_empty">No custom hide rules. Add absolute paths to hide them from all modules.</string>
@@ -660,6 +685,15 @@
     <string name="hymofs_module_rules_title">Custom rules for this module</string>
     <string name="hymofs_module_rules_empty">No custom rules. Add paths to override how this module mounts specific locations.</string>
     <string name="hymofs_module_rules_placeholder">/path/inside/system/or/vendor</string>
+    <string name="hymofs_mount_config">Mount config</string>
+    <string name="hymofs_mount_mode">Mount mode</string>
+    <string name="hymofs_mount_mode_auto">Auto</string>
+    <string name="hymofs_mount_mode_hymofs">HymoFS</string>
+    <string name="hymofs_mount_mode_overlay">Overlay</string>
+    <string name="hymofs_mount_mode_magic">Magic</string>
+    <string name="hymofs_mount_mode_none">None</string>
+    <string name="hymofs_strategy_magic_mount">Magic Mount</string>
+    <string name="hymofs_strategy_not_mounted">Not mounted</string>
     <string name="hymofs_module_rules_add">Add</string>
     <string name="hymofs_module_rules_add_failed">Failed to add module rule</string>
     <string name="hymofs_module_rules_remove_failed">Failed to remove module rule</string>
@@ -704,7 +738,7 @@
     <string name="partition_dangerous_operation">Dangerous Operation</string>
     <string name="partition_dangerous_operation_warning">⚠️ Dangerous Operation Warning</string>
     <string name="partition_flash_warning">Flashing partition may cause device unable to boot!\n\nAre you sure you want to flash %s partition?</string>
-    <string name="partition_dangerous_flash_warning">⚠️ Warning: %s is a dangerous partition!\n\nFlashing this partition may cause:\n• Device unable to boot\n• Loss of important data\n• Network/Bluetooth malfunction\n\nPlease make sure you know what you are doing!\n\nAre you sure you want to flash %s partition?</string>
+    <string name="partition_dangerous_flash_warning">⚠️ Warning: %1$s is a dangerous partition!\n\nFlashing this partition may cause:\n• Device unable to boot\n• Loss of important data\n• Network/Bluetooth malfunction\n\nPlease make sure you know what you are doing!\n\nAre you sure you want to flash %2$s partition?</string>
     <string name="partition_confirm_flash">Confirm Flash</string>
     <string name="partition_backing_up">Backing up partition %s…</string>
     <string name="partition_backup_success">Backup successful: %s</string>
@@ -720,9 +754,9 @@
     <string name="partition_a_only_device">A-only Device</string>
     <string name="partition_unknown">Unknown</string>
     <string name="partition_batch_backup_start">Starting batch backup of %d partitions…</string>
-    <string name="partition_batch_backup_progress">Backing up (%d/%d): %s</string>
-    <string name="partition_batch_backup_complete">Batch backup complete! Total %d partitions\nSaved in: %s</string>
-    <string name="partition_batch_backup_partial">Backup complete: %d succeeded, %d failed\nFailed: %s</string>
+    <string name="partition_batch_backup_progress">Backing up (%1$d/%2$d): %3$s</string>
+    <string name="partition_batch_backup_complete">Batch backup complete! Total %1$d partitions\nSaved in: %2$s</string>
+    <string name="partition_batch_backup_partial">Backup complete: %1$d succeeded, %2$d failed\nFailed: %3$s</string>
     <string name="partition_no_selection">No partition selected</string>
     <string name="partition_back">Back</string>
     

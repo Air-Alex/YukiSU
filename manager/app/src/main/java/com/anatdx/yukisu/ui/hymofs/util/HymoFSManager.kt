@@ -67,7 +67,33 @@ object HymoFSManager {
     )
     
     /**
-     * System info data class
+     * Mount statistics (aligned with WebUI api system)
+     */
+    data class MountStats(
+        val totalMounts: Int,
+        val successfulMounts: Int,
+        val failedMounts: Int,
+        val tmpfsCreated: Int,
+        val filesMounted: Int,
+        val dirsMounted: Int,
+        val symlinksCreated: Int,
+        val overlayfsMounts: Int,
+        val successRate: Double?
+    )
+
+    /**
+     * Partition info (aligned with WebUI detectedPartitions)
+     */
+    data class PartitionInfo(
+        val name: String,
+        val mountPoint: String,
+        val fsType: String,
+        val isReadOnly: Boolean,
+        val existsAsSymlink: Boolean
+    )
+
+    /**
+     * System info data class (aligned with WebUI SystemInfo)
      */
     data class SystemInfo(
         val kernel: String,
@@ -76,7 +102,9 @@ object HymoFSManager {
         val activeMounts: List<String>,
         val hymofsModuleIds: List<String>,
         val hymofsMismatch: Boolean,
-        val mismatchMessage: String?
+        val mismatchMessage: String?,
+        val mountStats: MountStats? = null,
+        val detectedPartitions: List<PartitionInfo> = emptyList()
     )
     
     /**
@@ -107,10 +135,12 @@ object HymoFSManager {
         val enableStealth: Boolean = true,
         val hymofsEnabled: Boolean = true,
         val mirrorPath: String = "",
-        val mountStage: String = "metamount",     // "post-fs-data", "metamount", "services"
         val partitions: List<String> = emptyList(),
         val unameRelease: String = "",
-        val unameVersion: String = ""
+        val unameVersion: String = "",
+        val lkmAutoload: Boolean = true,
+        val lkmKmiOverride: String = "",
+        val hymofsBuiltin: Boolean = false
     )
     
     /**
@@ -167,6 +197,20 @@ object HymoFSManager {
     }
     
     /**
+     * Read real kernel uname info from sysfs (/proc/sys/kernel/osrelease and version).
+     * Same approach as getSystemInfo() kernel field - uses cat to read raw sysfs,
+     * NOT uname (which returns spoofed values when HymoFS uname spoofing is active).
+     * Returns Pair(unameRelease, unameVersion).
+     */
+    suspend fun readKernelUnameFromSysfs(): Pair<String, String> = withContext(Dispatchers.IO) {
+        val releaseResult = Shell.cmd("cat /proc/sys/kernel/osrelease 2>/dev/null").exec()
+        val release = if (releaseResult.isSuccess) releaseResult.out.firstOrNull()?.trim() ?: "" else ""
+        val versionResult = Shell.cmd("cat /proc/sys/kernel/version 2>/dev/null").exec()
+        val version = if (versionResult.isSuccess) versionResult.out.firstOrNull()?.trim() ?: "" else ""
+        Pair(release, version)
+    }
+    
+    /**
      * Get HymoFS status (check if kernel supports it)
      *
      * Uses `ksud hymo config show` JSON output, which includes:
@@ -209,12 +253,14 @@ object HymoFSManager {
                     enableStealth = json.optBoolean("enable_stealth", true),
                     hymofsEnabled = json.optBoolean("hymofs_enabled", true),
                     mirrorPath = json.optString("mirror_path", ""),
-                    mountStage = json.optString("mount_stage", "metamount"),
                     partitions = json.optJSONArray("partitions")?.let { arr ->
                         (0 until arr.length()).map { arr.getString(it) }
                     } ?: emptyList(),
                     unameRelease = json.optString("uname_release", ""),
-                    unameVersion = json.optString("uname_version", "")
+                    unameVersion = json.optString("uname_version", ""),
+                    lkmAutoload = json.optBoolean("lkm_autoload", true),
+                    lkmKmiOverride = json.optString("lkm_kmi_override", ""),
+                    hymofsBuiltin = json.optBoolean("hymofs_builtin", false)
                 )
             } else {
                 HymoConfig()
@@ -246,12 +292,11 @@ object HymoFSManager {
                 if (config.mirrorPath.isNotEmpty()) {
                     put("mirror_path", config.mirrorPath)
                 }
-                if (config.mountStage.isNotEmpty()) {
-                    put("mount_stage", config.mountStage)
-                }
                 if (config.partitions.isNotEmpty()) {
                     put("partitions", JSONArray(config.partitions))
                 }
+                if (config.unameRelease.isNotEmpty()) put("uname_release", config.unameRelease)
+                if (config.unameVersion.isNotEmpty()) put("uname_version", config.unameVersion)
             }
             val content = json.toString(2)
 
@@ -273,10 +318,10 @@ object HymoFSManager {
      */
     suspend fun getModules(): List<ModuleInfo> = withContext(Dispatchers.IO) {
         try {
-            // hymo: hymo module list -> JSON
             val result = Shell.cmd("${getKsud()} hymo module list").exec()
             if (result.isSuccess) {
-                val json = JSONObject(result.out.joinToString("\n"))
+                val output = (result.out + result.err).joinToString("\n")
+                val json = JSONObject(output)
                 val modulesArray = json.optJSONArray("modules") ?: return@withContext emptyList()
                 
                 (0 until modulesArray.length()).map { i ->
@@ -427,43 +472,104 @@ object HymoFSManager {
     }
     
     /**
-     * Get system info including daemon state
+     * Get system info including daemon state (aligned with WebUI: api system + hymofs version)
      */
     suspend fun getSystemInfo(): SystemInfo = withContext(Dispatchers.IO) {
         try {
-            // Get kernel and selinux
-            val kernelResult = Shell.cmd("uname -r").exec()
-            val kernel = if (kernelResult.isSuccess) kernelResult.out.firstOrNull() ?: "Unknown" else "Unknown"
+            // Get kernel from /proc/sys (real kernel, not spoofed by uname)
+            val kernelResult = Shell.cmd("cat /proc/sys/kernel/osrelease 2>/dev/null").exec()
+            val kernel = if (kernelResult.isSuccess) kernelResult.out.firstOrNull()?.trim() ?: "Unknown" else "Unknown"
             
             val selinuxResult = Shell.cmd("getenforce").exec()
             val selinux = if (selinuxResult.isSuccess) selinuxResult.out.firstOrNull() ?: "Unknown" else "Unknown"
             
-            // Get daemon state
-            val stateResult = Shell.cmd("cat '$HYMO_STATE_FILE' 2>/dev/null").exec()
             var mountBase = "Unknown"
             var activeMounts = emptyList<String>()
             var hymofsModuleIds = emptyList<String>()
             var hymofsMismatch = false
             var mismatchMessage: String? = null
+            var mountStats: MountStats? = null
+            var detectedPartitions = emptyList<PartitionInfo>()
             
-            if (stateResult.isSuccess && stateResult.out.isNotEmpty()) {
+            // Call hymo api system for mountStats, detectedPartitions, mount_base
+            val apiSystemResult = Shell.cmd("${getKsud()} hymo api system").exec()
+            if (apiSystemResult.isSuccess && apiSystemResult.out.isNotEmpty()) {
                 try {
-                    val state = JSONObject(stateResult.out.joinToString("\n"))
-                    mountBase = state.optString("mount_point", "Unknown")
-                    activeMounts = state.optJSONArray("active_mounts")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    } ?: emptyList()
-                    hymofsModuleIds = state.optJSONArray("hymofs_module_ids")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    } ?: emptyList()
-                    hymofsMismatch = state.optBoolean("hymofs_mismatch", false)
-                    mismatchMessage = state.optString("mismatch_message", null)
+                    val sys = JSONObject(apiSystemResult.out.joinToString("\n"))
+                    mountBase = sys.optString("mount_base", mountBase)
+                    val ms = sys.optJSONObject("mountStats")
+                    if (ms != null) {
+                        mountStats = MountStats(
+                            totalMounts = ms.optInt("total_mounts", 0),
+                            successfulMounts = ms.optInt("successful_mounts", 0),
+                            failedMounts = ms.optInt("failed_mounts", 0),
+                            tmpfsCreated = ms.optInt("tmpfs_created", 0),
+                            filesMounted = ms.optInt("files_mounted", 0),
+                            dirsMounted = ms.optInt("dirs_mounted", 0),
+                            symlinksCreated = ms.optInt("symlinks_created", 0),
+                            overlayfsMounts = ms.optInt("overlayfs_mounts", 0),
+                            successRate = if (ms.has("success_rate")) ms.optDouble("success_rate") else null
+                        )
+                    }
+                    val parts = sys.optJSONArray("detectedPartitions")
+                    if (parts != null) {
+                        detectedPartitions = (0 until parts.length()).mapNotNull { i ->
+                            val p = parts.optJSONObject(i) ?: return@mapNotNull null
+                            PartitionInfo(
+                                name = p.optString("name", ""),
+                                mountPoint = p.optString("mount_point", ""),
+                                fsType = p.optString("fs_type", ""),
+                                isReadOnly = p.optBoolean("is_read_only", false),
+                                existsAsSymlink = p.optBoolean("exists_as_symlink", false)
+                            )
+                        }
+                    }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to parse daemon state", e)
+                    Log.w(TAG, "Failed to parse api system", e)
                 }
             }
             
-            SystemInfo(kernel, selinux, mountBase, activeMounts, hymofsModuleIds, hymofsMismatch, mismatchMessage)
+            // Call hymo hymofs version for active_modules, protocol_mismatch, mismatch_message
+            val hymofsVersionResult = Shell.cmd("${getKsud()} hymo hymofs version").exec()
+            if (hymofsVersionResult.isSuccess && hymofsVersionResult.out.isNotEmpty()) {
+                try {
+                    val ver = JSONObject(hymofsVersionResult.out.joinToString("\n"))
+                    hymofsModuleIds = ver.optJSONArray("active_modules")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    } ?: hymofsModuleIds
+                    hymofsMismatch = ver.optBoolean("protocol_mismatch", hymofsMismatch)
+                    mismatchMessage = ver.optString("mismatch_message", null) ?: mismatchMessage
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse hymofs version", e)
+                }
+            }
+            
+            // Fallback: daemon state file
+            if (hymofsModuleIds.isEmpty() || mountBase == "Unknown") {
+                val stateResult = Shell.cmd("cat '$HYMO_STATE_FILE' 2>/dev/null").exec()
+                if (stateResult.isSuccess && stateResult.out.isNotEmpty()) {
+                    try {
+                        val state = JSONObject(stateResult.out.joinToString("\n"))
+                        if (mountBase == "Unknown") mountBase = state.optString("mount_point", "Unknown")
+                        if (activeMounts.isEmpty()) {
+                            activeMounts = state.optJSONArray("active_mounts")?.let { arr ->
+                                (0 until arr.length()).map { arr.getString(it) }
+                            } ?: emptyList()
+                        }
+                        if (hymofsModuleIds.isEmpty()) {
+                            hymofsModuleIds = state.optJSONArray("hymofs_module_ids")?.let { arr ->
+                                (0 until arr.length()).map { arr.getString(it) }
+                            } ?: emptyList()
+                        }
+                        hymofsMismatch = state.optBoolean("hymofs_mismatch", hymofsMismatch)
+                        if (mismatchMessage == null) mismatchMessage = state.optString("mismatch_message", null)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to parse daemon state", e)
+                    }
+                }
+            }
+            
+            SystemInfo(kernel, selinux, mountBase, activeMounts, hymofsModuleIds, hymofsMismatch, mismatchMessage, mountStats, detectedPartitions)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get system info", e)
             SystemInfo("Unknown", "Unknown", "Unknown", emptyList(), emptyList(), false, null)
@@ -541,27 +647,11 @@ object HymoFSManager {
     }
 
     /**
-     * Create modules.img via hymod (config create-image).
-     */
-    suspend fun createModulesImage(baseDir: String = "/data/adb"): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val result = Shell.cmd("${getKsud()} hymo config create-image $baseDir").exec()
-            if (!result.isSuccess) {
-                Log.w(TAG, "create-image failed: ${result.err.joinToString(";")}")
-            }
-            result.isSuccess
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create modules image", e)
-            false
-        }
-    }
-    
-    /**
      * Set kernel debug mode
      */
     suspend fun setKernelDebug(enable: Boolean): Boolean = withContext(Dispatchers.IO) {
         try {
-            val result = Shell.cmd("${getKsud()} hymo debug ${if (enable) "on" else "off"}").exec()
+            val result = Shell.cmd("${getKsud()} hymo debug ${if (enable) "enable" else "disable"}").exec()
             result.isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set kernel debug", e)
@@ -570,14 +660,116 @@ object HymoFSManager {
     }
     
     /**
-     * Set stealth mode
+     * Set stealth mode (aligned with WebUI: hymo debug stealth enable|disable)
      */
     suspend fun setStealth(enable: Boolean): Boolean = withContext(Dispatchers.IO) {
         try {
-            val result = Shell.cmd("${getKsud()} hymo stealth ${if (enable) "on" else "off"}").exec()
+            val result = Shell.cmd("${getKsud()} hymo debug stealth ${if (enable) "enable" else "disable"}").exec()
             result.isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set stealth mode", e)
+            false
+        }
+    }
+
+    /**
+     * Apply kernel uname spoofing immediately (hymo debug set-uname).
+     * Call after saveConfig for immediate effect.
+     */
+    suspend fun setUname(release: String, version: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val r = release.replace("'", "'\\''")
+            val v = version.replace("'", "'\\''")
+            val result = Shell.cmd("${getKsud()} hymo debug set-uname '$r' '$v'").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set uname", e)
+            false
+        }
+    }
+    
+    /**
+     * Set manual KMI override for LKM loading (when auto-detect fails).
+     */
+    suspend fun setLkmKmiOverride(kmi: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Escape single quotes for shell: ' -> '\''
+            val escaped = kmi.replace("'", "'\\''")
+            val result = Shell.cmd("${getKsud()} hymo lkm set-kmi '$escaped'").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set LKM KMI override", e)
+            false
+        }
+    }
+
+    /**
+     * Clear manual KMI override.
+     */
+    suspend fun clearLkmKmiOverride(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = Shell.cmd("${getKsud()} hymo lkm clear-kmi").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear LKM KMI override", e)
+            false
+        }
+    }
+
+    /**
+     * Load HymoFS LKM manually.
+     */
+    suspend fun loadLkm(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = Shell.cmd("${getKsud()} hymo lkm load").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load LKM", e)
+            false
+        }
+    }
+
+    /**
+     * Unload HymoFS LKM.
+     */
+    suspend fun unloadLkm(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = Shell.cmd("${getKsud()} hymo lkm unload").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to unload LKM", e)
+            false
+        }
+    }
+
+    /**
+     * Get current LKM hooks (when HymoFS is available).
+     */
+    suspend fun getLkmHooks(): String = withContext(Dispatchers.IO) {
+        try {
+            val result = Shell.cmd("${getKsud()} hymo api hooks").exec()
+            if (result.isSuccess) {
+                (result.out + result.err).joinToString("\n").trim()
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get LKM hooks", e)
+            ""
+        }
+    }
+
+    /**
+     * Set HymoFS LKM boot autoload (post-fs-data).
+     * When enabled: ksud loads LKM at boot; failures are logged to /data/adb/hymo/lkm_autoload.log
+     * When disabled: skip loading at boot
+     */
+    suspend fun setLkmAutoload(enable: Boolean): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = Shell.cmd("${getKsud()} hymo lkm set-autoload ${if (enable) "on" else "off"}").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set LKM autoload", e)
             false
         }
     }

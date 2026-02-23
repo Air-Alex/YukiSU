@@ -45,7 +45,7 @@ struct CliOptions {
 namespace {
 
 void print_help() {
-    std::cout << "Usage: hymod [OPTIONS] <command> [args...]\n\n";
+    std::cout << "Usage: ksud hymo [OPTIONS] <command> [args...]\n\n";
     std::cout << "Main Commands:\n";
     std::cout << "  mount              Mount all modules (default action)\n";
     std::cout << "  clear              Clear all HymoFS mappings\n";
@@ -81,13 +81,17 @@ void print_help() {
     std::cout << "  api storage        Storage usage information\n";
     std::cout << "  api mount-stats    Mount statistics\n";
     std::cout << "  api partitions     Detected partitions info\n";
-    std::cout << "  api lkm            LKM status (loaded, autoload) for WebUI\n\n";
+    std::cout << "  api lkm            LKM status (loaded, autoload) for WebUI\n";
+    std::cout << "  api hooks          List currently used LKM hooks\n\n";
 
     std::cout << "LKM Commands (lkm <subcommand>) - HymoFS kernel module:\n";
     std::cout << "  lkm load           Load HymoFS kernel module\n";
     std::cout << "  lkm unload         Unload HymoFS kernel module\n";
     std::cout << "  lkm status         Show LKM status (loaded, autoload)\n";
-    std::cout << "  lkm set-autoload on|off  Enable/disable load at boot\n\n";
+    std::cout << "  lkm set-autoload on|off  Enable/disable load at boot\n";
+    std::cout
+        << "  lkm set-kmi <kmi>        Override KMI for LKM loading (e.g. 6.6.30-android15)\n";
+    std::cout << "  lkm clear-kmi            Clear KMI override\n\n";
 
     std::cout << "Privacy Commands (hide <subcommand>):\n";
     std::cout << "  hide list          List user-defined hide rules\n";
@@ -111,13 +115,12 @@ void print_help() {
     std::cout << "  -o, --output FILE       Output file (for gen-config)\n";
     std::cout << "  -h, --help              Show this help\n";
     std::cout << "\nExamples:\n";
-    std::cout << "\nExamples:\n";
-    std::cout << "  hymod mount                    # Mount all modules\n";
-    std::cout << "  hymod config show              # Show configuration\n";
-    std::cout << "  hymod module list              # List modules\n";
-    std::cout << "  hymod api system               # Get system info (JSON)\n";
-    std::cout << "  hymod hide add /path           # Add hide rule\n";
-    std::cout << "  hymod debug enable             # Enable debug mode\n";
+    std::cout << "  ksud hymo mount                    # Mount all modules\n";
+    std::cout << "  ksud hymo config show              # Show configuration\n";
+    std::cout << "  ksud hymo module list              # List modules\n";
+    std::cout << "  ksud hymo api system               # Get system info (JSON)\n";
+    std::cout << "  ksud hymo hide add /path           # Add hide rule\n";
+    std::cout << "  ksud hymo debug enable             # Enable debug mode\n";
 }
 
 // Helper to segregate custom rules (Overlay/Magic) from HymoFS source tree
@@ -245,8 +248,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
     try {
         CliOptions cli = parse_args(argc, argv);
 
-        // Initialize logger globally for all commands
-        Logger::getInstance().init(cli.verbose, cli.verbose, DAEMON_LOG_FILE);
+        // Initialize logger: built-in hymo reuses ksud log (stderr/logcat), no separate daemon.log
+        Logger::getInstance().init(cli.verbose, cli.verbose, nullptr);
 
         if (cli.command.empty()) {
             print_help();
@@ -299,7 +302,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
         switch (get_command(cli.command)) {
         case Command::CONFIG: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod config <gen|show|sync-partitions|create-image>\n";
+                std::cerr << "Usage: ksud hymo config <gen|show|sync-partitions|create-image>\n";
                 return 1;
             }
             const std::string subcmd = cli.args[0];
@@ -315,7 +318,6 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 std::cout << "  \"moduledir\": \"" << config.moduledir.string() << "\",\n";
                 std::cout << "  \"tempdir\": \"" << config.tempdir.string() << "\",\n";
                 std::cout << "  \"mountsource\": \"" << config.mountsource << "\",\n";
-                std::cout << "  \"mount_stage\": \"" << config.mount_stage << "\",\n";
                 std::cout << "  \"debug\": " << (config.debug ? "true" : "false") << ",\n";
                 std::cout << "  \"verbose\": " << (config.verbose ? "true" : "false") << ",\n";
                 std::cout << "  \"fs_type\": \"" << filesystem_type_to_string(config.fs_type)
@@ -337,6 +339,12 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 std::cout << "  \"hymofs_available\": "
                           << (HymoFS::is_available() ? "true" : "false") << ",\n";
                 std::cout << "  \"hymofs_status\": " << (int)HymoFS::check_status() << ",\n";
+                std::cout << "  \"lkm_autoload\": " << (lkm_get_autoload() ? "true" : "false")
+                          << ",\n";
+                std::cout << "  \"lkm_kmi_override\": \"" << lkm_get_kmi_override() << "\",\n";
+                std::cout << "  \"hymofs_builtin\": "
+                          << (HymoFS::is_available() && !lkm_is_loaded() ? "true" : "false")
+                          << ",\n";
                 std::cout << "  \"tmpfs_xattr_supported\": "
                           << (check_tmpfs_xattr() ? "true" : "false") << ",\n";
                 std::cout << "  \"partitions\": [";
@@ -414,7 +422,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::MODULE: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod module "
+                std::cerr << "Usage: ksud hymo module "
                              "<list|add|delete|hot-mount|hot-unmount|set-mode|add-rule|remove-rule|"
                              "check-conflicts>\n";
                 return 1;
@@ -427,7 +435,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "add" || subcmd == "delete") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod module " << subcmd << " <module_id>\n";
+                    std::cerr << "Usage: ksud hymo module " << subcmd << " <module_id>\n";
                     return 1;
                 }
                 const std::string module_id = cli.args[1];
@@ -511,7 +519,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "hot-mount" || subcmd == "hot-unmount") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod module " << subcmd << " <module_id>\n";
+                    std::cerr << "Usage: ksud hymo module " << subcmd << " <module_id>\n";
                     return 1;
                 }
                 const std::string mod_id = cli.args[1];
@@ -612,7 +620,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "set-mode") {
                 if (cli.args.size() < 3) {
-                    std::cerr << "Usage: hymod module set-mode <mod_id> <mode>\n";
+                    std::cerr << "Usage: ksud hymo module set-mode <mod_id> <mode>\n";
                     return 1;
                 }
                 const std::string mod_id = cli.args[1];
@@ -630,7 +638,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "add-rule") {
                 if (cli.args.size() < 4) {
-                    std::cerr << "Usage: hymod module add-rule <mod_id> <path> <mode>\n";
+                    std::cerr << "Usage: ksud hymo module add-rule <mod_id> <path> <mode>\n";
                     return 1;
                 }
                 const std::string mod_id = cli.args[1];
@@ -660,7 +668,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "remove-rule") {
                 if (cli.args.size() < 3) {
-                    std::cerr << "Usage: hymod module remove-rule <mod_id> <path>\n";
+                    std::cerr << "Usage: ksud hymo module remove-rule <mod_id> <path>\n";
                     return 1;
                 }
                 const std::string mod_id = cli.args[1];
@@ -765,7 +773,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::HYMOFS: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod hymofs <enable|disable|list|version|set-mirror|raw>\n";
+                std::cerr
+                    << "Usage: ksud hymo hymofs <enable|disable|list|version|set-mirror|raw>\n";
                 return 1;
             }
             const std::string subcmd = cli.args[0];
@@ -894,7 +903,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "set-mirror") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod hymofs set-mirror <path>\n";
+                    std::cerr << "Usage: ksud hymo hymofs set-mirror <path>\n";
                     return 1;
                 }
                 const std::string path = cli.args[1];
@@ -902,7 +911,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 config.mirror_path = path;
 
                 const fs::path config_path = cli.config_file.empty()
-                                                 ? (fs::path(BASE_DIR) / "config.toml")
+                                                 ? (fs::path(BASE_DIR) / "config.json")
                                                  : fs::path(cli.config_file);
                 if (config.save_to_file(config_path)) {
                     std::cout << "Mirror path set to: " << path << "\n";
@@ -920,7 +929,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "raw") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod hymofs raw <cmd> [args...]\n";
+                    std::cerr << "Usage: ksud hymo hymofs raw <cmd> [args...]\n";
                     return 1;
                 }
                 const std::string cmd = cli.args[1];
@@ -928,7 +937,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
                 if (cmd == "add") {
                     if (cli.args.size() < 4) {
-                        std::cerr << "Usage: hymod hymofs raw add <src> <target> [type]\n";
+                        std::cerr << "Usage: ksud hymo hymofs raw add <src> <target> [type]\n";
                         return 1;
                     }
                     int type = 0;
@@ -937,19 +946,19 @@ int hymo::run_hymo_main(int argc, char** argv) {
                     success = HymoFS::add_rule(cli.args[2], cli.args[3], type);
                 } else if (cmd == "hide") {
                     if (cli.args.size() < 3) {
-                        std::cerr << "Usage: hymod hymofs raw hide <path>\n";
+                        std::cerr << "Usage: ksud hymo hymofs raw hide <path>\n";
                         return 1;
                     }
                     success = HymoFS::hide_path(cli.args[2]);
                 } else if (cmd == "delete") {
                     if (cli.args.size() < 3) {
-                        std::cerr << "Usage: hymod hymofs raw delete <src>\n";
+                        std::cerr << "Usage: ksud hymo hymofs raw delete <src>\n";
                         return 1;
                     }
                     success = HymoFS::delete_rule(cli.args[2]);
                 } else if (cmd == "merge") {
                     if (cli.args.size() < 4) {
-                        std::cerr << "Usage: hymod hymofs raw merge <src> <target>\n";
+                        std::cerr << "Usage: ksud hymo hymofs raw merge <src> <target>\n";
                         return 1;
                     }
                     success = HymoFS::add_merge_rule(cli.args[2], cli.args[3]);
@@ -978,7 +987,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::API: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod api <system|storage|mount-stats|partitions|lkm>\n";
+                std::cerr
+                    << "Usage: ksud hymo api <system|storage|mount-stats|partitions|lkm|hooks>\n";
                 return 1;
             }
             const std::string subcmd = cli.args[0];
@@ -994,11 +1004,22 @@ int hymo::run_hymo_main(int argc, char** argv) {
             } else if (subcmd == "lkm") {
                 std::cout << "{\n";
                 std::cout << "  \"loaded\": " << (lkm_is_loaded() ? "true" : "false") << ",\n";
-                std::cout << "  \"autoload\": " << (lkm_get_autoload() ? "true" : "false") << "\n";
+                std::cout << "  \"autoload\": " << (lkm_get_autoload() ? "true" : "false") << ",\n";
+                std::cout << "  \"kmi_override\": \"" << lkm_get_kmi_override() << "\",\n";
+                std::cout << "  \"hymofs_builtin\": "
+                          << (HymoFS::is_available() && !lkm_is_loaded() ? "true" : "false")
+                          << "\n";
                 std::cout << "}\n";
+            } else if (subcmd == "hooks") {
+                if (HymoFS::is_available()) {
+                    std::cout << HymoFS::get_hooks() << "\n";
+                } else {
+                    std::cerr << "HymoFS not available.\n";
+                    return 1;
+                }
             } else {
                 std::cerr << "Unknown api subcommand: " << subcmd << "\n";
-                std::cerr << "Available: system, storage, mount-stats, partitions, lkm\n";
+                std::cerr << "Available: system, storage, mount-stats, partitions, lkm, hooks\n";
                 return 1;
             }
             return 0;
@@ -1006,7 +1027,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::DEBUG: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod debug <enable|disable|stealth|set-uname>\n";
+                std::cerr << "Usage: ksud hymo debug <enable|disable|stealth|set-uname>\n";
                 return 1;
             }
             const std::string subcmd = cli.args[0];
@@ -1017,8 +1038,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
                     if (HymoFS::set_debug(enable)) {
                         std::cout << "Kernel debug logging " << (enable ? "enabled" : "disabled")
                                   << ".\n";
-                        LOG_INFO("Kernel debug logging " +
-                                 std::string(enable ? "enabled" : "disabled"));
+                        LOG_VERBOSE("Kernel debug logging " +
+                                    std::string(enable ? "enabled" : "disabled"));
                     } else {
                         std::cerr << "Failed to set kernel debug logging.\n";
                         return 1;
@@ -1030,7 +1051,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "stealth") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod debug stealth <enable|disable>\n";
+                    std::cerr << "Usage: ksud hymo debug stealth <enable|disable>\n";
                     return 1;
                 }
                 const std::string state = cli.args[1];
@@ -1040,7 +1061,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 if (HymoFS::is_available()) {
                     if (HymoFS::set_stealth(enable)) {
                         std::cout << "Stealth mode " << (enable ? "enabled" : "disabled") << ".\n";
-                        LOG_INFO("Stealth mode " + std::string(enable ? "enabled" : "disabled"));
+                        LOG_VERBOSE("Stealth mode " + std::string(enable ? "enabled" : "disabled"));
                     } else {
                         std::cerr << "Failed to set stealth mode.\n";
                         return 1;
@@ -1052,8 +1073,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 return 0;
             } else if (subcmd == "set-uname") {
                 if (cli.args.size() < 3) {
-                    std::cerr << "Usage: hymod debug set-uname <release> <version>\n";
-                    std::cerr << "Example: hymod debug set-uname \"5.15.0-generic\" \"#1 SMP "
+                    std::cerr << "Usage: ksud hymo debug set-uname <release> <version>\n";
+                    std::cerr << "Example: ksud hymo debug set-uname \"5.15.0-generic\" \"#1 SMP "
                                  "PREEMPT ...\"\n";
                     return 1;
                 }
@@ -1066,7 +1087,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                     config.uname_version = version;
 
                     const fs::path config_path = cli.config_file.empty()
-                                                     ? (fs::path(BASE_DIR) / "config.toml")
+                                                     ? (fs::path(BASE_DIR) / "config.json")
                                                      : fs::path(cli.config_file);
 
                     if (config.save_to_file(config_path)) {
@@ -1076,7 +1097,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
                         if (HymoFS::set_uname(release, version)) {
                             std::cout << "Applied uname spoofing to kernel.\n";
-                            LOG_INFO("Kernel uname updated: " + release + " " + version);
+                            LOG_VERBOSE("Kernel uname updated: " + release + " " + version);
                         } else {
                             std::cerr << "Warning: Failed to apply uname to kernel.\n";
                         }
@@ -1098,7 +1119,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::LKM: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod lkm <load|unload|status|set-autoload>\n";
+                std::cerr
+                    << "Usage: ksud hymo lkm <load|unload|status|set-autoload|set-kmi|clear-kmi>\n";
                 return 1;
             }
             const std::string lkm_subcmd = cli.args[0];
@@ -1124,7 +1146,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 std::cout << "}\n";
             } else if (lkm_subcmd == "set-autoload") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod lkm set-autoload <on|off>\n";
+                    std::cerr << "Usage: ksud hymo lkm set-autoload <on|off>\n";
                     return 1;
                 }
                 const bool on =
@@ -1135,9 +1157,29 @@ int hymo::run_hymo_main(int argc, char** argv) {
                     std::cerr << "Failed to set autoload.\n";
                     return 1;
                 }
+            } else if (lkm_subcmd == "set-kmi") {
+                if (cli.args.size() < 2) {
+                    std::cerr << "Usage: ksud hymo lkm set-kmi <kmi>\n";
+                    std::cerr << "Example: ksud hymo lkm set-kmi 6.6.30-android15\n";
+                    return 1;
+                }
+                const std::string kmi = cli.args[1];
+                if (lkm_set_kmi_override(kmi)) {
+                    std::cout << "KMI override set to: " << kmi << "\n";
+                } else {
+                    std::cerr << "Failed to set KMI override.\n";
+                    return 1;
+                }
+            } else if (lkm_subcmd == "clear-kmi") {
+                if (lkm_clear_kmi_override()) {
+                    std::cout << "KMI override cleared.\n";
+                } else {
+                    std::cerr << "Failed to clear KMI override.\n";
+                    return 1;
+                }
             } else {
                 std::cerr << "Unknown lkm subcommand: " << lkm_subcmd << "\n";
-                std::cerr << "Available: load, unload, status, set-autoload\n";
+                std::cerr << "Available: load, unload, status, set-autoload, set-kmi, clear-kmi\n";
                 return 1;
             }
             return 0;
@@ -1145,7 +1187,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::HIDE: {
             if (cli.args.empty()) {
-                std::cerr << "Usage: hymod hide <list|add|remove> [path]\n";
+                std::cerr << "Usage: ksud hymo hide <list|add|remove> [path]\n";
                 return 1;
             }
             const std::string subcmd = cli.args[0];
@@ -1154,14 +1196,14 @@ int hymo::run_hymo_main(int argc, char** argv) {
                 list_user_hide_rules();
             } else if (subcmd == "add") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod hide add <path>\n";
+                    std::cerr << "Usage: ksud hymo hide add <path>\n";
                     return 1;
                 }
                 const std::string path = cli.args[1];
                 return add_user_hide_rule(path) ? 0 : 1;
             } else if (subcmd == "remove") {
                 if (cli.args.size() < 2) {
-                    std::cerr << "Usage: hymod hide remove <path>\n";
+                    std::cerr << "Usage: ksud hymo hide remove <path>\n";
                     return 1;
                 }
                 const std::string path = cli.args[1];
@@ -1213,7 +1255,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::RAW:
             // Raw commands moved to "hymofs raw" subcommand
-            std::cerr << "Use 'hymod hymofs raw <cmd> ...' for raw commands\n";
+            std::cerr << "Use 'ksud hymo hymofs raw <cmd> ...' for raw commands\n";
             return 1;
 
         case Command::MOUNT:
@@ -1232,8 +1274,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
         config.merge_with_cli(cli.moduledir, cli.tempdir, cli.mountsource, cli.verbose,
                               cli.partitions);
 
-        // Re-initialize logger with merged config
-        Logger::getInstance().init(config.debug, config.verbose, DAEMON_LOG_FILE);
+        // Re-initialize logger with merged config (built-in: reuse ksud log)
+        Logger::getInstance().init(config.debug, config.verbose, nullptr);
 
         // Camouflage process
         if (!camouflage_process("kworker/u9:1")) {
@@ -1302,7 +1344,11 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
             // Kernel defaults to hymofs_enabled=false; must set from config on every mount
             if (HymoFS::set_enabled(config.hymofs_enabled)) {
-                LOG_INFO("HymoFS enabled=" + std::string(config.hymofs_enabled ? "true" : "false"));
+                LOG_VERBOSE("HymoFS enabled=" +
+                            std::string(config.hymofs_enabled ? "true" : "false"));
+                if (config.hymofs_enabled) {
+                    hymofs_active = true;
+                }
             } else {
                 LOG_WARN("Failed to set HymoFS enabled state.");
             }
@@ -1330,7 +1376,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
             // Apply Kernel Debug Setting
             if (config.enable_kernel_debug) {
                 if (HymoFS::set_debug(true)) {
-                    LOG_INFO("Kernel debug logging enabled via config.");
+                    LOG_VERBOSE("Kernel debug logging enabled via config.");
                 } else {
                     LOG_WARN("Failed to enable kernel debug logging (config).");
                 }
@@ -1339,8 +1385,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
             // Apply Stealth Mode
             if (config.enable_stealth) {
                 if (HymoFS::set_stealth(config.enable_stealth)) {
-                    LOG_INFO("Stealth mode set to: " +
-                             std::string(config.enable_stealth ? "true" : "false"));
+                    LOG_VERBOSE("Stealth mode set to: " +
+                                std::string(config.enable_stealth ? "true" : "false"));
                 } else {
                     LOG_WARN("Failed to set stealth mode.");
                 }
@@ -1349,8 +1395,9 @@ int hymo::run_hymo_main(int argc, char** argv) {
             // Apply Uname Spoofing if configured
             if (!config.uname_release.empty() || !config.uname_version.empty()) {
                 if (HymoFS::set_uname(config.uname_release, config.uname_version)) {
-                    LOG_INFO("Applied kernel version spoofing: release=\"" + config.uname_release +
-                             "\", version=\"" + config.uname_version + "\"");
+                    LOG_VERBOSE("Applied kernel version spoofing: release=\"" +
+                                config.uname_release + "\", version=\"" + config.uname_version +
+                                "\"");
                 } else {
                     LOG_WARN("Failed to apply kernel version spoofing.");
                 }
@@ -1725,8 +1772,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
         // Apply HymoFS Enable/Disable at the very end to avoid race conditions/crashes during setup
         if (can_use_hymofs) {
             if (HymoFS::set_enabled(config.hymofs_enabled)) {
-                LOG_INFO("HymoFS enabled set to: " +
-                         std::string(config.hymofs_enabled ? "true" : "false"));
+                LOG_VERBOSE("HymoFS enabled set to: " +
+                            std::string(config.hymofs_enabled ? "true" : "false"));
             } else {
                 LOG_WARN("Failed to set HymoFS enabled state.");
             }

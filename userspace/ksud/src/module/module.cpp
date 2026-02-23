@@ -245,8 +245,8 @@ bool is_metamodule(const std::map<std::string, std::string>& props) {
     return val == "1" || val == "true" || val == "TRUE";
 }
 
-// Get current metamodule ID if exists
-std::string get_metamodule_id() {
+// Get current metamodule ID if exists (internal impl)
+static std::string get_metamodule_id_impl() {
     const std::string link_path =
         std::string(METAMODULE_DIR).substr(0, std::string(METAMODULE_DIR).length() - 1);
 
@@ -272,7 +272,7 @@ int check_install_safety(bool installing_metamodule) {
     if (installing_metamodule)
         return 0;
 
-    const std::string metamodule_id = get_metamodule_id();
+    const std::string metamodule_id = get_metamodule_id_impl();
     if (metamodule_id.empty())
         return 0;
 
@@ -534,7 +534,7 @@ bool exec_install_script(const std::string& zip_path) {
 
     // Check for duplicate metamodule
     if (installing_metamodule) {
-        const std::string existing_id = get_metamodule_id();
+        const std::string existing_id = get_metamodule_id_impl();
         if (!existing_id.empty() && existing_id != mod_id) {
             printf("\n❌ Installation Failed\n");
             printf("┌────────────────────────────────\n");
@@ -655,6 +655,10 @@ bool exec_install_script(const std::string& zip_path) {
 
 }  // namespace
 
+std::string get_metamodule_id() {
+    return get_metamodule_id_impl();
+}
+
 // Forward declaration for run_script (defined below); used by module_run_action,
 // exec_module_scripts, exec_common_scripts
 int run_script(const std::string& script, bool block, const std::string& module_id = "");
@@ -711,7 +715,7 @@ int module_uninstall(const std::string& id) {
     }
 
     // Check if this is the current metamodule
-    const std::string current_metamodule = get_metamodule_id();
+    const std::string current_metamodule = get_metamodule_id_impl();
     if (!current_metamodule.empty() && current_metamodule == id) {
         // Remove metamodule symlink when uninstalling
         remove_metamodule_symlink();
