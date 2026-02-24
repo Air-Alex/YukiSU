@@ -897,7 +897,7 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
                 const RuntimeState state = load_runtime_state();
                 const std::string mount_base =
-                    state.mount_point.empty() ? "/dev/hymo_mirror" : state.mount_point;
+                    state.mount_point.empty() ? hymo::HYMO_MIRROR_DEV : state.mount_point;
                 std::cout << "  \"mount_base\": \"" << mount_base << "\"\n";
                 std::cout << "}\n";
                 return 0;
@@ -1354,14 +1354,16 @@ int hymo::run_hymo_main(int argc, char** argv) {
             }
 
             // Determine Mirror Path
-            // Priority: config.mirror_path > config.tempdir > /dev/hymo_mirror
-            // When HymoFS is available, we can mount to /dev safely because HymoFS
-            // provides complete stealth and won't be detected
-            std::string effective_mirror_path = hymo::HYMO_MIRROR_DEV;
+            // 1) User set (mirror_path non-empty): override everything.
+            // 2) Auto (mirror_path empty): HymoFS enabled → /dev/hymo_mirror, else →
+            // /data/adb/hymo/img_mnt.
+            std::string effective_mirror_path;
             if (!config.mirror_path.empty()) {
                 effective_mirror_path = config.mirror_path;
-            } else if (!config.tempdir.empty()) {
-                effective_mirror_path = config.tempdir.string();
+            } else {
+                effective_mirror_path = config.hymofs_enabled
+                                            ? hymo::HYMO_MIRROR_DEV
+                                            : (std::string(HYMO_DATA_DIR) + "/img_mnt");
             }
 
             // Apply Mirror Path to Kernel if using custom path

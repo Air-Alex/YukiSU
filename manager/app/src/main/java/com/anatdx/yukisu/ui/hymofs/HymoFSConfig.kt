@@ -1371,9 +1371,19 @@ private fun SettingsTab(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                // Mirror path / mount base presets (like hymo webui)
+                // Mirror path / mount base: Auto (highest priority = user set; else auto = HymoFS? /dev/hymo_mirror : img_mnt)
                 var mirrorPath by remember { mutableStateOf(config.mirrorPath) }
-                val effectiveMirrorPath = if (mirrorPath.isEmpty()) "/dev/hymo_mirror" else mirrorPath
+                val presetImgMnt = "/data/adb/hymo/img_mnt"
+                val presetDebugRamdisk = "/debug_ramdisk"
+                val presetDevMirror = "/dev/hymo_mirror"
+
+                val selectedPreset = when {
+                    mirrorPath.isEmpty() -> "auto"
+                    mirrorPath == presetImgMnt -> "img_mnt"
+                    mirrorPath == presetDebugRamdisk -> "debug_ramdisk"
+                    mirrorPath == presetDevMirror -> "dev_mirror"
+                    else -> "custom"
+                }
 
                 Text(
                     text = stringResource(R.string.hymofs_mirror_path),
@@ -1381,23 +1391,12 @@ private fun SettingsTab(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Presets: /data/adb/hymo/img_mnt, /debug_ramdisk, /dev/hymo_mirror, plus Custom
-                val presetImgMnt = "/data/adb/hymo/img_mnt"
-                val presetDebugRamdisk = "/debug_ramdisk"
-                val presetDevMirror = "/dev/hymo_mirror"
-
-                val selectedPreset = when (effectiveMirrorPath) {
-                    presetImgMnt -> "img_mnt"
-                    presetDebugRamdisk -> "debug_ramdisk"
-                    presetDevMirror -> "dev_mirror"
-                    else -> "custom"
-                }
-
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     listOf(
+                        "auto" to R.string.hymofs_mirror_preset_auto,
                         "img_mnt" to R.string.hymofs_mirror_preset_img_mnt,
                         "debug_ramdisk" to R.string.hymofs_mirror_preset_debug_ramdisk,
                         "dev_mirror" to R.string.hymofs_mirror_preset_dev_mirror,
@@ -1407,6 +1406,10 @@ private fun SettingsTab(
                         FilledTonalButton(
                             onClick = {
                                 when (key) {
+                                    "auto" -> {
+                                        mirrorPath = ""
+                                        updateAndSave(config.copy(mirrorPath = ""))
+                                    }
                                     "img_mnt" -> {
                                         mirrorPath = presetImgMnt
                                         updateAndSave(config.copy(mirrorPath = presetImgMnt))
@@ -1433,7 +1436,7 @@ private fun SettingsTab(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !(key != "custom" && !hymofsAvailable),
+                            enabled = (key == "auto" || key == "custom") || hymofsAvailable,
                             colors = if (selected) {
                                 ButtonDefaults.filledTonalButtonColors(
                                     containerColor = MaterialTheme.colorScheme.primary,

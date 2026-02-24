@@ -495,7 +495,7 @@
     <string name="clear_custom_paths">清除自定义</string>
     <string name="apply_config">应用配置</string>
     <string name="config_applied">配置已应用到内核</string>
-    <string name="mnt_detach">Thanks</string>
+    <string name="mnt_detach">MNT_DETACH</string>
     <string name="group_contains_apps">包含 %1$d 个应用</string>
     <string name="settings_disable_sulog"> 禁用超级用户日志 </string>
     <string name="settings_disable_sulog_summary">禁用 KernelSU 超级用户访问记录</string>
@@ -639,7 +639,8 @@
     <string name="hymofs_fs_type_erofs">EROFS 镜像</string>
     <string name="hymofs_fs_type_tmpfs">Tmpfs 分区（内存）</string>
     <string name="hymofs_mirror_path">挂载基点 / 镜像路径</string>
-    <string name="hymofs_mirror_path_desc">选择一个预设挂载基点，或手动填写自定义镜像路径。大多数设备推荐使用 /data/adb/hymo/img_mnt。</string>
+    <string name="hymofs_mirror_path_desc">自动：HymoFS 开启时用 /dev/hymo_mirror，关闭时用 /data/adb/hymo/img_mnt。也可选择预设或自定义路径（覆盖自动）。</string>
+    <string name="hymofs_mirror_preset_auto">自动</string>
     <string name="hymofs_mirror_preset_img_mnt">/data/adb/hymo/img_mnt</string>
     <string name="hymofs_mirror_preset_debug_ramdisk">/debug_ramdisk</string>
     <string name="hymofs_mirror_preset_dev_mirror">/dev/hymo_mirror</string>

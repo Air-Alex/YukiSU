@@ -3,7 +3,7 @@
 namespace ksud {
 
 // Auto-generated at build time
-const char* const VERSION_CODE = "13221";
-const char* const VERSION_NAME = "1.3.0-36-g33e1a444";
+const char* const VERSION_CODE = "13213";
+const char* const VERSION_NAME = "1.4.0-2-g15cb540c";
 
 }  // namespace ksud

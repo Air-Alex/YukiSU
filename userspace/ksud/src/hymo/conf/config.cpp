@@ -63,8 +63,12 @@ Config Config::from_file(const fs::path& path) {
                 config.enable_stealth = o.at("enable_stealth").as_bool();
             if (o.count("hymofs_enabled"))
                 config.hymofs_enabled = o.at("hymofs_enabled").as_bool();
-            if (o.count("mirror_path"))
+            if (o.count("mirror_path")) {
                 config.mirror_path = o.at("mirror_path").as_string();
+                // Treat legacy default as "auto" so HymoFS-on uses /dev/hymo_mirror
+                if (config.mirror_path == (std::string(HYMO_DATA_DIR) + "/img_mnt"))
+                    config.mirror_path.clear();
+            }
             if (o.count("uname_release"))
                 config.uname_release = o.at("uname_release").as_string();
             if (o.count("uname_version"))

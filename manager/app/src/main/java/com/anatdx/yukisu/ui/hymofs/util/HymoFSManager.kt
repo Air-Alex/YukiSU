@@ -252,7 +252,10 @@ object HymoFSManager {
                     enableKernelDebug = json.optBoolean("enable_kernel_debug", false),
                     enableStealth = json.optBoolean("enable_stealth", true),
                     hymofsEnabled = json.optBoolean("hymofs_enabled", true),
-                    mirrorPath = json.optString("mirror_path", ""),
+                    mirrorPath = run {
+                        val raw = json.optString("mirror_path", "")
+                        if (raw == "/data/adb/hymo/img_mnt") "" else raw
+                    },
                     partitions = json.optJSONArray("partitions")?.let { arr ->
                         (0 until arr.length()).map { arr.getString(it) }
                     } ?: emptyList(),

@@ -668,7 +668,8 @@
     <string name="hymofs_mode_magic">Magic Mount</string>
     <string name="hymofs_mode_none">None</string>
     <string name="hymofs_mirror_path">Mount base / mirror path</string>
-    <string name="hymofs_mirror_path_desc">Choose a preset mount base or enter a custom mirror path. Most devices work well with /data/adb/hymo/img_mnt.</string>
+    <string name="hymofs_mirror_path_desc">Auto: use /dev/hymo_mirror when HymoFS is on, /data/adb/hymo/img_mnt when off. Or choose a preset / custom path (overrides auto).</string>
+    <string name="hymofs_mirror_preset_auto">Auto</string>
     <string name="hymofs_mirror_preset_img_mnt">img_mnt</string>
     <string name="hymofs_mirror_preset_debug_ramdisk">debug_ramdisk</string>
     <string name="hymofs_mirror_preset_dev_mirror">hymo_mirror</string>

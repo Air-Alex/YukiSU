@@ -113,7 +113,7 @@ std::string export_system_info_json() {
     // Get detected partitions
     auto partitions = export_partitions_json();
 
-    // Get mount base from runtime state or use default
+    // Get mount base from runtime state (actual path in use). Empty → default for display.
     auto state = load_runtime_state();
     std::string mount_base = state.mount_point.empty() ? HYMO_MIRROR_DEV : state.mount_point;
 

@@ -148,18 +148,12 @@ JNILIBS="$MANAGER_DIR/app/src/main/jniLibs/$ABI"
 mkdir -p "$JNILIBS"
 cp "$KSUD_DIR/build/ksud" "$JNILIBS/libksud.so"
 
+# 签名：通过环境变量传给 Gradle，不写入 gradle.properties
 if [[ -n "${YUKISU_KEYSTORE:-}" && -n "${YUKISU_KEYSTORE_PASSWORD:-}" && -n "${YUKISU_KEY_ALIAS:-}" && -n "${YUKISU_KEY_PASSWORD:-}" ]]; then
-  if [[ -f "$MANAGER_DIR/gradle.properties" ]]; then
-    grep -v -E "^(KEYSTORE_FILE|KEYSTORE_PASSWORD|KEY_ALIAS|KEY_PASSWORD)=" "$MANAGER_DIR/gradle.properties" > "$MANAGER_DIR/gradle.properties.tmp" || true
-    mv "$MANAGER_DIR/gradle.properties.tmp" "$MANAGER_DIR/gradle.properties"
-  fi
-  {
-    echo ""
-    echo "KEYSTORE_FILE=$YUKISU_KEYSTORE"
-    echo "KEYSTORE_PASSWORD=$YUKISU_KEYSTORE_PASSWORD"
-    echo "KEY_ALIAS=$YUKISU_KEY_ALIAS"
-    echo "KEY_PASSWORD=$YUKISU_KEY_PASSWORD"
-  } >> "$MANAGER_DIR/gradle.properties"
+  export KEYSTORE_FILE="$YUKISU_KEYSTORE"
+  export KEYSTORE_PASSWORD="$YUKISU_KEYSTORE_PASSWORD"
+  export KEY_ALIAS="$YUKISU_KEY_ALIAS"
+  export KEY_PASSWORD="$YUKISU_KEY_PASSWORD"
 fi
 
 cd "$MANAGER_DIR"
