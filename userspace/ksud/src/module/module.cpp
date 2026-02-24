@@ -5,6 +5,7 @@
 #include "../log.hpp"
 #include "../sepolicy/sepolicy.hpp"
 #include "../utils.hpp"
+#include "metamodule.hpp"
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -619,11 +620,13 @@ bool exec_install_script(const std::string& zip_path) {
         }
     }
 
-    // Handle partition symlinks
-    handle_partition(modpath, "vendor");
-    handle_partition(modpath, "system_ext");
-    handle_partition(modpath, "product");
-    handle_partition(modpath, "odm");
+    // Handle partition symlinks (skip when metamodule or built-in hymo handles mounts)
+    if (!installing_metamodule && !should_skip_default_partition_handling()) {
+        handle_partition(modpath, "vendor");
+        handle_partition(modpath, "system_ext");
+        handle_partition(modpath, "product");
+        handle_partition(modpath, "odm");
+    }
 
     // Update existing module if in BOOTMODE
     const std::string final_module = std::string(MODULE_DIR) + mod_id;

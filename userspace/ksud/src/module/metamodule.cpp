@@ -88,6 +88,15 @@ bool should_use_builtin_mount() {
 }
 }  // namespace
 
+bool should_skip_default_partition_handling() {
+    // External metamodule exists (metamount.sh in metamodule dir)
+    const std::string script = std::string(METAMODULE_DIR) + "metamount.sh";
+    if (file_exists(script))
+        return true;
+    // Built-in hymo active (no external metamodule, built-in not disabled)
+    return should_use_builtin_mount();
+}
+
 int metamodule_exec_mount_script() {
     const std::string script = std::string(METAMODULE_DIR) + "metamount.sh";
 
