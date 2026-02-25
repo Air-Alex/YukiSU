@@ -518,6 +518,18 @@ void ksu_load_allow_list(void)
 			pr_info("load_allow_list read err: %zd\n", ret);
 			break;
 		}
+		if (ret != sizeof(profile)) {
+			pr_err("load_allow_list short read: %zd < %zu, skip "
+			       "rest\n",
+			       ret, sizeof(profile));
+			break;
+		}
+		if (profile.version != KSU_APP_PROFILE_VER) {
+			pr_warn("load_allow_list skip profile version %u "
+				"(expected %d)\n",
+				profile.version, KSU_APP_PROFILE_VER);
+			continue;
+		}
 
 		pr_info("load_allow_uid, name: %s, uid: %d, allow: %d\n",
 			profile.key, profile.current_uid, profile.allow_su);

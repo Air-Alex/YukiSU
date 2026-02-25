@@ -39,6 +39,18 @@ namespace hymo {
 #ifndef MS_SLAVE
 #define MS_SLAVE (1 << 19)
 #endif  // #ifndef MS_SLAVE
+#ifndef MS_PRIVATE
+#define MS_PRIVATE (1 << 18)
+#endif  // #ifndef MS_PRIVATE
+#ifndef MS_BIND
+#define MS_BIND 4096
+#endif  // #ifndef MS_BIND
+#ifndef MS_REC
+#define MS_REC 16384
+#endif  // #ifndef MS_REC
+#ifndef MNT_DETACH
+#define MNT_DETACH 2
+#endif  // #ifndef MNT_DETACH
 
 static int fsopen(const char* fsname, unsigned int flags) {
     return syscall(__NR_fsopen, fsname, flags);
@@ -332,15 +344,15 @@ static bool mount_overlay_child(const std::string& mount_point, const std::strin
         return bind_mount(stock_root, mount_point, disable_umount);
     }
 
-    // Build lowerdir string
+    // Build lowerdir string; escape commas in each path for overlay parsing
     std::string lowerdir_config;
     for (size_t i = 0; i < lower_dirs.size(); ++i) {
-        lowerdir_config += lower_dirs[i];
+        lowerdir_config += escape_overlay_path(lower_dirs[i]);
         if (i < lower_dirs.size() - 1) {
             lowerdir_config += ":";
         }
     }
-    lowerdir_config += ":" + std::string(stock_root);
+    lowerdir_config += ":" + escape_overlay_path(stock_root);
 
     // Try modern API
     if (!mount_overlayfs_modern(lowerdir_config, std::nullopt, std::nullopt, mount_point,
@@ -367,6 +379,17 @@ bool mount_overlay(const std::string& target_root_raw, const std::vector<std::st
     // KernelSU CRITICAL: source/device name must be "KSU" (or config mountsource) so KernelSU can
     // identify and manage mounts.
     const std::string effective_source = mount_source.empty() ? "KSU" : mount_source;
+
+    // Skip overlay when partition is a symlink (e.g. /product -> /system/product); same as
+    // meta-overlayfs to avoid double overlay or wrong base.
+    try {
+        if (fs::exists(target_root_raw) && fs::is_symlink(target_root_raw)) {
+            LOG_INFO("Partition is symlink, skip overlay: " + target_root_raw);
+            return true;
+        }
+    } catch (const std::exception& e) {
+        LOG_WARN("Failed to check symlink " + target_root_raw + ": " + e.what());
+    }
 
     std::string target_root = target_root_raw;
     try {
@@ -409,9 +432,8 @@ bool mount_overlay(const std::string& target_root_raw, const std::vector<std::st
         LOG_ERROR("Failed to create mirror for " + target_root + ": " + strerror(errno));
         return false;
     }
-    // Use MS_SLAVE so mirror does not propagate back to target_root; avoid MS_PRIVATE
-    // (detectors flag root/private as Magisk Hide indicator). Source "none" for propagation-only.
-    mount("none", mirror_path.c_str(), nullptr, MS_SLAVE, nullptr);
+    // Make mirror private so our changes don't propagate back
+    mount(nullptr, mirror_path.c_str(), nullptr, MS_PRIVATE, nullptr);
 
     LOG_DEBUG("Created mirror at " + mirror_path);
 
@@ -436,14 +458,21 @@ bool mount_overlay(const std::string& target_root_raw, const std::vector<std::st
         }
     }
 
-    // Build lowerdir config using MIRROR as the base
+    // Build lowerdir: module layers on top, then REAL partition as lowest (like meta-overlayfs).
+    // Using target_root (live partition) as lowest avoids snapshot/timing issues that can
+    // cause ROM code to read wrong or uninitialized values (e.g. Oplus colorMode crash).
     std::string lowerdir_config;
     for (size_t i = 0; i < module_roots.size(); ++i) {
-        lowerdir_config += module_roots[i];
+        lowerdir_config += escape_overlay_path(module_roots[i]);
         lowerdir_config += ":";
     }
-    lowerdir_config += mirror_path;  // Use mirror as lowerdir!
+    lowerdir_config += escape_overlay_path(target_root);
 
+    static const size_t kOverlayLowerdirMax = 4096;
+    if (lowerdir_config.size() > kOverlayLowerdirMax) {
+        LOG_ERROR("lowerdir length " + std::to_string(lowerdir_config.size()) + " exceeds " +
+                  std::to_string(kOverlayLowerdirMax) + ", overlay may fail");
+    }
     LOG_DEBUG("lowerdir=" + lowerdir_config);
 
     std::optional<std::string> upperdir_str;
@@ -514,6 +543,12 @@ bool mount_overlay(const std::string& target_root_raw, const std::vector<std::st
         umount2(mirror_path.c_str(), MNT_DETACH);
         return false;
     }
+
+    // Since the root overlay lowerdir now correctly uses target_root instead of mirror_path,
+    // we no longer need the mirror to be permanently mounted. We only needed it during
+    // child mount restorations to extract the original data. Unmount it to stay completely
+    // invisible to detectors that check for private bind mounts.
+    umount2(mirror_path.c_str(), MNT_DETACH);
 
     return true;
 }
