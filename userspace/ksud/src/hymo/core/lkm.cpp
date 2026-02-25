@@ -2,12 +2,15 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <thread>
 #include "../../assets.hpp"
 #include "../defs.hpp"
 #include "../mount/hymofs.hpp"
@@ -17,6 +20,11 @@ namespace fs = std::filesystem;
 namespace hymo {
 
 static constexpr int HYMO_SYSCALL_NR = 142;
+static std::string g_lkm_last_error;
+
+static void set_lkm_last_error(const std::string& msg) {
+    g_lkm_last_error = msg;
+}
 
 // finit_module and init_module syscall numbers
 #if defined(__aarch64__)
@@ -106,12 +114,33 @@ static bool load_module_via_finit(const char* ko_path, const char* params) {
 }
 
 static bool unload_module_via_syscall(const char* modname) {
-    const int ret = syscall(SYS_delete_module_num, modname, O_NONBLOCK);
+    // Use blocking unload here. Non-blocking delete_module often returns EAGAIN
+    // while references are draining, whereas user-facing rmmod typically waits.
+    const int ret = syscall(SYS_delete_module_num, modname, 0);
     if (ret != 0) {
-        LOG_ERROR(std::string("lkm: delete_module ") + modname + " failed: " + strerror(errno));
+        set_lkm_last_error(std::string("delete_module ") + modname + " failed: " + strerror(errno));
+        LOG_ERROR(std::string("lkm: ") + g_lkm_last_error);
         return false;
     }
     return true;
+}
+
+static bool unload_module_via_rmmod(const char* modname) {
+    const std::string cmd = std::string("/system/bin/rmmod ") + modname + " >/dev/null 2>&1";
+    const int rc = std::system(cmd.c_str());
+    if (rc == -1) {
+        set_lkm_last_error(std::string("failed to exec rmmod for ") + modname);
+        LOG_ERROR(std::string("lkm: ") + g_lkm_last_error);
+        return false;
+    }
+    if (WIFEXITED(rc) && WEXITSTATUS(rc) == 0) {
+        return true;
+    }
+    set_lkm_last_error(
+        std::string("rmmod ") + modname + " failed, wait_status=" + std::to_string(rc) +
+        ", exit_code=" + (WIFEXITED(rc) ? std::to_string(WEXITSTATUS(rc)) : std::string("signal")));
+    LOG_ERROR(std::string("lkm: ") + g_lkm_last_error);
+    return false;
 }
 
 static std::string read_file_first_line(const std::string& path) {
@@ -189,6 +218,10 @@ bool lkm_is_loaded() {
     return HymoFS::is_available();
 }
 
+std::string lkm_get_last_error() {
+    return g_lkm_last_error;
+}
+
 std::string lkm_get_kmi_override() {
     return read_file_first_line(LKM_KMI_OVERRIDE_FILE);
 }
@@ -212,6 +245,7 @@ void lkm_autoload_post_fs_data() {
 }
 
 bool lkm_load() {
+    set_lkm_last_error("");
     if (lkm_is_loaded()) {
         return true;
     }
@@ -244,7 +278,8 @@ bool lkm_load() {
     }
 
     if (ko_path.empty()) {
-        LOG_ERROR("HymoFS LKM: no matching module found for " + kmi);
+        set_lkm_last_error("no matching module found for " + kmi);
+        LOG_ERROR("HymoFS LKM: " + g_lkm_last_error);
         return false;
     }
 
@@ -262,10 +297,41 @@ bool lkm_load() {
 }
 
 bool lkm_unload() {
-    if (HymoFS::is_available()) {
-        HymoFS::clear_rules();
+    set_lkm_last_error("");
+    // Idempotent behavior: already unloaded should not be treated as an error.
+    if (!lkm_is_loaded()) {
+        return true;
     }
-    return unload_module_via_syscall("hymofs_lkm");
+    if (HymoFS::is_available()) {
+        // Disable first to reduce active hook traffic during unload window.
+        HymoFS::set_enabled(false);
+        if (!HymoFS::clear_rules()) {
+            set_lkm_last_error("failed to clear HymoFS rules before unload");
+        }
+        // Release cached HymoFS anon-fd in this process. Otherwise the module may
+        // stay busy until ksud exits, causing immediate unload attempts to fail.
+        HymoFS::release_connection();
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    }
+    // delete_module may return EAGAIN/EBUSY while hooks are still being released.
+    for (int i = 0; i < 5; ++i) {
+        if (unload_module_via_syscall("hymofs_lkm")) {
+            return true;
+        }
+        if (errno != EAGAIN && errno != EBUSY) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    }
+    LOG_WARN("lkm: delete_module failed, fallback to rmmod");
+    if (unload_module_via_rmmod("hymofs_lkm")) {
+        return true;
+    }
+    if (g_lkm_last_error.find("delete_module") != std::string::npos ||
+        g_lkm_last_error.find("rmmod") != std::string::npos) {
+        g_lkm_last_error += " (module may still be busy; stop related mounts/processes or reboot)";
+    }
+    return false;
 }
 
 bool lkm_set_autoload(bool on) {

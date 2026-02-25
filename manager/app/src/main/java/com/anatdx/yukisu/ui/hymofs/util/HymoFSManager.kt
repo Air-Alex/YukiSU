@@ -724,7 +724,20 @@ object HymoFSManager {
      */
     suspend fun loadLkm(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val result = Shell.cmd("${getKsud()} hymo lkm load").exec()
+            val marker = "__KSUD_EC__:"
+            val uidMarker = "__UID__:"
+            val cmd = "${getKsud()} hymo lkm load"
+            val result = Shell.cmd("{ echo ${uidMarker}\$(id -u); $cmd 2>&1; ec=$?; echo ${marker}\$ec; exit \$ec; }").exec()
+            val exitCode = result.out.firstOrNull { it.startsWith(marker) }
+                ?.removePrefix(marker)?.trim()?.toIntOrNull()
+            val uid = result.out.firstOrNull { it.startsWith(uidMarker) }
+                ?.removePrefix(uidMarker)?.trim()
+            if (!result.isSuccess) {
+                Log.e(
+                    TAG,
+                    "loadLkm failed: ksud=${getKsud()} uid=$uid exitCode=$exitCode out=${result.out} err=${result.err}"
+                )
+            }
             result.isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load LKM", e)
@@ -737,7 +750,30 @@ object HymoFSManager {
      */
     suspend fun unloadLkm(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val result = Shell.cmd("${getKsud()} hymo lkm unload").exec()
+            val marker = "__KSUD_EC__:"
+            val uidMarker = "__UID__:"
+            val cmd = "${getKsud()} hymo lkm unload"
+            val result = Shell.cmd("{ echo ${uidMarker}\$(id -u); $cmd 2>&1; ec=$?; echo ${marker}\$ec; exit \$ec; }").exec()
+            val exitCode = result.out.firstOrNull { it.startsWith(marker) }
+                ?.removePrefix(marker)?.trim()?.toIntOrNull()
+            val uid = result.out.firstOrNull { it.startsWith(uidMarker) }
+                ?.removePrefix(uidMarker)?.trim()
+            if (!result.isSuccess) {
+                Log.e(
+                    TAG,
+                    "unloadLkm failed: ksud=${getKsud()} uid=$uid exitCode=$exitCode out=${result.out} err=${result.err}"
+                )
+                // Some devices report non-zero on unload path even though module is gone.
+                // Verify real state before surfacing failure to UI.
+                val statusResult = Shell.cmd("${getKsud()} hymo lkm status").exec()
+                if (statusResult.isSuccess) {
+                    val statusJson = JSONObject(statusResult.out.joinToString("\n"))
+                    if (!statusJson.optBoolean("loaded", true)) {
+                        Log.w(TAG, "unloadLkm: command failed but status shows unloaded, treat as success")
+                        return@withContext true
+                    }
+                }
+            }
             result.isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "Failed to unload LKM", e)

@@ -8,6 +8,7 @@ namespace hymo {
 bool lkm_load();
 bool lkm_unload();
 bool lkm_is_loaded();
+std::string lkm_get_last_error();
 bool lkm_set_autoload(bool on);
 bool lkm_get_autoload();  // default true if file missing
 

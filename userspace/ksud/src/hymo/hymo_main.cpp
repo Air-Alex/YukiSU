@@ -1130,6 +1130,10 @@ int hymo::run_hymo_main(int argc, char** argv) {
                     std::cout << "HymoFS LKM loaded.\n";
                 } else {
                     std::cerr << "Failed to load HymoFS LKM.\n";
+                    const std::string err = lkm_get_last_error();
+                    if (!err.empty()) {
+                        std::cerr << "Reason: " << err << "\n";
+                    }
                     return 1;
                 }
             } else if (lkm_subcmd == "unload") {
@@ -1137,6 +1141,10 @@ int hymo::run_hymo_main(int argc, char** argv) {
                     std::cout << "HymoFS LKM unloaded.\n";
                 } else {
                     std::cerr << "Failed to unload HymoFS LKM.\n";
+                    const std::string err = lkm_get_last_error();
+                    if (!err.empty()) {
+                        std::cerr << "Reason: " << err << "\n";
+                    }
                     return 1;
                 }
             } else if (lkm_subcmd == "status") {

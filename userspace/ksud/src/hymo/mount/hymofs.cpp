@@ -385,4 +385,13 @@ bool HymoFS::hide_overlay_xattrs(const std::string& path) {
     return ret;
 }
 
+void HymoFS::release_connection() {
+    if (s_hymo_fd >= 0) {
+        close(s_hymo_fd);
+        s_hymo_fd = -1;
+    }
+    s_status_checked = false;
+    s_cached_status = HymoFSStatus::NotPresent;
+}
+
 }  // namespace hymo
