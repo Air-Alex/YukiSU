@@ -65,6 +65,9 @@ object Natives {
     val allowList: IntArray
         external get
 
+    /** Returns total number of apps in allow list (count only, no full list fetch). */
+    external fun getSuperuserCount(): Int
+
     val isSafeMode: Boolean
         external get
 

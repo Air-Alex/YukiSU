@@ -92,12 +92,27 @@ bool get_allow_list(struct ksu_get_allow_list_cmd *cmd) {
   int size = 0;
   int uids[1024];
   if (legacy_get_allow_list(uids, &size)) {
-    cmd->count = size;
-    memcpy(cmd->uids, uids, sizeof(int) * size);
+    cmd->count = (uint32_t)size;
+    memcpy(cmd->uids, uids, sizeof(int) * (size <= 128 ? size : 128));
     return true;
   }
 
   return false;
+}
+
+int get_superuser_count(void) {
+  struct ksu_new_get_allow_list_cmd cmd = {
+      .count = 0,
+  };
+  if (ksuctl(KSU_IOCTL_NEW_GET_ALLOW_LIST, &cmd) == 0) {
+    return (int)cmd.total_count;
+  }
+  // fallback: use old API and return count
+  struct ksu_get_allow_list_cmd old_cmd = {};
+  if (get_allow_list(&old_cmd)) {
+    return (int)old_cmd.count;
+  }
+  return 0;
 }
 
 bool is_safe_mode() {

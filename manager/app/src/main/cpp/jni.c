@@ -45,6 +45,8 @@ NativeBridgeNP(getAllowList, jintArray) {
   return GetEnvironment()->NewIntArray(env, 0);
 }
 
+NativeBridgeNP(getSuperuserCount, jint) { return (jint)get_superuser_count(); }
+
 NativeBridgeNP(isSafeMode, jboolean) { return is_safe_mode(); }
 
 NativeBridgeNP(isLkmMode, jboolean) { return is_lkm_mode(); }

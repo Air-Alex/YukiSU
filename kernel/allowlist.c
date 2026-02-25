@@ -11,6 +11,7 @@
 #include <linux/types.h>
 #include <linux/version.h>
 #include <linux/compiler_types.h>
+#include <linux/rcupdate.h>
 
 #include "allowlist.h"
 #include "klog.h" // IWYU pragma: keep
@@ -85,6 +86,7 @@ static void init_default_profiles(void)
 
 struct perm_data {
 	struct list_head list;
+	struct rcu_head rcu;
 	struct app_profile profile;
 };
 
@@ -98,13 +100,15 @@ static uint8_t allow_list_bitmap[PAGE_SIZE] __read_mostly __aligned(PAGE_SIZE);
 void ksu_show_allow_list(void)
 {
 	struct perm_data *p = NULL;
-	struct list_head *pos = NULL;
+
 	pr_info("ksu_show_allow_list\n");
-	list_for_each (pos, &allow_list) {
-		p = list_entry(pos, struct perm_data, list);
+	rcu_read_lock();
+	list_for_each_entry_rcu(p, &allow_list, list)
+	{
 		pr_info("uid :%d, allow: %d\n", p->profile.current_uid,
 			p->profile.allow_su);
 	}
+	rcu_read_unlock();
 }
 
 #ifdef CONFIG_KSU_DEBUG
@@ -125,11 +129,11 @@ static void ksu_grant_root_to_shell(void)
 bool ksu_get_app_profile(struct app_profile *profile)
 {
 	struct perm_data *p = NULL;
-	struct list_head *pos = NULL;
 	bool found = false;
 
-	list_for_each (pos, &allow_list) {
-		p = list_entry(pos, struct perm_data, list);
+	rcu_read_lock();
+	list_for_each_entry_rcu(p, &allow_list, list)
+	{
 		if (profile->current_uid == p->profile.current_uid) {
 			memcpy(profile, &p->profile, sizeof(*profile));
 			found = true;
@@ -138,6 +142,7 @@ bool ksu_get_app_profile(struct app_profile *profile)
 	}
 
 exit:
+	rcu_read_unlock();
 	return found;
 }
 
@@ -216,7 +221,7 @@ bool ksu_set_app_profile(struct app_profile *profile, bool persist)
 		    profile->key, profile->current_uid,
 		    profile->nrp_config.profile.umount_modules);
 	}
-	list_add_tail(&p->list, &allow_list);
+	list_add_tail_rcu(&p->list, &allow_list);
 
 out:
 	if (profile->current_uid <= BITMAP_UID_MAX) {
@@ -337,37 +342,49 @@ bool ksu_uid_should_umount(uid_t uid)
 void ksu_get_root_profile(uid_t uid, struct root_profile *out)
 {
 	struct perm_data *p = NULL;
-	struct list_head *pos = NULL;
 
-	list_for_each (pos, &allow_list) {
-		p = list_entry(pos, struct perm_data, list);
+	rcu_read_lock();
+	list_for_each_entry_rcu(p, &allow_list, list)
+	{
 		if (uid == p->profile.current_uid && p->profile.allow_su) {
 			if (!p->profile.rp_config.use_default) {
 				memcpy(out, &p->profile.rp_config.profile,
 				       sizeof(*out));
+				rcu_read_unlock();
 				return;
 			}
 			break;
 		}
 	}
+	rcu_read_unlock();
 
 	// use default profile
 	memcpy(out, &default_root_profile, sizeof(*out));
 }
 
-bool ksu_get_allow_list(int *array, int *length, bool allow)
+bool ksu_get_allow_list(int *array, u16 length, u16 *out_length, u16 *out_total,
+			bool allow)
 {
 	struct perm_data *p = NULL;
-	struct list_head *pos = NULL;
-	int i = 0;
+	u16 i = 0, j = 0;
 
-	list_for_each (pos, &allow_list) {
-		p = list_entry(pos, struct perm_data, list);
-		if (p->profile.allow_su == allow) {
-			array[i++] = p->profile.current_uid;
+	rcu_read_lock();
+	list_for_each_entry_rcu(p, &allow_list, list)
+	{
+		if (p->profile.allow_su == allow &&
+		    !(ksu_is_manager_uid_valid() &&
+		      ksu_is_uid_manager(p->profile.current_uid))) {
+			if (j < length && array)
+				array[j++] = p->profile.current_uid;
+			++i;
 		}
 	}
-	*length = i;
+	rcu_read_unlock();
+
+	if (out_length)
+		*out_length = j;
+	if (out_total)
+		*out_total = i;
 
 	return true;
 }
@@ -519,14 +536,14 @@ void ksu_prune_allowlist(bool (*is_uid_valid)(uid_t, char *, void *),
 		if (!is_preserved_uid && !is_uid_valid(uid, package, data)) {
 			modified = true;
 			pr_info("prune uid: %d, package: %s\n", uid, package);
-			list_del(&np->list);
+			list_del_rcu(&np->list);
 			if (likely(uid <= BITMAP_UID_MAX)) {
 				allow_list_bitmap[uid / BITS_PER_BYTE] &=
 				    ~(1 << (uid % BITS_PER_BYTE));
 			}
 			remove_uid_from_arr(uid);
 			smp_mb();
-			kfree(np);
+			kfree_rcu(np, rcu);
 		}
 	}
 	mutex_unlock(&allowlist_mutex);

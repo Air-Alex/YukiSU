@@ -63,6 +63,15 @@ struct ksu_get_allow_list_cmd {
 	__u8 allow;
 };
 
+/* New allowlist API: flexible array, separate count/total (for count-only or
+ * pagination) */
+struct ksu_new_get_allow_list_cmd {
+	__u16 count; /* Input: buffer size in uids; Output: number of uids
+			returned */
+	__u16 total_count; /* Output: total number of uids in list */
+	__u32 uids[]; /* Output: array of UIDs (flexible array member) */
+};
+
 struct ksu_uid_granted_root_cmd {
 	__u32 uid;
 	__u8 granted;
@@ -170,6 +179,10 @@ struct ksu_superkey_status_cmd {
 #define KSU_IOCTL_CHECK_SAFEMODE _IOC(_IOC_READ, 'K', 5, 0)
 #define KSU_IOCTL_GET_ALLOW_LIST _IOC(_IOC_READ | _IOC_WRITE, 'K', 6, 0)
 #define KSU_IOCTL_GET_DENY_LIST _IOC(_IOC_READ | _IOC_WRITE, 'K', 7, 0)
+#define KSU_IOCTL_NEW_GET_ALLOW_LIST                                           \
+	_IOWR('K', 6, struct ksu_new_get_allow_list_cmd)
+#define KSU_IOCTL_NEW_GET_DENY_LIST                                            \
+	_IOWR('K', 7, struct ksu_new_get_allow_list_cmd)
 #define KSU_IOCTL_UID_GRANTED_ROOT _IOC(_IOC_READ | _IOC_WRITE, 'K', 8, 0)
 #define KSU_IOCTL_UID_SHOULD_UMOUNT _IOC(_IOC_READ | _IOC_WRITE, 'K', 9, 0)
 #define KSU_IOCTL_GET_MANAGER_UID _IOC(_IOC_READ, 'K', 10, 0)

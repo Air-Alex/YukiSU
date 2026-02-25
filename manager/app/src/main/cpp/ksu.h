@@ -137,6 +137,13 @@ struct ksu_get_allow_list_cmd {
   uint8_t allow;      // Input: true for allow list, false for deny list
 };
 
+// New allowlist API: count-only or paginated (no buffer overflow)
+struct ksu_new_get_allow_list_cmd {
+  uint16_t count;       // Input: buffer size; Output: number returned
+  uint16_t total_count; // Output: total in list
+  uint32_t uids[];      // Output: flexible array
+};
+
 struct ksu_uid_granted_root_cmd {
   uint32_t uid;    // Input: target UID to check
   uint8_t granted; // Output: true if granted, false otherwise
@@ -192,6 +199,10 @@ struct ksu_hook_type_cmd {
 #define KSU_IOCTL_CHECK_SAFEMODE _IOC(_IOC_READ, 'K', 5, 0)
 #define KSU_IOCTL_GET_ALLOW_LIST _IOC(_IOC_READ | _IOC_WRITE, 'K', 6, 0)
 #define KSU_IOCTL_GET_DENY_LIST _IOC(_IOC_READ | _IOC_WRITE, 'K', 7, 0)
+#define KSU_IOCTL_NEW_GET_ALLOW_LIST                                           \
+  _IOWR('K', 6, struct ksu_new_get_allow_list_cmd)
+#define KSU_IOCTL_NEW_GET_DENY_LIST                                            \
+  _IOWR('K', 7, struct ksu_new_get_allow_list_cmd)
 #define KSU_IOCTL_UID_GRANTED_ROOT _IOC(_IOC_READ | _IOC_WRITE, 'K', 8, 0)
 #define KSU_IOCTL_UID_SHOULD_UMOUNT _IOC(_IOC_READ | _IOC_WRITE, 'K', 9, 0)
 #define KSU_IOCTL_GET_MANAGER_APPID _IOC(_IOC_READ, 'K', 10, 0)
@@ -271,6 +282,10 @@ bool is_signature_ok(void);
 bool ksu_driver_present(void);
 
 bool get_allow_list(struct ksu_get_allow_list_cmd *);
+
+// Returns total allow-list count only (no full list fetch). Uses new allowlist
+// API.
+int get_superuser_count(void);
 
 // Legacy Compatible
 struct ksu_version_info legacy_get_info();
