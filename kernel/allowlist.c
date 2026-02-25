@@ -180,7 +180,8 @@ static bool profile_valid(struct app_profile *profile)
 bool ksu_set_app_profile(struct app_profile *profile, bool persist)
 {
 	struct perm_data *p = NULL;
-	struct list_head *pos = NULL;
+	struct perm_data *np = NULL;
+	u16 count = 0;
 	bool result = false;
 
 	if (!profile_valid(profile)) {
@@ -188,27 +189,45 @@ bool ksu_set_app_profile(struct app_profile *profile, bool persist)
 		return false;
 	}
 
-	list_for_each (pos, &allow_list) {
-		p = list_entry(pos, struct perm_data, list);
+	mutex_lock(&allowlist_mutex);
+
+	list_for_each_entry (p, &allow_list, list) {
+		++count;
 		// both uid and package must match, otherwise it will break
 		// multiple package with different user id
 		if (profile->current_uid == p->profile.current_uid &&
 		    !strcmp(profile->key, p->profile.key)) {
-			// found it, just override it all!
-			memcpy(&p->profile, profile, sizeof(*profile));
+			// found: replace node so RCU readers never see
+			// half-updated data
+			np = (struct perm_data *)kzalloc(
+			    sizeof(struct perm_data), GFP_KERNEL);
+			if (!np) {
+				result = false;
+				goto out_unlock;
+			}
+			memcpy(&np->profile, profile, sizeof(*profile));
+			list_replace_rcu(&p->list, &np->list);
+			kfree_rcu(p, rcu);
 			result = true;
 			goto out;
 		}
 	}
 
-	// not found, alloc a new node!
-	p = (struct perm_data *)kzalloc(sizeof(struct perm_data), GFP_KERNEL);
-	if (!p) {
-		pr_err("ksu_set_app_profile alloc failed\n");
-		return false;
+	// not found, alloc a new node
+	if (count >= U16_MAX) {
+		pr_err("too many app profile\n");
+		result = false;
+		goto out_unlock;
 	}
 
-	memcpy(&p->profile, profile, sizeof(*profile));
+	np = (struct perm_data *)kzalloc(sizeof(struct perm_data), GFP_KERNEL);
+	if (!np) {
+		pr_err("ksu_set_app_profile alloc failed\n");
+		result = false;
+		goto out_unlock;
+	}
+
+	memcpy(&np->profile, profile, sizeof(*profile));
 	if (profile->allow_su) {
 		pr_info("set root profile, key: %s, uid: %d, gid: %d, context: "
 			"%s\n",
@@ -221,7 +240,8 @@ bool ksu_set_app_profile(struct app_profile *profile, bool persist)
 		    profile->key, profile->current_uid,
 		    profile->nrp_config.profile.umount_modules);
 	}
-	list_add_tail_rcu(&p->list, &allow_list);
+	list_add_tail_rcu(&np->list, &allow_list);
+	result = true;
 
 out:
 	if (profile->current_uid <= BITMAP_UID_MAX) {
@@ -235,14 +255,11 @@ out:
 			    ~(1 << (profile->current_uid % BITS_PER_BYTE));
 	} else {
 		if (profile->allow_su) {
-			/*
-			 * 1024 apps with uid higher than BITMAP_UID_MAX
-			 * registered to request superuser?
-			 */
 			if (allow_list_pointer >= ARRAY_SIZE(allow_list_arr)) {
 				pr_err("too many apps registered\n");
 				WARN_ON(1);
-				return false;
+				result = false;
+				goto out_unlock;
 			}
 			allow_list_arr[allow_list_pointer++] =
 			    profile->current_uid;
@@ -250,25 +267,22 @@ out:
 			remove_uid_from_arr(profile->current_uid);
 		}
 	}
-	result = true;
 
 	// check if the default profiles is changed, cache it to a single struct
-	// to accelerate access.
 	if (unlikely(!strcmp(profile->key, "$"))) {
-		// set default non root profile
 		memcpy(&default_non_root_profile, &profile->nrp_config.profile,
 		       sizeof(default_non_root_profile));
 	}
-
 	if (unlikely(!strcmp(profile->key, "#"))) {
-		// set default root profile
 		memcpy(&default_root_profile, &profile->rp_config.profile,
 		       sizeof(default_root_profile));
 	}
 
-	if (persist) {
+out_unlock:
+	mutex_unlock(&allowlist_mutex);
+
+	if (result && persist) {
 		persistent_allow_list();
-		// FIXME: use a new flag
 		ksu_mark_running_process();
 	}
 
