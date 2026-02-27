@@ -38,10 +38,21 @@ void Logger::init(bool debug, bool verbose, const char* log_path) {
     debug_ = debug;
     verbose_ = verbose;
     if (log_path && *log_path) {
-        fs::path p(log_path);
-        if (!p.parent_path().empty())
-            fs::create_directories(p.parent_path());
-        log_file_ = std::make_unique<std::ofstream>(log_path, std::ios::app);
+        try {
+            fs::path p(log_path);
+            const fs::path parent = p.parent_path();
+            if (!parent.empty()) {
+                ensure_dir_exists(parent);
+            }
+            // Always append: short-lived commands (getFeatures, getStatus, etc.) run in separate
+            // processes; trunc would clear the log every time the Manager refreshes.
+            log_file_ = std::make_unique<std::ofstream>(log_path, std::ios::app);
+            if (!log_file_->is_open()) {
+                log_file_.reset();
+            }
+        } catch (...) {
+            log_file_.reset();
+        }
     }
 }
 

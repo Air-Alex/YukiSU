@@ -23,6 +23,8 @@ object HymoFSManager {
     const val HYMO_LOG_FILE = "/data/adb/hymo/daemon.log"
     const val MODULE_DIR = "/data/adb/modules"
     const val DISABLE_BUILTIN_MOUNT_FILE = "/data/adb/ksu/.disable_builtin_mount"
+    /** KSU saves dmesg to this path at boot */
+    private const val KSU_DMESG_LOG = "/data/adb/ksu/log/dmesg.log"
     
     /**
      * Get ksud path
@@ -133,6 +135,7 @@ object HymoFSManager {
         val ignoreProtocolMismatch: Boolean = false,
         val enableKernelDebug: Boolean = false,
         val enableStealth: Boolean = true,
+        val enableHidexattr: Boolean = false,  // When true: mount_hide, maps_spoof, statfs_spoof, stealth
         val hymofsEnabled: Boolean = true,
         val mirrorPath: String = "",
         val partitions: List<String> = emptyList(),
@@ -198,6 +201,85 @@ object HymoFSManager {
     
     // ==================== Commands ====================
     
+    /**
+     * HymoFS feature bitmask and human-readable names.
+     * Parsed from `ksud hymo hymofs features` output: "features: 0xNN name1 name2 ..."
+     */
+    data class FeaturesResult(
+        val bitmask: Int,
+        val names: List<String>
+    )
+
+    /**
+     * Get HymoFS feature bitmask and feature names (mount_hide, maps_spoof, etc.).
+     * Returns null when HymoFS is not available or command fails.
+     */
+    suspend fun getFeatures(): FeaturesResult? = withContext(Dispatchers.IO) {
+        try {
+            val shell = getRootShell()
+            val result = shell.newJob()
+                .add("${getKsud()} hymo hymofs features")
+                .to(ArrayList<String>(), null)
+                .exec()
+            val line = (result.out + result.err).joinToString(" ").trim()
+            if (line.isEmpty()) {
+                Log.w(TAG, "getFeatures: empty output, isSuccess=${result.isSuccess}")
+                return@withContext null
+            }
+            // "features: 0x80 mount_hide maps_spoof" or "features: 0x80"
+            val regex = Regex("""features:\s*0x([0-9a-fA-F]+)\s*(.*)?""")
+            val match = regex.find(line) ?: run {
+                Log.w(TAG, "getFeatures: no match in line='$line'")
+                return@withContext null
+            }
+            val bitmask = match.groupValues[1].toIntOrNull(16) ?: return@withContext null
+            val names = match.groupValues[2]
+                .trim()
+                .split(Regex("\\s+"))
+                .filter { it.isNotEmpty() }
+            FeaturesResult(bitmask, names)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get features", e)
+            null
+        }
+    }
+
+    /**
+     * Clear all /proc/pid/maps spoof rules in the kernel.
+     */
+    suspend fun clearMapsRules(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = Shell.cmd("${getKsud()} hymo hymofs maps clear").exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear maps rules", e)
+            false
+        }
+    }
+
+    /**
+     * Add a single maps spoof rule: when a maps line has (target_ino[, target_dev]),
+     * replace with spoofed ino/dev/pathname. target_dev 0 = match any device.
+     */
+    suspend fun addMapsRule(
+        targetIno: Long,
+        targetDev: Long,
+        spoofedIno: Long,
+        spoofedDev: Long,
+        spoofedPathname: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val path = spoofedPathname.replace("'", "'\\''")
+            val result = Shell.cmd(
+                "${getKsud()} hymo hymofs maps add $targetIno $targetDev $spoofedIno $spoofedDev '$path'"
+            ).exec()
+            result.isSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add maps rule", e)
+            false
+        }
+    }
+
     /**
      * Get HymoFS version from ksud
      */
@@ -294,6 +376,7 @@ object HymoFSManager {
                     ignoreProtocolMismatch = json.optBoolean("ignore_protocol_mismatch", false),
                     enableKernelDebug = json.optBoolean("enable_kernel_debug", false),
                     enableStealth = json.optBoolean("enable_stealth", true),
+                    enableHidexattr = json.optBoolean("enable_hidexattr", false),
                     hymofsEnabled = json.optBoolean("hymofs_enabled", true),
                     mirrorPath = run {
                         val raw = json.optString("mirror_path", "")
@@ -334,6 +417,7 @@ object HymoFSManager {
                 put("ignore_protocol_mismatch", config.ignoreProtocolMismatch)
                 put("enable_kernel_debug", config.enableKernelDebug)
                 put("enable_stealth", config.enableStealth)
+                put("enable_hidexattr", config.enableHidexattr)
                 put("hymofs_enabled", config.hymofsEnabled)
                 if (config.mirrorPath.isNotEmpty()) {
                     put("mirror_path", config.mirrorPath)
@@ -429,9 +513,13 @@ object HymoFSManager {
                             val path = obj.optString("path", "")
                             rules.add(ActiveRule("hide", path, null, null))
                         }
+                        "MOUNT_HIDE", "MAPS_SPOOF", "STATFS_SPOOF", "STEALTH" -> {
+                            val args = obj.optString("args", "enabled")
+                            rules.add(ActiveRule(typeUpper.lowercase(), args, null, null))
+                        }
                         else -> {
                             val args = obj.optString("args", "")
-                            if (args.isNotEmpty()) {
+                            if (args.isNotEmpty() && typeUpper != "HYMOFS" && !typeUpper.startsWith("ERROR")) {
                                 rules.add(ActiveRule(typeUpper.lowercase(), args, null, null))
                             }
                         }
@@ -496,10 +584,11 @@ object HymoFSManager {
      */
     suspend fun getStorageInfo(): StorageInfo = withContext(Dispatchers.IO) {
         try {
-            // hymo: hymo api storage -> JSON
-            val result = Shell.cmd("${getKsud()} hymo api storage").exec()
-            if (result.isSuccess) {
-                val json = JSONObject(result.out.joinToString("\n"))
+            // hymo: hymo api storage -> JSON (needs root)
+            val result = getRootShell().newJob().add("${getKsud()} hymo api storage").exec()
+            val text = (result.out + result.err).joinToString("\n").trim()
+            if (result.isSuccess && text.isNotEmpty()) {
+                val json = JSONObject(text)
                 val percentValue = json.optDouble("percent", 0.0)
                 StorageInfo(
                     size = json.optString("size", "-"),
@@ -879,16 +968,20 @@ object HymoFSManager {
     }
     
     /**
-     * Read daemon log
+     * Read daemon log. If daemon.log is missing or empty (built-in hymo uses ksud log),
+     * fall back to logcat filtered for ksud/hymo.
      */
     suspend fun readLog(lines: Int = 500): String = withContext(Dispatchers.IO) {
         try {
             val result = Shell.cmd("tail -n $lines '$HYMO_LOG_FILE' 2>/dev/null").exec()
-            if (result.isSuccess) {
-                result.out.joinToString("\n")
-            } else {
-                ""
-            }
+            val fromFile = (result.out + result.err).joinToString("\n").trim()
+            if (fromFile.isNotEmpty()) return@withContext fromFile
+            val logcatResult = Shell.cmd("logcat -d -t ${lines * 2} 2>/dev/null | grep -iE 'ksud|hymo' | tail -n $lines").exec()
+            val fromLogcat = (logcatResult.out + logcatResult.err).joinToString("\n").trim()
+            if (fromLogcat.isNotEmpty())
+                "[Daemon log not found; showing logcat (ksud/hymo)]\n\n$fromLogcat"
+            else
+                "[No daemon.log and no ksud/hymo logcat. Built-in HymoFS logs to ksud stderr/logcat.]"
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read log", e)
             ""
@@ -896,11 +989,20 @@ object HymoFSManager {
     }
     
     /**
-     * Read kernel log (dmesg) for HymoFS
+     * Read kernel log for HymoFS.
+     * Reads from KSU's saved dmesg (/data/adb/ksu/log/dmesg.log) and filters lines
+     * that start with HymoFS: (standardized kernel log prefix). Falls back to
+     * live dmesg if the file is missing.
      */
     suspend fun readKernelLog(lines: Int = 200): String = withContext(Dispatchers.IO) {
         try {
-            val result = Shell.cmd("dmesg | grep -i 'hymofs\\|hymo' | tail -n $lines").exec()
+            val result = Shell.cmd(
+                "if [ -r '$KSU_DMESG_LOG' ]; then " +
+                "grep 'HymoFS:' '$KSU_DMESG_LOG' | tail -n $lines; " +
+                "else " +
+                "dmesg | grep 'HymoFS:' | tail -n $lines; " +
+                "fi"
+            ).exec()
             if (result.isSuccess) {
                 result.out.joinToString("\n")
             } else {

@@ -4,12 +4,16 @@
 #include <unistd.h>
 #include <algorithm>
 #include <array>
+#include <cerrno>
+#include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
+#include <thread>
 #include "conf/config.hpp"
 #include "core/executor.hpp"
 #include "core/inventory.hpp"
@@ -73,7 +77,14 @@ void print_help() {
     std::cout << "  hymofs disable     Disable HymoFS\n";
     std::cout << "  hymofs list        List all active HymoFS rules\n";
     std::cout << "  hymofs version     Show HymoFS protocol version\n";
+    std::cout
+        << "  hymofs features    Show HymoFS feature bitmask (mount_hide, maps_spoof, etc.)\n";
+    std::cout << "  hymofs mount-hide on|off   Enable/disable overlay mount hiding\n";
+    std::cout << "  hymofs maps-spoof on|off  Enable/disable /proc/pid/maps spoofing\n";
+    std::cout << "  hymofs statfs-spoof on|off  Enable/disable statfs f_type spoofing\n";
     std::cout << "  hymofs set-mirror <path>  Set custom mirror path\n";
+    std::cout << "  hymofs maps clear  Clear all /proc/pid/maps spoof rules\n";
+    std::cout << "  hymofs maps add <t_ino> <t_dev> <s_ino> <s_dev> <path>  Add maps spoof rule\n";
     std::cout << "  hymofs raw <cmd> ...  Execute raw HymoFS command\n\n";
 
     std::cout << "API Commands (api <subcommand>) - JSON output for WebUI:\n";
@@ -248,8 +259,16 @@ int hymo::run_hymo_main(int argc, char** argv) {
     try {
         CliOptions cli = parse_args(argc, argv);
 
-        // Initialize logger: built-in hymo reuses ksud log (stderr/logcat), no separate daemon.log
-        Logger::getInstance().init(cli.verbose, cli.verbose, nullptr);
+        // Ensure hymo base dir exists before logger (needed for daemon.log)
+        ensure_dir_exists(HYMO_DATA_DIR);
+
+        // Clear daemon.log on each boot (mount is invoked at post-fs-data)
+        if (cli.command == "mount") {
+            std::ofstream(DAEMON_LOG_FILE, std::ios::trunc);
+        }
+
+        // Initialize logger: write to daemon.log so Manager can show Hymo logs
+        Logger::getInstance().init(cli.verbose, cli.verbose, DAEMON_LOG_FILE);
 
         if (cli.command.empty()) {
             print_help();
@@ -332,6 +351,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
                           << (config.enable_kernel_debug ? "true" : "false") << ",\n";
                 std::cout << "  \"enable_stealth\": " << (config.enable_stealth ? "true" : "false")
                           << ",\n";
+                std::cout << "  \"enable_hidexattr\": "
+                          << (config.enable_hidexattr ? "true" : "false") << ",\n";
                 std::cout << "  \"hymofs_enabled\": " << (config.hymofs_enabled ? "true" : "false")
                           << ",\n";
                 std::cout << "  \"uname_release\": \"" << config.uname_release << "\",\n";
@@ -773,13 +794,117 @@ int hymo::run_hymo_main(int argc, char** argv) {
 
         case Command::HYMOFS: {
             if (cli.args.empty()) {
-                std::cerr
-                    << "Usage: ksud hymo hymofs <enable|disable|list|version|set-mirror|raw>\n";
+                std::cerr << "Usage: ksud hymo hymofs <enable|disable|list|version|features|"
+                             "mount-hide|maps-spoof|statfs-spoof|set-mirror|maps|raw>\n";
                 return 1;
             }
             const std::string subcmd = cli.args[0];
 
-            if (subcmd == "enable" || subcmd == "disable") {
+            if (subcmd == "mount-hide" || subcmd == "maps-spoof" || subcmd == "statfs-spoof") {
+                if (cli.args.size() < 2) {
+                    std::cerr << "Usage: ksud hymo hymofs " << subcmd << " <on|off>\n";
+                    return 1;
+                }
+                const std::string& val = cli.args[1];
+                bool enable;
+                if (val == "on" || val == "1" || val == "true") {
+                    enable = true;
+                } else if (val == "off" || val == "0" || val == "false") {
+                    enable = false;
+                } else {
+                    std::cerr << "Usage: ksud hymo hymofs " << subcmd << " <on|off>\n";
+                    return 1;
+                }
+                if (!HymoFS::is_available()) {
+                    std::cerr << "HymoFS not available.\n";
+                    return 1;
+                }
+                bool ok = false;
+                if (subcmd == "mount-hide")
+                    ok = HymoFS::set_mount_hide(enable);
+                else if (subcmd == "maps-spoof")
+                    ok = HymoFS::set_maps_spoof(enable);
+                else
+                    ok = HymoFS::set_statfs_spoof(enable);
+                if (ok) {
+                    std::cout << subcmd << " " << (enable ? "on" : "off") << "\n";
+                    return 0;
+                }
+                std::cerr << "Failed to set " << subcmd << ".\n";
+                return 1;
+            } else if (subcmd == "features") {
+                if (!HymoFS::is_available()) {
+                    std::cerr << "HymoFS not available.\n";
+                    return 1;
+                }
+                const int f = HymoFS::get_features();
+                if (f < 0) {
+                    std::cerr << "get_features failed: " << strerror(errno) << "\n";
+                    return 1;
+                }
+                std::cout << "features: 0x" << std::hex << f << std::dec;
+                if (f & HYMO_FEATURE_MOUNT_HIDE)
+                    std::cout << " mount_hide";
+                if (f & HYMO_FEATURE_MAPS_SPOOF)
+                    std::cout << " maps_spoof";
+                if (f & HYMO_FEATURE_STATFS_SPOOF)
+                    std::cout << " statfs_spoof";
+                if (f & HYMO_FEATURE_CMDLINE_SPOOF)
+                    std::cout << " cmdline_spoof";
+                if (f & HYMO_FEATURE_UNAME_SPOOF)
+                    std::cout << " uname_spoof";
+                if (f & HYMO_FEATURE_KSTAT_SPOOF)
+                    std::cout << " kstat_spoof";
+                if (f & HYMO_FEATURE_MERGE_DIR)
+                    std::cout << " merge_dir";
+                if (f & HYMO_FEATURE_SELINUX_BYPASS)
+                    std::cout << " selinux_bypass";
+                std::cout << "\n";
+                return 0;
+            } else if (subcmd == "maps") {
+                if (cli.args.size() < 2) {
+                    std::cerr << "Usage: ksud hymo hymofs maps <clear|add <t_ino> <t_dev> <s_ino> "
+                                 "<s_dev> <path>>\n";
+                    return 1;
+                }
+                const std::string maps_sub = cli.args[1];
+                if (maps_sub == "clear") {
+                    if (!HymoFS::is_available()) {
+                        std::cerr << "HymoFS not available.\n";
+                        return 1;
+                    }
+                    if (HymoFS::clear_maps_rules()) {
+                        std::cout << "Maps spoof rules cleared.\n";
+                        return 0;
+                    }
+                    std::cerr << "clear_maps_rules failed.\n";
+                    return 1;
+                } else if (maps_sub == "add") {
+                    if (cli.args.size() < 7) {
+                        std::cerr << "Usage: ksud hymo hymofs maps add <target_ino> <target_dev> "
+                                     "<spoofed_ino> <spoofed_dev> <spoofed_path>\n";
+                        return 1;
+                    }
+                    unsigned long t_ino = std::stoul(cli.args[2]);
+                    unsigned long t_dev = std::stoul(cli.args[3]);
+                    unsigned long s_ino = std::stoul(cli.args[4]);
+                    unsigned long s_dev = std::stoul(cli.args[5]);
+                    const std::string path = cli.args[6];
+                    if (!HymoFS::is_available()) {
+                        std::cerr << "HymoFS not available.\n";
+                        return 1;
+                    }
+                    if (HymoFS::add_maps_rule(t_ino, t_dev, s_ino, s_dev, path)) {
+                        std::cout << "Maps rule added.\n";
+                        return 0;
+                    }
+                    std::cerr << "add_maps_rule failed.\n";
+                    return 1;
+                } else {
+                    std::cerr << "Unknown hymofs maps subcommand: " << maps_sub << "\n";
+                    return 1;
+                }
+            } else if (subcmd == "enable" || subcmd == "disable") {
                 const bool enable = (subcmd == "enable");
                 if (HymoFS::is_available()) {
                     if (HymoFS::set_enabled(enable)) {
@@ -1282,8 +1407,8 @@ int hymo::run_hymo_main(int argc, char** argv) {
         config.merge_with_cli(cli.moduledir, cli.tempdir, cli.mountsource, cli.verbose,
                               cli.partitions);
 
-        // Re-initialize logger with merged config (built-in: reuse ksud log)
-        Logger::getInstance().init(config.debug, config.verbose, nullptr);
+        // Re-initialize logger with merged config; keep writing to daemon.log
+        Logger::getInstance().init(config.debug, config.verbose, DAEMON_LOG_FILE);
 
         // Camouflage process
         if (!camouflage_process("kworker/u9:1")) {
@@ -1302,26 +1427,44 @@ int hymo::run_hymo_main(int argc, char** argv) {
         // Ensure runtime directory exists
         ensure_dir_exists(RUN_DIR);
 
+        // Load HymoFS LKM before check_status so we can use HymoFS mount when autoload is on
+        if (lkm_get_autoload() && !lkm_is_loaded()) {
+            if (lkm_load()) {
+                LOG_INFO("HymoFS LKM loaded (autoload) before mount");
+                HymoFS::invalidate_status_cache();
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            } else {
+                LOG_WARN("HymoFS LKM autoload failed: " + lkm_get_last_error());
+            }
+        }
+
         StorageHandle storage;
         MountPlan plan;
         ExecutionResult exec_result;
         std::vector<Module> module_list;
 
         const HymoFSStatus hymofs_status = HymoFS::check_status();
+        if (hymofs_status != HymoFSStatus::Available) {
+            LOG_INFO("HymoFS status: " + std::to_string(static_cast<int>(hymofs_status)) +
+                     " (0=Available, 1=NotPresent, 2=KernelTooOld, 3=ModuleTooOld); using "
+                     "overlay/mirror if needed");
+        }
         std::string warning_msg;
         bool hymofs_active = false;
 
         bool can_use_hymofs = (hymofs_status == HymoFSStatus::Available);
 
-        // Auto-select default tempdir if not set by user
-        if (config.tempdir.empty()) {
+        // Auto-select tempdir: treat empty or legacy /data path as "auto" so we upgrade to
+        // /dev/hymo_mirror when HymoFS becomes available (config may have saved /data from
+        // when HymoFS was not present).
+        const fs::path legacy_data_path = fs::path(HYMO_DATA_DIR) / "img_mnt";
+        const bool tempdir_is_auto = config.tempdir.empty() || config.tempdir == legacy_data_path;
+        if (tempdir_is_auto) {
             if (can_use_hymofs && config.hymofs_enabled) {
-                // Use /dev/hymo_mirror when HymoFS is available and enabled
-                config.tempdir = "/dev/hymo_mirror";
+                config.tempdir = hymo::HYMO_MIRROR_DEV;
                 LOG_INFO("Auto-selected tempdir: /dev/hymo_mirror (HymoFS mode)");
             } else {
-                // Use /data/adb/hymo/img_mnt when HymoFS is not available or disabled
-                config.tempdir = "/data/adb/hymo/img_mnt";
+                config.tempdir = legacy_data_path;
                 LOG_INFO("Auto-selected tempdir: /data/adb/hymo/img_mnt (default mode)");
             }
         }
@@ -1399,6 +1542,30 @@ int hymo::run_hymo_main(int argc, char** argv) {
                                 std::string(config.enable_stealth ? "true" : "false"));
                 } else {
                     LOG_WARN("Failed to set stealth mode.");
+                }
+            }
+
+            // Apply Hidexattr: mount_hide, maps_spoof, statfs_spoof (with stealth)
+            if (config.enable_hidexattr && HymoFS::is_available()) {
+                if (HymoFS::set_mount_hide(true)) {
+                    LOG_VERBOSE("mount_hide enabled (hidexattr)");
+                } else {
+                    LOG_WARN("Failed to enable mount_hide");
+                }
+                if (HymoFS::set_maps_spoof(true)) {
+                    LOG_VERBOSE("maps_spoof enabled (hidexattr)");
+                } else {
+                    LOG_WARN("Failed to enable maps_spoof");
+                }
+                if (HymoFS::set_statfs_spoof(true)) {
+                    LOG_VERBOSE("statfs_spoof enabled (hidexattr)");
+                } else {
+                    LOG_WARN("Failed to enable statfs_spoof");
+                }
+                if (HymoFS::set_stealth(true)) {
+                    LOG_VERBOSE("stealth enabled (hidexattr)");
+                } else {
+                    LOG_WARN("Failed to enable stealth for hidexattr");
                 }
             }
 

@@ -129,6 +129,28 @@
     <string name="hymofs_toast_builtin_enabled">Built-in mount enabled. Reboot to apply.</string>
     <string name="hymofs_toast_builtin_disabled">Built-in mount disabled. Reboot to apply.</string>
     <string name="hymofs_toast_builtin_failed">Failed to update built-in mount setting</string>
+    <string name="hymofs_features_title">Kernel features</string>
+    <string name="hymofs_features_none">None reported</string>
+    <string name="hymofs_feature_mount_hide">Mount hide</string>
+    <string name="hymofs_feature_mount_hide_desc">Hide overlay from /proc/mounts and mountinfo</string>
+    <string name="hymofs_feature_maps_spoof">Maps spoof</string>
+    <string name="hymofs_feature_maps_spoof_desc">Spoof ino/dev/path in /proc/pid/maps. Add rules below.</string>
+    <string name="hymofs_feature_statfs_spoof">Statfs spoof</string>
+    <string name="hymofs_feature_statfs_spoof_desc">Auto with mount hide; makes statfs() match mountinfo (avoids INCONSISTENT_MOUNT)</string>
+    <string name="hymofs_maps_title">Maps spoof (/proc/pid/maps)</string>
+    <string name="hymofs_maps_desc">Spoof inode/device/path in process maps. Rules can be added by overlay mount; clear all rules here if needed.</string>
+    <string name="hymofs_maps_clear">Clear maps rules</string>
+    <string name="hymofs_maps_clear_confirm">Clear all maps spoof rules?</string>
+    <string name="hymofs_maps_cleared">Maps rules cleared</string>
+    <string name="hymofs_maps_clear_failed">Failed to clear maps rules</string>
+    <string name="hymofs_maps_add_rule">Add rule</string>
+    <string name="hymofs_maps_add_success">Maps rule added</string>
+    <string name="hymofs_maps_add_failed">Failed to add maps rule</string>
+    <string name="hymofs_maps_target_ino">Target inode</string>
+    <string name="hymofs_maps_target_dev">Target dev (0=any)</string>
+    <string name="hymofs_maps_spoof_ino">Spoof inode</string>
+    <string name="hymofs_maps_spoof_dev">Spoof dev</string>
+    <string name="hymofs_maps_spoof_path">Spoof path</string>
     <string name="direct_install">Direct install (Recommended)</string>
     <string name="select_file">Select a image that needs to be patched</string>
     <string name="install_inactive_slot">Install to inactive slot (After OTA)</string>
@@ -545,6 +567,7 @@
 
     <!-- HymoFS Configuration -->
     <string name="hymofs_title">HymoFS Configuration</string>
+    <string name="hymofs_settings_summary">Module mount, Maps spoof, LKM, rules</string>
     <string name="hymofs_tab_status">Status</string>
     <string name="hymofs_tab_modules">Modules</string>
     <string name="hymofs_tab_settings">Settings</string>
@@ -599,6 +622,8 @@
     <string name="hymofs_kernel_debug_desc">Enable HymoFS kernel debug logging</string>
     <string name="hymofs_stealth">Stealth Mode</string>
     <string name="hymofs_stealth_desc">Hide mount traces and reorder mount IDs</string>
+    <string name="hymofs_hidexattr">Hide Extended Attributes</string>
+    <string name="hymofs_hidexattr_desc">Enable mount_hide, maps_spoof, statfs_spoof and stealth to hide traces from detection</string>
     <string name="hymofs_avc_spoof">AVC Log Spoofing</string>
     <string name="hymofs_avc_spoof_desc">Spoof SELinux AVC deny logs</string>
     <string name="hymofs_enable_nuke">Enable Nuke</string>
@@ -636,6 +661,10 @@
     <string name="hymofs_rules_refresh">Refresh</string>
     <string name="hymofs_rules_count">%d active rules</string>
     <string name="hymofs_rules_empty">No active rules</string>
+    <string name="hymofs_rule_mount_hide">Hide overlay mounts from /proc/mounts</string>
+    <string name="hymofs_rule_maps_spoof">Spoof /proc/pid/maps ino/dev/pathname</string>
+    <string name="hymofs_rule_statfs_spoof">Spoof statfs f_type for detection bypass</string>
+    <string name="hymofs_rule_stealth">Stealth mode: hide mount traces, reorder mnt_id</string>
     <string name="hymofs_logs_daemon">Daemon Log</string>
     <string name="hymofs_logs_kernel">Kernel Log</string>
     <string name="hymofs_kernel_title">HymoFS Kernel</string>

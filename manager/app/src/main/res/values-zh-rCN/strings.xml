@@ -529,6 +529,7 @@
 
     <!-- HymoFS Configuration -->
     <string name="hymofs_title">HymoFS 配置</string>
+    <string name="hymofs_settings_summary">模块挂载、Maps 伪装、LKM、规则</string>
     <string name="hymofs_tab_status">状态</string>
     <string name="hymofs_tab_modules">模块</string>
     <string name="hymofs_tab_settings">设置</string>
@@ -583,6 +584,8 @@
     <string name="hymofs_kernel_debug_desc">启用 HymoFS 内核调试日志</string>
     <string name="hymofs_stealth">隐身模式</string>
     <string name="hymofs_stealth_desc">隐藏挂载痕迹并重新排序挂载 ID</string>
+    <string name="hymofs_hidexattr">隐藏扩展属性</string>
+    <string name="hymofs_hidexattr_desc">启用 mount_hide、maps_spoof、statfs_spoof 和 stealth，随 hidexattr 自动隐藏其他特征</string>
     <string name="hymofs_avc_spoof">AVC 日志欺骗</string>
     <string name="hymofs_avc_spoof_desc">伪造 SELinux AVC 拒绝日志</string>
     <string name="hymofs_enable_nuke">启用 Nuke</string>
@@ -620,6 +623,10 @@
     <string name="hymofs_rules_refresh">刷新</string>
     <string name="hymofs_rules_count">%d 条活动规则</string>
     <string name="hymofs_rules_empty">没有活动规则</string>
+    <string name="hymofs_rule_mount_hide">从 /proc/mounts 隐藏 overlay 挂载</string>
+    <string name="hymofs_rule_maps_spoof">伪装 /proc/pid/maps 的 ino/dev/pathname</string>
+    <string name="hymofs_rule_statfs_spoof">伪装 statfs f_type 以绕过检测</string>
+    <string name="hymofs_rule_stealth">隐身模式：隐藏挂载痕迹、重排 mnt_id</string>
     <string name="hymofs_logs_daemon">守护进程日志</string>
     <string name="hymofs_logs_kernel">内核日志</string>
     <string name="hymofs_kernel_title">HymoFS 内核</string>
