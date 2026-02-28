@@ -499,6 +499,7 @@ fun installBoot(
     superKey: String? = null,
     signatureBypass: Boolean = false,
     hymofsInCpio: Boolean = false,  // Experimental: embed HymoFS LKM in cpio, load after KernelSU
+    hymofsLkmUri: Uri? = null,      // Custom HymoFS LKM file; when null, use embedded
     onFinish: (Boolean, Int) -> Unit,
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
@@ -583,8 +584,20 @@ fun installBoot(
         cmd += " --partition $part"
     }
 
+    var hymofsFile: File? = null
     if (hymofsInCpio) {
         cmd += " --hymofs"
+        hymofsLkmUri?.let { uri ->
+            val file = with(resolver.openInputStream(uri)) {
+                val f = File(ksuApp.cacheDir, "hymofs-tmp-lkm.ko")
+                f.outputStream().use { output ->
+                    this?.copyTo(output)
+                }
+                f
+            }
+            hymofsFile = file
+            cmd += " --hymofs-module ${file.absolutePath}"
+        }
     }
 
     val result = flashWithIO("${getKsuDaemonPath()} $cmd", onStdout, onStderr)
@@ -592,6 +605,7 @@ fun installBoot(
 
     bootFile?.delete()
     lkmFile?.delete()
+    hymofsFile?.delete()
 
     // if boot uri is empty, it is direct install, when success, we should show reboot button
     onFinish(bootUri == null && result.isSuccess, result.code)

@@ -416,6 +416,7 @@ struct BootPatchArgs {
     std::string out_name;           // --out-name
     bool hymofs_in_cpio =
         false;  // --hymofs (experimental: embed HymoFS LKM in cpio, load after KernelSU)
+    std::string hymofs_module;  // --hymofs-module (custom HymoFS LKM path; overrides embedded)
 };
 
 namespace {
@@ -474,6 +475,9 @@ BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
                 result.out_name = args[++i];
         } else if (arg == "--hymofs") {
             result.hymofs_in_cpio = true;
+        } else if (arg == "--hymofs-module") {
+            if (i + 1 < args.size())
+                result.hymofs_module = args[++i];
         }
     }
 
@@ -860,15 +864,30 @@ int boot_patch_impl(const std::vector<std::string>& args) {
 
     // Experimental: add or remove HymoFS LKM in cpio (load after KernelSU in ksuinit)
     if (parsed.hymofs_in_cpio) {
-        const std::string hymofs_asset = kmi + HYMO_ARCH_SUFFIX "_hymofs_lkm.ko";
         const std::string hymofs_file = workdir + "/hymofs.ko";
-        if (copy_asset_to_file(hymofs_asset, hymofs_file)) {
-            printf("- Adding HymoFS LKM (experimental)\n");
-            if (!do_cpio_cmd(magiskboot, workdir, ramdisk, "add 0644 hymofs.ko hymofs.ko")) {
-                LOGW("Failed to add hymofs.ko to cpio");
+        bool have_hymofs = false;
+        if (!parsed.hymofs_module.empty() && fs::exists(parsed.hymofs_module)) {
+            try {
+                fs::copy_file(parsed.hymofs_module, hymofs_file,
+                              fs::copy_options::overwrite_existing);
+                have_hymofs = true;
+                printf("- Adding HymoFS LKM (custom)\n");
+            } catch (const std::exception& e) {
+                LOGW("Failed to copy custom HymoFS LKM: %s", e.what());
             }
-        } else {
-            LOGW("HymoFS LKM asset %s not found, skipping", hymofs_asset.c_str());
+        }
+        if (!have_hymofs) {
+            const std::string hymofs_asset = kmi + HYMO_ARCH_SUFFIX "_hymofs_lkm.ko";
+            if (copy_asset_to_file(hymofs_asset, hymofs_file)) {
+                have_hymofs = true;
+                printf("- Adding HymoFS LKM (embedded)\n");
+            } else {
+                LOGW("HymoFS LKM asset %s not found, skipping", hymofs_asset.c_str());
+            }
+        }
+        if (have_hymofs &&
+            !do_cpio_cmd(magiskboot, workdir, ramdisk, "add 0644 hymofs.ko hymofs.ko")) {
+            LOGW("Failed to add hymofs.ko to cpio");
         }
     } else {
         // User disabled HymoFS: remove hymofs.ko from cpio if it was previously

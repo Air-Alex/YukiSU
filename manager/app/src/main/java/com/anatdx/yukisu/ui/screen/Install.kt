@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Input
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
@@ -117,6 +118,7 @@ fun InstallScreen(
     var signatureBypass by remember { mutableStateOf(false) }
     // Experimental: embed HymoFS LKM in cpio (init_boot)
     var hymofsInCpio by remember { mutableStateOf(false) }
+    var hymofsLkmUri by remember { mutableStateOf<Uri?>(null) }
 
     val onInstall = {
         installMethod?.let { method ->
@@ -129,7 +131,8 @@ fun InstallScreen(
                 partition = partitionSelection,
                 superKey = superKey.ifBlank { null },
                 signatureBypass = signatureBypass,
-                hymofsInCpio = hymofsInCpio
+                hymofsInCpio = hymofsInCpio,
+                hymofsLkmUri = hymofsLkmUri
             )
             navigator.navigate(FlashScreenDestination(flashIt))
         }
@@ -177,6 +180,31 @@ fun InstallScreen(
 
     val onLkmUpload = {
         selectLkmLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "application/octet-stream"
+        })
+    }
+
+    val selectHymofsLkmLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (it.resultCode == Activity.RESULT_OK) {
+            it.data?.data?.let { uri ->
+                if (isKoFile(context, uri)) {
+                    hymofsLkmUri = uri
+                } else {
+                    hymofsLkmUri = null
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.install_only_support_ko_file),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    val onHymofsLkmUpload = {
+        selectHymofsLkmLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
             type = "application/octet-stream"
         })
     }
@@ -466,29 +494,80 @@ fun InstallScreen(
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(id = R.string.hymofs_in_cpio_title),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = stringResource(id = R.string.hymofs_in_cpio_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(modifier = Modifier.padding(top = 12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(id = R.string.hymofs_in_cpio_title),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(id = R.string.hymofs_in_cpio_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = hymofsInCpio,
+                                onCheckedChange = { hymofsInCpio = it }
                             )
                         }
-                        Switch(
-                            checked = hymofsInCpio,
-                            onCheckedChange = { hymofsInCpio = it }
-                        )
+                        // Custom HymoFS LKM selection (when hymofs in cpio is enabled)
+                        AnimatedVisibility(
+                            visible = hymofsInCpio,
+                            enter = fadeIn() + expandVertically(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            ElevatedCard(
+                                colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
+                                elevation = getCardElevation(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp)
+                            ) {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(stringResource(id = R.string.hymofs_custom_lkm_title))
+                                    },
+                                    supportingContent = {
+                                        hymofsLkmUri?.let { uri ->
+                                            Text(
+                                                stringResource(
+                                                    id = R.string.selected_lkm,
+                                                    uri.lastPathSegment?.substringAfterLast('/') ?: "(file)"
+                                                )
+                                            )
+                                        } ?: Text(stringResource(id = R.string.hymofs_custom_lkm_desc))
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.Input,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    trailingContent = {
+                                        if (hymofsLkmUri != null) {
+                                            IconButton(
+                                                onClick = { hymofsLkmUri = null }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = stringResource(R.string.hymofs_use_embedded)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onHymofsLkmUpload() }
+                                )
+                            }
+                        }
                     }
                 }
             }

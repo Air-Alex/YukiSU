@@ -780,7 +780,8 @@ sealed class FlashIt : Parcelable {
         val partition: String? = null,
         val superKey: String? = null,
         val signatureBypass: Boolean = false,
-        val hymofsInCpio: Boolean = false
+        val hymofsInCpio: Boolean = false,
+        val hymofsLkmUri: Uri? = null
     ) : FlashIt()
     data class FlashModule(val uri: Uri) : FlashIt()
     data class FlashModules(val uris: List<Uri>, val currentIndex: Int = 0) : FlashIt()
@@ -814,6 +815,7 @@ fun flashIt(
             flashIt.superKey,
             flashIt.signatureBypass,
             flashIt.hymofsInCpio,
+            flashIt.hymofsLkmUri,
             onFinish,
             onStdout,
             onStderr
