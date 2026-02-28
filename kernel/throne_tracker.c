@@ -36,8 +36,44 @@ static void update_primary_manager(void)
 
 void ksu_set_manager_appid_for_index(uid_t appid, int signature_index)
 {
+	int i;
+
 	if (signature_index < 0 || signature_index >= KSU_MAX_MANAGER_KEYS)
 		return;
+
+	/*
+	 * Keep multi-manager coexistence stable:
+	 * - If this appid is already present in any slot, reuse that slot.
+	 * - If target signature slot is occupied by another app, place this app
+	 *   into an empty slot instead of overwriting.
+	 */
+	for (i = 0; i < KSU_MAX_MANAGER_KEYS; i++) {
+		if (ksu_manager_appids[i] == appid) {
+			ksu_manager_appids[i] = appid;
+			locked_manager_appids[i] = appid;
+			update_primary_manager();
+			return;
+		}
+	}
+
+	if (ksu_manager_appids[signature_index] == KSU_INVALID_UID ||
+	    ksu_manager_appids[signature_index] == appid) {
+		ksu_manager_appids[signature_index] = appid;
+		locked_manager_appids[signature_index] = appid;
+		update_primary_manager();
+		return;
+	}
+
+	for (i = 0; i < KSU_MAX_MANAGER_KEYS; i++) {
+		if (ksu_manager_appids[i] == KSU_INVALID_UID) {
+			ksu_manager_appids[i] = appid;
+			locked_manager_appids[i] = appid;
+			update_primary_manager();
+			return;
+		}
+	}
+
+	/* No empty slot left (current max is 2), keep historical behavior. */
 	ksu_manager_appids[signature_index] = appid;
 	locked_manager_appids[signature_index] = appid;
 	update_primary_manager();
@@ -187,14 +223,14 @@ static void crown_manager(const char *apk, struct list_head *uid_data,
 		return;
 	}
 
-	pr_info("manager pkg: %s\n", pkg);
+	pr_info("manager pkg: %s, signature_index: %d\n", pkg, signature_index);
 
 #ifdef KSU_MANAGER_PACKAGE
 	// pkg is `/<real package>`
 	if (strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {
-		pr_info(
-		    "manager package is inconsistent with kernel build: %s\n",
-		    KSU_MANAGER_PACKAGE);
+		pr_info("manager package is inconsistent with kernel build: %s "
+			"vs %s\n",
+			pkg, KSU_MANAGER_PACKAGE);
 		return;
 	}
 #endif // #ifdef KSU_MANAGER_PACKAGE
@@ -203,8 +239,10 @@ static void crown_manager(const char *apk, struct list_head *uid_data,
 
 	list_for_each_entry (np, list, list) {
 		if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) == 0) {
-			pr_info("Crowning manager: %s(appid=%d)\n", pkg,
-				np->appid);
+			pr_info("Crowning manager: %s (appid=%d) "
+				"signature_index=%d\n",
+				pkg, np->appid, signature_index);
+
 			if (signature_index >= 0 &&
 			    signature_index < KSU_MAX_MANAGER_KEYS) {
 				ksu_set_manager_appid_for_index(
@@ -459,47 +497,56 @@ static bool is_uid_exist(uid_t uid, char *package, void *data)
 
 void track_throne(bool prune_only)
 {
-	struct file *fp = filp_open(SYSTEM_PACKAGES_LIST_PATH, O_RDONLY, 0);
+	struct list_head uid_list;
+	struct uid_data *np, *n;
+	struct file *fp;
+	char chr = 0;
+	loff_t pos = 0;
+	loff_t line_start = 0;
+	char buf[KSU_MAX_PACKAGE_NAME];
+	static bool manager_exist = false;
+	bool need_search = false;
+
+	// init uid list head
+	INIT_LIST_HEAD(&uid_list);
+
+	fp = filp_open(SYSTEM_PACKAGES_LIST_PATH, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
 		pr_err("%s: open " SYSTEM_PACKAGES_LIST_PATH " failed: %ld\n",
 		       __func__, PTR_ERR(fp));
 		return;
 	}
 
-	struct list_head uid_list;
-	INIT_LIST_HEAD(&uid_list);
-
-	char chr = 0;
-	loff_t pos = 0;
-	loff_t line_start = 0;
-	char buf[KSU_MAX_PACKAGE_NAME];
 	for (;;) {
+		struct uid_data *data = NULL;
 		ssize_t count = kernel_read(fp, &chr, sizeof(chr), &pos);
+		const char *delim = " ";
+		char *package = NULL;
+		char *tmp = NULL;
+		char *uid = NULL;
+		u32 res;
+
 		if (count != sizeof(chr))
 			break;
 		if (chr != '\n')
 			continue;
 
 		count = kernel_read(fp, buf, sizeof(buf), &line_start);
-
-		struct uid_data *data =
-		    kzalloc(sizeof(struct uid_data), GFP_ATOMIC);
+		data = kzalloc(sizeof(struct uid_data), GFP_ATOMIC);
 		if (!data) {
 			filp_close(fp, 0);
 			goto out;
 		}
 
-		char *tmp = buf;
-		const char *delim = " ";
-		char *package = strsep(&tmp, delim);
-		char *uid = strsep(&tmp, delim);
+		tmp = buf;
+		package = strsep(&tmp, delim);
+		uid = strsep(&tmp, delim);
 		if (!uid || !package) {
 			kfree(data);
 			pr_err("update_uid: package or uid is NULL!\n");
 			break;
 		}
 
-		u32 res;
 		if (kstrtou32(uid, 10, &res)) {
 			kfree(data);
 			pr_err("track_throne: appid parse err\n");
@@ -513,10 +560,6 @@ void track_throne(bool prune_only)
 	}
 
 	filp_close(fp, 0);
-
-	// now update uid list
-	struct uid_data *np;
-	struct uid_data *n;
 
 	if (prune_only)
 		goto prune;
@@ -546,22 +589,21 @@ void track_throne(bool prune_only)
 			}
 		}
 		update_primary_manager();
-	}
-	{
-		bool manager_exist = (ksu_manager_appid != KSU_INVALID_UID);
-		bool need_search;
+		manager_exist = (ksu_manager_appid != KSU_INVALID_UID);
 		if (!manager_exist) {
 #ifdef CONFIG_KSU_SUPERKEY
 			extern void ksu_superkey_register_prctl_kprobe(void);
 			ksu_superkey_register_prctl_kprobe();
 #endif // #ifdef CONFIG_KSU_SUPERKEY
 		}
-		need_search = !manager_exist;
-		if (need_search) {
-			pr_info("Searching for manager(s)...\n");
-			search_manager("/data/app", 2, &uid_list);
-			pr_info("Manager search finished\n");
-		}
+	}
+
+	need_search = !manager_exist;
+
+	if (need_search) {
+		pr_info("Searching for manager(s)...\n");
+		search_manager("/data/app", 2, &uid_list);
+		pr_info("Manager search finished\n");
 	}
 
 prune:
@@ -575,12 +617,27 @@ out:
 	}
 }
 
+/*
+ * LKM: Delayed manager search when loaded after boot (packages.list may
+ * already exist and won't trigger fsnotify). Schedule a delayed search.
+ */
+static struct delayed_work throne_search_work;
+
+static void do_throne_search(struct work_struct *work)
+{
+	pr_info("throne_tracker: delayed search for manager...\n");
+	track_throne(false);
+}
+
 void ksu_throne_tracker_init()
 {
-	// nothing to do
+	INIT_DELAYED_WORK(&throne_search_work, do_throne_search);
+	schedule_delayed_work(&throne_search_work, msecs_to_jiffies(3000));
+	pr_info("throne_tracker: init, scheduled manager search in 3s\n");
 }
 
 void ksu_throne_tracker_exit(void)
 {
-	// nothing to do
+	cancel_delayed_work_sync(&throne_search_work);
+	pr_info("throne_tracker: exit\n");
 }

@@ -59,9 +59,31 @@ static inline int scan_driver_fd() {
   return found;
 }
 
+static inline int request_driver_fd_via_prctl() {
+  struct ksu_prctl_get_fd_cmd cmd = {
+      .result = -1,
+      .fd = -1,
+  };
+
+  /*
+   * Ask kernel for a dedicated KSU driver fd when none is inherited.
+   * This is required for manager coexistence, where one manager process
+   * may not have an existing [ksu_driver] fd to scan from /proc/self/fd.
+   */
+  long ret = prctl(KSU_PRCTL_GET_FD, &cmd, 0, 0, 0);
+  (void)ret;
+  if (cmd.result == 0 && cmd.fd >= 0) {
+    return cmd.fd;
+  }
+  return -1;
+}
+
 static int ksuctl(unsigned long op, void *arg) {
   if (fd < 0) {
     fd = scan_driver_fd();
+    if (fd < 0) {
+      fd = request_driver_fd_via_prctl();
+    }
   }
   return ioctl(fd, op, arg);
 }
@@ -134,8 +156,10 @@ bool is_lkm_mode() {
 }
 
 bool is_manager() {
-  auto info = get_info();
-  if (info.version > 0) {
+  // Do a fresh query to avoid stale cached flags after kernel crowns manager.
+  struct ksu_get_info_cmd info = {};
+  if (ksuctl(KSU_IOCTL_GET_INFO, &info) == 0 && info.version > 0) {
+    g_version = info; // keep cache coherent for subsequent calls
     return (info.flags & 0x2) != 0;
   }
   // Legacy Compatible
