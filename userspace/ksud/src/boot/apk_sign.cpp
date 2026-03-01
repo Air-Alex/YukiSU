@@ -1,6 +1,6 @@
 #include "apk_sign.hpp"
+#include <mbedtls/sha256.h>
 #include "../log.hpp"
-#include "picosha2.h"
 
 #include <array>
 #include <cstdint>
@@ -14,10 +14,18 @@ namespace ksud {
 
 namespace {
 
+constexpr const char* hex_chars = "0123456789abcdef";
+
 std::string sha256_digest(const uint8_t* data, size_t len) {
-    std::vector<unsigned char> hash(picosha2::k_digest_size);
-    picosha2::hash256(data, data + len, hash.begin(), hash.end());
-    return picosha2::bytes_to_hex_string(hash.begin(), hash.end());
+    unsigned char digest[32];
+    mbedtls_sha256(data, len, digest, 0);
+    std::string out;
+    out.reserve(64);
+    for (size_t i = 0; i < 32; i++) {
+        out.push_back(hex_chars[(digest[i] >> 4) & 0xf]);
+        out.push_back(hex_chars[digest[i] & 0xf]);
+    }
+    return out;
 }
 
 }  // namespace
