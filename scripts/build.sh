@@ -136,8 +136,7 @@ cmake .. \
   -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
   -DCMAKE_C_COMPILER="$CC" \
   -DCMAKE_CXX_COMPILER="$CXX" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DKSUD_UPX=ON
+  -DCMAKE_BUILD_TYPE=Release
 
 ninja
 echo "    ksud 已构建"

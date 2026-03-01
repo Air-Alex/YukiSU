@@ -80,14 +80,14 @@ jobs:
 
     # busybox is built into ksud (ndk-busybox multi-call); no standalone busybox in assets
 
-    - name: Install UPX
-      run: |
-        UPX_VERSION="4.2.4"
-        wget -q "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz"
-        tar -xf "upx-${UPX_VERSION}-amd64_linux.tar.xz"
-        sudo mv "upx-${UPX_VERSION}-amd64_linux/upx" /usr/local/bin/
-        rm -rf "upx-${UPX_VERSION}-amd64_linux" "upx-${UPX_VERSION}-amd64_linux.tar.xz"
-        upx --version | head -1
+    # - name: Install UPX
+    #   run: |
+    #     UPX_VERSION="4.2.4"
+    #     wget -q "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz"
+    #     tar -xf "upx-${UPX_VERSION}-amd64_linux.tar.xz"
+    #     sudo mv "upx-${UPX_VERSION}-amd64_linux/upx" /usr/local/bin/
+    #     rm -rf "upx-${UPX_VERSION}-amd64_linux" "upx-${UPX_VERSION}-amd64_linux.tar.xz"
+    #     upx --version | head -1
 
     - name: Build ksud
       run: |
@@ -109,8 +109,7 @@ jobs:
           -DCMAKE_ANDROID_NDK=$ANDROID_NDK_HOME \
           -DCMAKE_C_COMPILER=$CC \
           -DCMAKE_CXX_COMPILER=$CXX \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DKSUD_UPX=ON
+          -DCMAKE_BUILD_TYPE=Release
 
         ninja
         

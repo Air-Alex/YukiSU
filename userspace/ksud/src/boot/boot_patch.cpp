@@ -35,10 +35,6 @@ constexpr uint64_t SUPERKEY_VERIFICATION_SIGNATURE_ONLY = 0;
 constexpr uint64_t SUPERKEY_VERIFICATION_SIGN_AND_KEY = 1;
 constexpr uint64_t SUPERKEY_VERIFICATION_KEY_ONLY = 2;
 
-// LKM Priority magic marker (must match kernel's LKM_PRIORITY_MAGIC)
-// "LKMPRIO" in hex (little-endian)
-constexpr uint64_t LKM_PRIORITY_MAGIC = 0x4F4952504D4B4C;
-
 // Arch suffix for HymoFS LKM asset name (must match lkm.cpp)
 #if defined(__aarch64__)
 #define HYMO_ARCH_SUFFIX "_arm64"
@@ -123,56 +119,6 @@ bool inject_superkey_to_lkm(const std::string& lkm_path, const std::string& supe
     if (!found) {
         printf("- Warning: SUPERKEY_MAGIC not found in LKM, SuperKey may not work\n");
         printf("- Make sure the kernel module is compiled with SuperKey support\n");
-    } else {
-        // Write back the patched content
-        file.seekp(0, std::ios::beg);
-        file.write(reinterpret_cast<char*>(content.data()), size);
-        file.sync();
-    }
-
-    return true;
-}
-
-bool inject_lkm_priority_to_lkm(const std::string& lkm_path, bool enabled) {
-    uint32_t enabled_value = enabled ? 1 : 0;
-    printf("- LKM priority over GKI: %s\n", enabled ? "true" : "false");
-
-    std::fstream file(lkm_path, std::ios::in | std::ios::out | std::ios::binary);
-    if (!file) {
-        LOGE("Failed to open LKM file for priority patching: %s", lkm_path.c_str());
-        return false;
-    }
-
-    // Read entire file
-    file.seekg(0, std::ios::end);
-    const size_t size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> content(size);
-    file.read(reinterpret_cast<char*>(content.data()), size);
-
-    // Search for LKM_PRIORITY_MAGIC in the binary
-    std::array<uint8_t, 8> magic_bytes{};
-    memcpy(magic_bytes.data(), &LKM_PRIORITY_MAGIC, magic_bytes.size());
-
-    bool found = false;
-    // Structure in kernel:
-    // offset 0: magic (u64)
-    // offset 8: enabled (u32)
-    // offset 12: reserved (u32)
-    for (size_t i = 0; i + 16 <= size; i++) {
-        if (memcmp(&content[i], magic_bytes.data(), magic_bytes.size()) == 0) {
-            // Found magic, patch the enabled field at offset +8
-            memcpy(&content[i + 8], &enabled_value, sizeof(enabled_value));
-            found = true;
-            printf("- Injected LKM priority config at offset 0x%zx\n", i);
-            break;
-        }
-    }
-
-    if (!found) {
-        printf("- Warning: LKM_PRIORITY_MAGIC not found in LKM\n");
-        printf("- This LKM may not support GKI yield mechanism\n");
     } else {
         // Write back the patched content
         file.seekp(0, std::ios::beg);
@@ -405,7 +351,6 @@ struct BootPatchArgs {
     std::string init;               // -i, --init
     std::string superkey;           // -s, --superkey
     bool signature_bypass = false;  // --signature-bypass
-    bool lkm_priority = true;       // --lkm-priority
     bool ota = false;               // -u, --ota
     bool flash = false;             // -f, --flash
     std::string out;                // -o, --out
@@ -444,13 +389,6 @@ BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
                 result.superkey = args[++i];
         } else if (arg == "--signature-bypass") {
             result.signature_bypass = true;
-        } else if (arg == "--lkm-priority") {
-            if (i + 1 < args.size()) {
-                const std::string& val = args[++i];
-                result.lkm_priority = (val == "true" || val == "1");
-            } else {
-                result.lkm_priority = true;
-            }
         } else if (arg == "-u" || arg == "--ota") {
             result.ota = true;
         } else if (arg == "-f" || arg == "--flash") {
@@ -695,10 +633,6 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         printf("- Warning: signature_bypass requires superkey to be set, ignoring\n");
     }
     inject_superkey_to_lkm(kmod_file, parsed.superkey, parsed.signature_bypass);
-
-    // Inject LKM priority setting
-    printf("- Configuring LKM priority\n");
-    inject_lkm_priority_to_lkm(kmod_file, parsed.lkm_priority);
 
     // Prepare init if specified
     const std::string init_file = workdir + "/init";
