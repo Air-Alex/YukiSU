@@ -1,6 +1,7 @@
 #include "flash_partition.hpp"
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <mbedtls/sha256.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -15,7 +16,6 @@
 #include "../boot/tools.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
-#include "picosha2.h"
 
 // miniz is header-only in this context or linked
 #define MINIZ_HEADER_FILE_ONLY
@@ -364,7 +364,9 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
     input.close();
 
     if (success && verify_hash) {
-        hash = picosha2::hash256_hex_string(hash_data);
+        unsigned char digest[32];
+        mbedtls_sha256(hash_data.data(), hash_data.size(), digest, 0);
+        hash = bytes_to_hex(digest, 32);
         LOGI("Flash complete, SHA256: %s", hash.c_str());
     } else if (success) {
         hash = "success";

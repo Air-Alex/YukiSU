@@ -131,14 +131,19 @@ add_compile_definitions(
 # Fetch third-party dependencies
 include(FetchContent)
 
-# PicoSHA2 - SHA-256 implementation
+# mbedTLS - SHA1/SHA256 + X.509/RSA/ECDSA (for MagiskbootAlone AVB and flash_partition SHA256)
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)  # avoid -Werror vs -fno-semantic-interposition on Apple Clang
 FetchContent_Declare(
-    picosha2
-    GIT_REPOSITORY https://github.com/okdshin/PicoSHA2.git
-    GIT_TAG v1.0.1
+    mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG v3.6.2
     GIT_SHALLOW TRUE
+    GIT_SUBMODULES "framework"
 )
-FetchContent_MakeAvailable(picosha2)
+FetchContent_MakeAvailable(mbedtls)
 
 # miniz - Lightweight ZIP library
 FetchContent_Declare(
@@ -298,7 +303,7 @@ endif()
 set(KSUD_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/hymo
-    ${picosha2_SOURCE_DIR}
+    ${mbedtls_SOURCE_DIR}/include
     ${miniz_SOURCE_DIR}
     ${miniz_BINARY_DIR}
     ${LZ4_LIB_DIR}
@@ -309,7 +314,7 @@ include_directories(${KSUD_INCLUDE_DIRS})
 # Compile definitions shared by our and third-party object libs
 set(KSUD_DEFINES)
 if(MAGISKBOOT_ALONE_AVAILABLE)
-    list(APPEND KSUD_DEFINES MAGISKBOOT_ALONE_AVAILABLE=1)
+    list(APPEND KSUD_DEFINES MAGISKBOOT_ALONE_AVAILABLE=1 USE_MBEDTLS=1)
 endif()
 if(BOOTCTL_ALONE_AVAILABLE)
     list(APPEND KSUD_DEFINES BOOTCTL_ALONE_AVAILABLE=1)
@@ -366,7 +371,7 @@ if(NOT ANDROID)
     target_link_libraries(ksud PRIVATE pthread)
 endif()
 
-target_link_libraries(ksud PRIVATE z miniz)
+target_link_libraries(ksud PRIVATE z miniz mbedx509 mbedcrypto)
 
 # ============================================================================
 # Post-build Size Compression
