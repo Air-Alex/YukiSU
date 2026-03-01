@@ -85,11 +85,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_COMMON_FLAGS_STR}")
 
 # --- Release build optimization ---
 if(KSUD_DISABLE_LTO)
-    set(CMAKE_C_FLAGS_RELEASE   "-Oz -DNDEBUG")
-    set(CMAKE_CXX_FLAGS_RELEASE "-Oz -DNDEBUG")
+    set(CMAKE_C_FLAGS_RELEASE   "-Os -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELEASE "-Os -DNDEBUG")
 else()
-    set(CMAKE_C_FLAGS_RELEASE   "-Oz -DNDEBUG -flto=full")
-    set(CMAKE_CXX_FLAGS_RELEASE "-Oz -DNDEBUG -flto=full")
+    set(CMAKE_C_FLAGS_RELEASE   "-Os -DNDEBUG -flto=full")
+    set(CMAKE_CXX_FLAGS_RELEASE "-Os -DNDEBUG -flto=full")
 endif()
 
 # --- Aggressive linker optimization ---
