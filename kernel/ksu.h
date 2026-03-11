@@ -40,5 +40,6 @@ static inline int endswith(const char *s, const char *t)
 #endif // #if 0
 
 extern struct cred *ksu_cred;
+extern bool ksu_late_loaded;
 
 #endif // #ifndef __KSU_H_KSU

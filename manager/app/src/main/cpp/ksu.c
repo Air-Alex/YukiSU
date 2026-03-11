@@ -149,10 +149,10 @@ bool is_safe_mode() {
 bool is_lkm_mode() {
   auto info = get_info();
   if (info.version > 0) {
-    return (info.flags & 0x1) != 0;
+    return (info.flags & KSU_GET_INFO_FLAG_LKM) != 0;
   }
   // Legacy Compatible
-  return (legacy_get_info().flags & 0x1) != 0;
+  return (legacy_get_info().flags & KSU_GET_INFO_FLAG_LKM) != 0;
 }
 
 bool is_manager() {
@@ -160,10 +160,18 @@ bool is_manager() {
   struct ksu_get_info_cmd info = {};
   if (ksuctl(KSU_IOCTL_GET_INFO, &info) == 0 && info.version > 0) {
     g_version = info; // keep cache coherent for subsequent calls
-    return (info.flags & 0x2) != 0;
+    return (info.flags & KSU_GET_INFO_FLAG_MANAGER) != 0;
   }
   // Legacy Compatible
   return legacy_get_info().version > 0;
+}
+
+bool is_late_load_mode() {
+  auto info = get_info();
+  if (info.version > 0) {
+    return (info.flags & KSU_GET_INFO_FLAG_LATE_LOAD) != 0;
+  }
+  return false;
 }
 
 bool uid_should_umount(int uid) {

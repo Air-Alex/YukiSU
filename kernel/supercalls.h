@@ -38,9 +38,13 @@ struct ksu_become_daemon_cmd {
 	__u8 token[65];
 };
 
+#define KSU_GET_INFO_FLAG_LKM (1U << 0)
+#define KSU_GET_INFO_FLAG_MANAGER (1U << 1)
+#define KSU_GET_INFO_FLAG_LATE_LOAD (1U << 2)
+
 struct ksu_get_info_cmd {
 	__u32 version;
-	__u32 flags;
+	__u32 flags; // Output: KSU_GET_INFO_FLAG_* bits
 	__u32 features;
 };
 

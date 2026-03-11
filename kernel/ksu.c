@@ -8,7 +8,11 @@
 #include <linux/fs.h>
 #include <linux/kobject.h>
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/version.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 // workaround for A12-5.10 kernels with mismatched stack protector toolchain
 #if defined(CONFIG_STACKPROTECTOR) &&                                          \
@@ -42,17 +46,21 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 #endif // #if defined(CONFIG_STACKPROTECTOR) &&
 
 #include "allowlist.h"
+#include "dynamic_manager.h"
 #include "feature.h"
 #include "file_wrapper.h"
 #include "klog.h" // IWYU pragma: keep
 #include "ksu.h"
 #include "ksud.h"
+#include "manager.h"
+#include "selinux/selinux.h"
 #include "supercalls.h"
 #include "superkey.h"
 #include "throne_tracker.h"
 #include "sulog.h"
 
 struct cred *ksu_cred;
+bool ksu_late_loaded;
 
 void yukisu_custom_config_init(void)
 {
@@ -95,6 +103,11 @@ void yukisu_custom_config_exit(void)
 int __init kernelsu_init(void)
 {
 	pr_info("KernelSU LKM initializing, version: %u\n", KSU_VERSION);
+#ifdef MODULE
+	ksu_late_loaded = (current->pid != 1);
+#else
+	ksu_late_loaded = false;
+#endif // #ifdef MODULE
 
 #ifdef CONFIG_KSU_DEBUG
 	pr_alert(
@@ -124,15 +137,37 @@ int __init kernelsu_init(void)
 
 	yukisu_custom_config_init();
 
-	ksu_hook_init();
+	if (ksu_late_loaded) {
+		pr_info("late load mode, skipping kprobe hooks\n");
 
-	ksu_allowlist_init();
+		apply_kernelsu_rules();
+		cache_sid();
+		setup_ksu_cred();
 
-	ksu_throne_tracker_init();
+		ksu_allowlist_init();
+		ksu_load_allow_list();
 
-	ksu_ksud_init();
+		ksu_hook_init();
 
-	ksu_file_wrapper_init();
+		ksu_throne_tracker_init();
+		ksu_observer_init();
+		ksu_file_wrapper_init();
+
+#if __SULOG_GATE
+		ksu_sulog_init();
+#endif // #if __SULOG_GATE
+		ksu_dynamic_manager_init();
+
+		ksu_boot_completed = true;
+		track_throne(false);
+	} else {
+		ksu_hook_init();
+		ksu_allowlist_init();
+		ksu_throne_tracker_init();
+		ksu_ksud_init();
+		ksu_file_wrapper_init();
+	}
+
 #ifdef MODULE
 #ifndef CONFIG_KSU_DEBUG
 	kobject_del(&THIS_MODULE->mkobj.kobj);
@@ -147,19 +182,15 @@ extern void ksu_observer_exit(void);
 void kernelsu_exit(void)
 {
 	ksu_allowlist_exit();
-
 	ksu_throne_tracker_exit();
-
 	ksu_observer_exit();
 
-	ksu_ksud_exit();
+	if (!ksu_late_loaded)
+		ksu_ksud_exit();
 
 	ksu_hook_exit();
-
 	yukisu_custom_config_exit();
-
 	ksu_supercalls_exit();
-
 	ksu_feature_exit();
 
 	if (ksu_cred) {

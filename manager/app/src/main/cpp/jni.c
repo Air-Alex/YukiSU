@@ -53,6 +53,8 @@ NativeBridgeNP(isLkmMode, jboolean) { return is_lkm_mode(); }
 
 NativeBridgeNP(isManager, jboolean) { return is_manager(); }
 
+NativeBridgeNP(isLateLoadMode, jboolean) { return is_late_load_mode(); }
+
 static void fillIntArray(JNIEnv *env, jobject list, int *data, int count) {
   jclass cls = GetEnvironment()->GetObjectClass(env, list);
   jmethodID add =
