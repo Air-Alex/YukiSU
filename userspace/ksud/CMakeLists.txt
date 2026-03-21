@@ -247,6 +247,7 @@ set(KSUD_OUR_SOURCES
     src/defs.cpp
     src/log.cpp
     src/utils.cpp
+    src/kernelsu_loader.cpp
     src/core/ksucalls.cpp
     src/core/feature.cpp
     src/core/restorecon.cpp
@@ -261,8 +262,11 @@ set(KSUD_OUR_SOURCES
     src/sepolicy/sepolicy.cpp
     src/su.cpp
     src/init_event.cpp
+    src/late_load.cpp
     src/umount.cpp
     src/debug.cpp
+    src/magica/adb_client.cpp
+    src/magica/magica.cpp
     src/core/hide_bootloader.cpp
     src/flash/flash_partition.cpp
     src/hymo/hymo_cli.cpp
@@ -371,7 +375,7 @@ if(NOT ANDROID)
     target_link_libraries(ksud PRIVATE pthread)
 endif()
 
-target_link_libraries(ksud PRIVATE z miniz mbedx509 mbedcrypto)
+target_link_libraries(ksud PRIVATE z miniz mbedx509 mbedcrypto dl)
 
 # ============================================================================
 # Post-build Size Compression

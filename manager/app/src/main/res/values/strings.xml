@@ -50,6 +50,9 @@
     <string name="send_log">Send logs</string>
     <string name="safe_mode">Safe mode</string>
     <string name="jailbreak_mode">Jailbreak mode</string>
+    <string name="home_jailbreak">Jailbreak</string>
+    <string name="home_jailbreak_failed">Failed to start jailbreak service</string>
+    <string name="jailbreak_timeout">Jailbreak may have failed, please check logs</string>
     <string name="reboot_to_apply">Reboot to take effect</string>
     <string name="module_magisk_conflict">Modules are unavailable due to a conflict with Magisk!</string>
     <string name="home_learn_kernelsu">Learn KernelSU</string>
@@ -107,6 +110,8 @@
     <string name="module_changelog_failed">Fetch changelog failed: %s</string>
     <string name="settings_check_update">Check for updates</string>
     <string name="settings_check_update_summary">Automatically check for updates when opening the app</string>
+    <string name="settings_auto_jailbreak">Auto jailbreak</string>
+    <string name="settings_auto_jailbreak_summary">Automatically use Magica to bootstrap late-load when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
     <string name="grant_root_failed">Failed to grant root!</string>
     <string name="action">Action</string>
     <string name="close">Close</string>
@@ -158,6 +163,11 @@
     <string name="install_inactive_slot_warning">Your device will be **FORCED** to boot to the current inactive slot after a reboot!\nOnly use this option after OTA is done.\nContinue?</string>
     <string name="install_next">Next</string>
     <string name="install_select_partition">Select partition</string>
+    <string name="install_jailbreak_title">Jailbreak install</string>
+    <string name="install_jailbreak_summary">Trigger late-load from the install page on a permissive device. If no root shell is available yet, Magica bootstrap will be used instead.</string>
+    <string name="install_jailbreak_requires_permissive">This action is only available while SELinux is permissive.</string>
+    <string name="install_jailbreak_button">Trigger late-load</string>
+    <string name="install_jailbreak_failed">Failed to trigger late-load</string>
     <string name="hymofs_in_cpio_title">Experimental: Embed HymoFS in cpio</string>
     <string name="hymofs_in_cpio_desc">When enabled, HymoFS LKM will be added to cpio and loaded after KernelSU at boot</string>
     <string name="hymofs_custom_lkm_title">Custom HymoFS LKM</string>

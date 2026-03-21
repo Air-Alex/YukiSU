@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import android.system.Os
+import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
@@ -44,8 +45,10 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.KernelVersion
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.magica.MagicaHelper
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
+import com.anatdx.yukisu.ui.component.rememberLoadingDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
 import com.anatdx.yukisu.ui.theme.CardConfig.cardElevation
@@ -79,6 +82,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
     val context = LocalContext.current
     val viewModel = viewModel<HomeViewModel>()
     val coroutineScope = rememberCoroutineScope()
+    val loadingDialog = rememberLoadingDialog()
 
     val pullRefreshState = rememberPullRefreshState(
         refreshing = viewModel.isRefreshing,
@@ -272,7 +276,23 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                             superKeyDialog.show()
                         },
                         isSignatureOk = isSignatureOk,
-                        isLateLoadMode = isLateLoadMode
+                        isLateLoadMode = isLateLoadMode,
+                        canJailbreak = viewModel.systemStatus.ksuVersion == null &&
+                            viewModel.systemStatus.kernelVersion.isGKI() &&
+                            viewModel.systemInfo.seLinuxStatus == stringResource(R.string.selinux_status_permissive),
+                        onJailbreak = {
+                            loadingDialog.show()
+                            if (!MagicaHelper.launch(context)) {
+                                loadingDialog.hide()
+                                Toast.makeText(context, R.string.home_jailbreak_failed, Toast.LENGTH_LONG).show()
+                            } else {
+                                coroutineScope.launch {
+                                    delay(30_000)
+                                    loadingDialog.hide()
+                                    Toast.makeText(context, R.string.jailbreak_timeout, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     )
 
                     // 警告信息
@@ -484,8 +504,10 @@ private fun StatusCard(
     needsSuperKeyAuth: Boolean = false,
     isSignatureOk: Boolean = false,
     isLateLoadMode: Boolean = false,
+    canJailbreak: Boolean = false,
     onClickInstall: () -> Unit = {},
-    onSuperKeyAuth: () -> Unit = {}
+    onSuperKeyAuth: () -> Unit = {},
+    onJailbreak: () -> Unit = {}
 ) {
     ElevatedCard(
         colors = getCardColors(
@@ -717,7 +739,11 @@ private fun StatusCard(
                             ),
                     )
 
-                    Column(Modifier.padding(start = 20.dp)) {
+                    Column(
+                        Modifier
+                            .padding(start = 20.dp)
+                            .weight(1f)
+                    ) {
                         Text(
                             text = stringResource(R.string.home_not_installed),
                             style = MaterialTheme.typography.titleMedium,
@@ -730,6 +756,18 @@ private fun StatusCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
+                    }
+
+                    if (canJailbreak) {
+                        Button(
+                            onClick = onJailbreak,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) {
+                            Text(stringResource(R.string.home_jailbreak))
+                        }
                     }
                 }
 

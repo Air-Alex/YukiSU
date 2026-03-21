@@ -10,7 +10,9 @@
 #include "flash/flash_partition.hpp"
 #include "hymo/hymo_cli.hpp"
 #include "init_event.hpp"
+#include "late_load.hpp"
 #include "log.hpp"
+#include "magica/magica.hpp"
 #include "module/module.hpp"
 #include "module/module_config.hpp"
 #include "profile/profile.hpp"
@@ -129,6 +131,7 @@ void print_usage() {
     printf("USAGE: ksud <COMMAND>\n\n");
     printf("COMMANDS:\n");
     printf("  module         Manage KernelSU modules\n");
+    printf("  late-load      Load kernelsu.ko and execute late-load stage scripts\n");
     printf("  post-fs-data   Trigger post-fs-data event\n");
     printf("  services       Trigger service event\n");
     printf("  boot-completed Trigger boot-complete event\n");
@@ -674,6 +677,55 @@ int cmd_flash_new(const std::vector<std::string>& args) {
     return 1;
 }
 
+int cmd_late_load(const std::vector<std::string>& args) {
+    bool post_magica = false;
+    std::optional<uint16_t> magica_port;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--post-magica") {
+            post_magica = true;
+            continue;
+        }
+
+        if (args[i] == "--magica") {
+            uint16_t port = 5555;
+            if (i + 1 < args.size() && !args[i + 1].empty() && args[i + 1].rfind("--", 0) != 0) {
+                try {
+                    const int parsed = std::stoi(args[++i]);
+                    if (parsed <= 0 || parsed > 65535) {
+                        printf("Invalid magica port: %s\n", args[i].c_str());
+                        return 1;
+                    }
+                    port = static_cast<uint16_t>(parsed);
+                } catch (const std::exception&) {
+                    printf("Invalid magica port: %s\n", args[i].c_str());
+                    return 1;
+                }
+            }
+            magica_port = port;
+            continue;
+        }
+
+        printf("Unknown late-load option: %s\n", args[i].c_str());
+        printf("Usage: ksud late-load [--magica [PORT]] [--post-magica]\n");
+        return 1;
+    }
+
+    if (magica_port.has_value()) {
+        return magica::run(*magica_port);
+    }
+
+    const int result = late_load::run();
+    if (post_magica) {
+        LOGI("Restoring adb properties after Magica late-load");
+        if (magica::disable_adb_root() != 0) {
+            LOGE("Failed to restore adb properties after Magica late-load");
+        }
+    }
+
+    return result;
+}
+
 }  // namespace
 
 int cli_run(int argc, char** argv) {
@@ -733,6 +785,8 @@ int cli_run(int argc, char** argv) {
     } else if (cmd == "version" || cmd == "-v" || cmd == "--version") {
         print_version();
         return 0;
+    } else if (cmd == "late-load") {
+        return cmd_late_load(args);
     } else if (cmd == "post-fs-data") {
         return on_post_data_fs();
     } else if (cmd == "services") {

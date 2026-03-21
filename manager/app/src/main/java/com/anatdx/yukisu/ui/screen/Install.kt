@@ -53,12 +53,15 @@ import com.ramcosta.composedestinations.generated.destinations.FlashScreenDestin
 import com.ramcosta.composedestinations.generated.destinations.PartitionManagerScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.navigation.EmptyDestinationsNavigator
+import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.getKernelVersion
+import com.anatdx.yukisu.magica.MagicaHelper
 import com.anatdx.yukisu.ui.component.DialogHandle
 import com.anatdx.yukisu.ui.component.SuperDropdown
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.component.rememberCustomDialog
+import com.anatdx.yukisu.ui.component.rememberLoadingDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
 import com.anatdx.yukisu.ui.theme.CardConfig.cardElevation
@@ -68,6 +71,10 @@ import com.anatdx.yukisu.ui.theme.ThemeManager
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * @author ShirkNeko
@@ -81,12 +88,54 @@ fun InstallScreen(
     navigator: DestinationsNavigator
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val loadingDialog = rememberLoadingDialog()
     var installMethod by remember { mutableStateOf<InstallMethod?>(null) }
     var lkmSelection by remember { mutableStateOf<LkmSelection>(LkmSelection.KmiNone) }
     var showRebootDialog by remember { mutableStateOf(false) }
 
     val kernelVersion = getKernelVersion()
     val isGKI = kernelVersion.isGKI()
+    val seLinuxStatus by produceState(initialValue = context.getString(R.string.selinux_status_unknown)) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { getSELinuxStatus(context) }
+                .getOrDefault(context.getString(R.string.selinux_status_unknown))
+        }
+    }
+    val isManager by produceState(initialValue = false) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { Natives.isManager }.getOrDefault(false)
+        }
+    }
+    val isRootShellAvailable by produceState(initialValue = false) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { rootAvailable() }.getOrDefault(false)
+        }
+    }
+    val isSelinuxPermissive = seLinuxStatus == context.getString(R.string.selinux_status_permissive)
+    val canJailbreakInstall = isGKI && !isManager && isSelinuxPermissive
+    val onJailbreakInstall: () -> Unit = {
+        loadingDialog.show()
+        coroutineScope.launch {
+            val launched = if (isRootShellAvailable) {
+                withContext(Dispatchers.IO) {
+                    execKsud("late-load", true)
+                }
+            } else {
+                MagicaHelper.launch(context, "install-manual")
+            }
+
+            if (!launched) {
+                loadingDialog.hide()
+                Toast.makeText(context, R.string.install_jailbreak_failed, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+
+            delay(30_000)
+            loadingDialog.hide()
+            Toast.makeText(context, R.string.jailbreak_timeout, Toast.LENGTH_LONG).show()
+        }
+    }
 
     if (showRebootDialog) {
         RebootDialog(
@@ -467,6 +516,71 @@ fun InstallScreen(
                         }
 
                         Spacer(Modifier.height(16.dp))
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = isGKI && !isManager,
+                    enter = fadeIn() + expandVertically(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    ElevatedCard(
+                        colors = getCardColors(MaterialTheme.colorScheme.tertiaryContainer),
+                        elevation = getCardElevation(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.DeveloperMode,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.install_jailbreak_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = stringResource(R.string.install_jailbreak_summary),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+
+                            if (!isSelinuxPermissive) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = stringResource(R.string.install_jailbreak_requires_permissive),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Button(
+                                onClick = onJailbreakInstall,
+                                enabled = canJailbreakInstall,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiary,
+                                    contentColor = MaterialTheme.colorScheme.onTertiary
+                                )
+                            ) {
+                                Text(stringResource(R.string.install_jailbreak_button))
+                            }
+                        }
                     }
                 }
 

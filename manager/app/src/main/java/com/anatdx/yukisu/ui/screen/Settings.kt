@@ -49,6 +49,7 @@ import com.ramcosta.composedestinations.generated.destinations.HymoFSConfigScree
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.Natives
+import com.anatdx.yukisu.magica.MagicaHelper
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.*
 import com.anatdx.yukisu.ui.theme.CardConfig
@@ -84,6 +85,9 @@ fun SettingScreen(navigator: DestinationsNavigator) {
         mutableStateOf(
             prefs.getString("webui_engine", "default") ?: "default"
         )
+    }
+    var autoJailbreak by rememberSaveable {
+        mutableStateOf(MagicaHelper.isAutoJailbreakEnabled(context))
     }
 
     Scaffold(
@@ -513,6 +517,17 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         mutableStateOf(prefs.getBoolean("use_webuix_eruda", false))
                     }
 
+                    SwitchItem(
+                        icon = Icons.Filled.ElectricalServices,
+                        title = stringResource(R.string.settings_auto_jailbreak),
+                        summary = stringResource(R.string.settings_auto_jailbreak_summary),
+                        checked = autoJailbreak,
+                        onCheckedChange = { enabled ->
+                            MagicaHelper.setAutoJailbreakEnabled(context, enabled)
+                            autoJailbreak = enabled
+                        }
+                    )
+
                     KsuIsValid {
                         SwitchItem(
                             icon = Icons.Filled.DeveloperMode,
@@ -859,19 +874,36 @@ fun SwitchItem(
     title: String,
     summary: String? = null,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val titleColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+    }
+    val summaryColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+    }
+    val iconTint = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        checked -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(horizontal = SPACING_LARGE, vertical = 12.dp),
         verticalAlignment = Alignment.Top
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = iconTint,
             modifier = Modifier
                 .padding(end = SPACING_LARGE)
                 .size(24.dp)
@@ -880,18 +912,21 @@ fun SwitchItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium,
+                color = titleColor
             )
             if (summary != null) {
                 Spacer(modifier = Modifier.height(SPACING_SMALL))
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = summaryColor
                 )
             }
         }
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onCheckedChange
         )
     }

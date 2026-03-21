@@ -18,6 +18,18 @@ val managerVersionCode: Int by rootProject.extra
 val managerVersionName: String by rootProject.extra
 val androidCmakeVersion: String by rootProject.extra
 
+fun exposeSigningProperty(propertyName: String, envName: String) {
+    if (project.findProperty(propertyName) == null) {
+        val value = System.getenv(envName)?.takeIf { it.isNotBlank() } ?: return
+        project.extensions.extraProperties[propertyName] = value
+    }
+}
+
+exposeSigningProperty("KEYSTORE_FILE", "YUKISU_KEYSTORE")
+exposeSigningProperty("KEYSTORE_PASSWORD", "YUKISU_KEYSTORE_PASSWORD")
+exposeSigningProperty("KEY_ALIAS", "YUKISU_KEY_ALIAS")
+exposeSigningProperty("KEY_PASSWORD", "YUKISU_KEY_PASSWORD")
+
 apksign {
     storeFileProperty = "KEYSTORE_FILE"
     storePasswordProperty = "KEYSTORE_PASSWORD"
