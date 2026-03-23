@@ -48,6 +48,8 @@ struct ModuleInfo {
 
 namespace {
 
+constexpr uint32_t KSU_GET_INFO_FLAG_LATE_LOAD = 1U << 2;
+
 // Escape special characters for JSON string
 std::string escape_json(const std::string& s) {
     std::string result;
@@ -433,6 +435,7 @@ export API ARCH ABI ABI32 IS64BIT
 
     chmod(wrapper.c_str(), 0755);
 
+    const CommonScriptEnv common_env = build_common_script_env();
     const pid_t pid = fork();
     if (pid < 0)
         return false;
@@ -440,10 +443,7 @@ export API ARCH ABI ABI32 IS64BIT
     if (pid == 0) {
         chdir(modpath.c_str());
 
-        setenv("ASH_STANDALONE", "1", 1);
-        setenv("KSU", "true", 1);
-        setenv("KSU_VER", VERSION_NAME, 1);
-        setenv("KSU_VER_CODE", VERSION_CODE, 1);
+        apply_common_script_env(common_env, nullptr, true);
         setenv("MODPATH", modpath.c_str(), 1);
         setenv("ZIPFILE", zipfile.c_str(), 1);
         setenv("NVBASE", "/data/adb", 1);
@@ -657,6 +657,59 @@ bool exec_install_script(const std::string& zip_path) {
 }
 
 }  // namespace
+
+CommonScriptEnv build_common_script_env() {
+    CommonScriptEnv env;
+    env.kernel_ver_code = std::to_string(get_version());
+    env.late_load = (get_flags() & KSU_GET_INFO_FLAG_LATE_LOAD) != 0;
+
+    std::string binary_dir = std::string(BINARY_DIR);
+    if (!binary_dir.empty() && binary_dir.back() == '/') {
+        binary_dir.pop_back();
+    }
+
+    const char* old_path = getenv("PATH");
+    if (old_path && old_path[0] != '\0') {
+        env.path = std::string(old_path) + ":" + binary_dir;
+    } else {
+        env.path = binary_dir;
+    }
+
+    return env;
+}
+
+void apply_common_script_env(const CommonScriptEnv& env, const char* module_id,
+                             bool set_magisk_compat, bool set_sukisu) {
+    setenv("ASH_STANDALONE", "1", 1);
+    setenv("KSU", "true", 1);
+    setenv("KSU_KERNEL_VER_CODE", env.kernel_ver_code.c_str(), 1);
+    setenv("KSU_VER_CODE", VERSION_CODE, 1);
+    setenv("KSU_VER", VERSION_NAME, 1);
+    setenv("PATH", env.path.c_str(), 1);
+
+    if (env.late_load) {
+        setenv("KSU_LATE_LOAD", "1", 1);
+    } else {
+        unsetenv("KSU_LATE_LOAD");
+    }
+
+    if (set_magisk_compat) {
+        setenv("MAGISK_VER", "25.2", 1);
+        setenv("MAGISK_VER_CODE", "25200", 1);
+    }
+
+    if (set_sukisu) {
+        setenv("KSU_SUKISU", "true", 1);
+    } else {
+        unsetenv("KSU_SUKISU");
+    }
+
+    if (module_id != nullptr && module_id[0] != '\0') {
+        setenv("KSU_MODULE", module_id, 1);
+    } else {
+        unsetenv("KSU_MODULE");
+    }
+}
 
 std::string get_metamodule_id() {
     return get_metamodule_id_impl();
@@ -1020,24 +1073,12 @@ int run_script(const std::string& script, bool block, const std::string& module_
 
     // Prepare all environment variable values BEFORE fork
     // to avoid calling C++ library functions in child process
-    const std::string ver_code_str = std::to_string(get_version());
-    const char* old_path = getenv("PATH");
-    std::string binary_dir = std::string(BINARY_DIR);
-    if (!binary_dir.empty() && binary_dir.back() == '/')
-        binary_dir.pop_back();
-    std::string new_path;
-    if (old_path && old_path[0] != '\0') {
-        new_path = std::string(old_path) + ":" + binary_dir;  // Original PATH first (like Rust)
-    } else {
-        new_path = binary_dir;
-    }
+    const CommonScriptEnv common_env = build_common_script_env();
 
     // Make copies of string data that child process will use
     const char* busybox_path = busybox.c_str();
     const char* script_path = script.c_str();
     const char* script_dir_path = script_dir.c_str();
-    const char* ver_code = ver_code_str.c_str();
-    const char* path_env = new_path.c_str();
     const char* module_id_cstr = module_id.c_str();
 
     const pid_t pid = fork();
@@ -1052,24 +1093,7 @@ int run_script(const std::string& script, bool block, const std::string& module_
         chdir(script_dir_path);
 
         // Set environment variables (matching Rust version's get_common_script_envs)
-        setenv("ASH_STANDALONE", "1", 1);
-        setenv("KSU", "true", 1);
-        setenv("KSU_SUKISU", "true", 1);
-        setenv("KSU_KERNEL_VER_CODE", ver_code, 1);
-        setenv("KSU_VER_CODE", VERSION_CODE, 1);
-        setenv("KSU_VER", VERSION_NAME, 1);
-
-        // Magisk compatibility environment variables (some modules depend on this)
-        setenv("MAGISK_VER", "25.2", 1);
-        setenv("MAGISK_VER_CODE", "25200", 1);
-
-        // Set KSU_MODULE if module_id provided
-        if (module_id_cstr[0] != '\0') {
-            setenv("KSU_MODULE", module_id_cstr, 1);
-        }
-
-        // Set PATH
-        setenv("PATH", path_env, 1);
+        apply_common_script_env(common_env, module_id_cstr, true, true);
 
         // Execute with busybox sh
         execl(busybox_path, "sh", script_path, nullptr);

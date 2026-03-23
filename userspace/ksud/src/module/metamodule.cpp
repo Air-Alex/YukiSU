@@ -3,6 +3,7 @@
 #include "../hymo/hymo_cli.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
+#include "module.hpp"
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -31,19 +32,24 @@ int run_script(const std::string& script, bool block) {
         busybox = "/system/bin/sh";
     }
 
+    std::string script_dir = script.substr(0, script.find_last_of('/'));
+    if (script_dir.empty()) {
+        script_dir = "/";
+    }
+
+    const CommonScriptEnv common_env = build_common_script_env();
+
     // Prepare all values BEFORE fork
     const char* busybox_path = busybox.c_str();
     const char* script_path = script.c_str();
+    const char* script_dir_path = script_dir.c_str();
 
     const pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        chdir("/");
+        chdir(script_dir_path);
 
-        setenv("ASH_STANDALONE", "1", 1);
-        setenv("KSU", "true", 1);
-        setenv("KSU_VER", KSUD_VERSION, 1);
-        setenv("PATH", "/data/adb/ksu/bin:/data/adb/ap/bin:/system/bin:/vendor/bin", 1);
+        apply_common_script_env(common_env);
 
         execl(busybox_path, "sh", script_path, nullptr);
         _exit(127);
@@ -131,17 +137,15 @@ int metamodule_exec_mount_script() {
 
         const char* busybox_path = busybox.c_str();
         const char* script_path = script.c_str();
+        const CommonScriptEnv common_env = build_common_script_env();
 
         const pid_t pid = fork();
         if (pid == 0) {
             setsid();
             chdir(METAMODULE_DIR);
 
-            setenv("ASH_STANDALONE", "1", 1);
-            setenv("KSU", "true", 1);
-            setenv("KSU_VER", KSUD_VERSION, 1);
+            apply_common_script_env(common_env);
             setenv("MODULE_DIR", MODULE_DIR, 1);
-            setenv("PATH", "/data/adb/ksu/bin:/data/adb/ap/bin:/system/bin:/vendor/bin", 1);
 
             execl(busybox_path, "sh", script_path, nullptr);
             _exit(127);
