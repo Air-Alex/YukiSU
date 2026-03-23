@@ -44,6 +44,6 @@ std::string get_metamodule_id();
 // Shared script environment
 CommonScriptEnv build_common_script_env();
 void apply_common_script_env(const CommonScriptEnv& env, const char* module_id = nullptr,
-                             bool set_magisk_compat = false, bool set_sukisu = false);
+                             bool set_magisk_compat = false);
 
 }  // namespace ksud

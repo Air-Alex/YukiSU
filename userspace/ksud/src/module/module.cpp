@@ -912,7 +912,7 @@ CommonScriptEnv build_common_script_env() {
 }
 
 void apply_common_script_env(const CommonScriptEnv& env, const char* module_id,
-                             bool set_magisk_compat, bool set_sukisu) {
+                             bool set_magisk_compat) {
     setenv("ASH_STANDALONE", "1", 1);
     setenv("KSU", "true", 1);
     setenv("KSU_KERNEL_VER_CODE", env.kernel_ver_code.c_str(), 1);
@@ -929,12 +929,6 @@ void apply_common_script_env(const CommonScriptEnv& env, const char* module_id,
     if (set_magisk_compat) {
         setenv("MAGISK_VER", "25.2", 1);
         setenv("MAGISK_VER_CODE", "25200", 1);
-    }
-
-    if (set_sukisu) {
-        setenv("KSU_SUKISU", "true", 1);
-    } else {
-        unsetenv("KSU_SUKISU");
     }
 
     if (module_id != nullptr && module_id[0] != '\0') {
@@ -1095,65 +1089,88 @@ int module_run_action(const std::string& id) {
     return run_script(action_script, true, id);
 }
 
-int module_list() {
-    DIR* dir = opendir(MODULE_DIR);
+namespace {
+
+bool load_module_info(const std::string& module_path, const std::string& fallback_id,
+                      bool pending_update, ModuleInfo& info) {
+    const std::string prop_path = module_path + "/module.prop";
+    if (!file_exists(prop_path)) {
+        return false;
+    }
+
+    auto props = parse_module_prop(prop_path);
+
+    info.id = props.count("id") ? props["id"] : fallback_id;
+    info.name = props.count("name") ? props["name"] : info.id;
+    info.version = props.count("version") ? props["version"] : "";
+    info.version_code = props.count("versionCode") ? props["versionCode"] : "";
+    info.author = props.count("author") ? props["author"] : "";
+    info.description = props.count("description") ? props["description"] : "";
+    info.enabled = !file_exists(module_path + "/" + DISABLE_FILE_NAME);
+    info.update = pending_update || file_exists(module_path + "/" + UPDATE_FILE_NAME);
+    info.remove = file_exists(module_path + "/" + REMOVE_FILE_NAME);
+    info.web = file_exists(module_path + "/" + MODULE_WEB_DIR);
+    info.action = file_exists(module_path + "/" + MODULE_ACTION_SH);
+    info.mount = file_exists(module_path + "/system") && !file_exists(module_path + "/skip_mount");
+
+    const std::string metamodule_val = props.count("metamodule") ? props["metamodule"] : "";
+    info.metamodule =
+        (metamodule_val == "1" || metamodule_val == "true" || metamodule_val == "TRUE");
+
+    if (props.count("actionIcon")) {
+        info.actionIcon =
+            resolve_module_icon_path(props["actionIcon"], info.id, module_path, "actionIcon");
+    }
+    if (props.count("webuiIcon")) {
+        info.webuiIcon =
+            resolve_module_icon_path(props["webuiIcon"], info.id, module_path, "webuiIcon");
+    }
+
+    return true;
+}
+
+void collect_module_infos(const std::string& root_dir, bool pending_update,
+                          std::vector<ModuleInfo>& modules,
+                          std::map<std::string, size_t>& module_index) {
+    DIR* dir = opendir(root_dir.c_str());
     if (!dir) {
-        // Empty JSON array
-        printf("[]\n");
-        return 0;
+        return;
     }
 
     struct dirent* entry;
-    std::vector<ModuleInfo> modules;
-
     while ((entry = readdir(dir)) != nullptr) {
-        if (entry->d_name[0] == '.')
+        if (entry->d_name[0] == '.') {
             continue;
-        if (entry->d_type != DT_DIR)
+        }
+        if (entry->d_type != DT_DIR) {
             continue;
+        }
 
-        const std::string module_path = std::string(MODULE_DIR) + entry->d_name;
-        const std::string prop_path = module_path + "/module.prop";
-
-        if (!file_exists(prop_path))
-            continue;
-
-        auto props = parse_module_prop(prop_path);
-
+        const std::string module_path = root_dir + entry->d_name;
         ModuleInfo info;
-        info.id = props.count("id") ? props["id"] : std::string(entry->d_name);
-        info.name = props.count("name") ? props["name"] : info.id;
-        info.version = props.count("version") ? props["version"] : "";
-        info.version_code = props.count("versionCode") ? props["versionCode"] : "";
-        info.author = props.count("author") ? props["author"] : "";
-        info.description = props.count("description") ? props["description"] : "";
-        info.enabled = !file_exists(module_path + "/" + DISABLE_FILE_NAME);
-        info.update = file_exists(module_path + "/" + UPDATE_FILE_NAME);
-        info.remove = file_exists(module_path + "/" + REMOVE_FILE_NAME);
-        info.web = file_exists(module_path + "/" + MODULE_WEB_DIR);
-        info.action = file_exists(module_path + "/" + MODULE_ACTION_SH);
-        // Check if module needs mounting (has system folder and no skip_mount)
-        info.mount =
-            file_exists(module_path + "/system") && !file_exists(module_path + "/skip_mount");
-        // Check if module is a metamodule
-        const std::string metamodule_val = props.count("metamodule") ? props["metamodule"] : "";
-        info.metamodule =
-            (metamodule_val == "1" || metamodule_val == "true" || metamodule_val == "TRUE");
-
-        // Resolve icon paths
-        if (props.count("actionIcon")) {
-            info.actionIcon =
-                resolve_module_icon_path(props["actionIcon"], info.id, module_path, "actionIcon");
-        }
-        if (props.count("webuiIcon")) {
-            info.webuiIcon =
-                resolve_module_icon_path(props["webuiIcon"], info.id, module_path, "webuiIcon");
+        if (!load_module_info(module_path, entry->d_name, pending_update, info)) {
+            continue;
         }
 
-        modules.push_back(info);
+        const auto [it, inserted] = module_index.emplace(info.id, modules.size());
+        if (inserted) {
+            modules.push_back(std::move(info));
+            continue;
+        }
+
+        modules[it->second].update = modules[it->second].update || info.update;
     }
 
     closedir(dir);
+}
+
+}  // namespace
+
+int module_list() {
+    std::vector<ModuleInfo> modules;
+    std::map<std::string, size_t> module_index;
+    collect_module_infos(MODULE_DIR, false, modules, module_index);
+    collect_module_infos(MODULE_UPDATE_DIR, true, modules, module_index);
 
     // Output JSON array
     printf("[\n");
@@ -1326,7 +1343,7 @@ int run_script(const std::string& script, bool block, const std::string& module_
         chdir(script_dir_path);
 
         // Set environment variables (matching Rust version's get_common_script_envs)
-        apply_common_script_env(common_env, module_id_cstr, true, true);
+        apply_common_script_env(common_env, module_id_cstr, true);
 
         // Execute with busybox sh
         execl(busybox_path, "sh", script_path, nullptr);
