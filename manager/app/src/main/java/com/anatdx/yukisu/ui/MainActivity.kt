@@ -58,6 +58,7 @@ import com.anatdx.yukisu.ui.screen.BottomBarDestination
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
 import com.anatdx.yukisu.ui.util.install
+import com.anatdx.yukisu.ui.util.resetTaskDescriptionToAppName
 import com.anatdx.yukisu.ui.viewmodel.HomeViewModel
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import com.anatdx.yukisu.ui.webui.WebUIActivity
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
             }
 
             super.onCreate(savedInstanceState)
+            resetTaskDescriptionToAppName()
 
             // Note: ksud installation moved to KsuCli.refreshShells()
             // which is called after SuperKey authentication succeeds.
@@ -310,6 +312,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         try {
             super.onResume()
+            resetTaskDescriptionToAppName()
             ThemeUtils.onActivityResume()
 
             // 仅在需要时刷新数据

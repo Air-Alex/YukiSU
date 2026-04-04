@@ -1,6 +1,5 @@
 package com.anatdx.yukisu.ui.webui
 
-import android.app.ActivityManager
 import android.os.Build
 import android.os.Bundle
 import android.webkit.WebView
@@ -18,6 +17,7 @@ import com.dergoogler.mmrl.webui.screen.WebUIScreen
 import com.dergoogler.mmrl.webui.util.rememberWebUIOptions
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
+import com.anatdx.yukisu.ui.util.setTaskDescriptionLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -54,14 +54,7 @@ class WebUIXActivity : ComponentActivity() {
 
         val moduleId = intent.getStringExtra("id")!!
         val name = intent.getStringExtra("name")!!
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            @Suppress("DEPRECATION")
-            setTaskDescription(ActivityManager.TaskDescription("YukiSU - $name"))
-        } else {
-            val taskDescription =
-                ActivityManager.TaskDescription.Builder().setLabel("YukiSU - $name").build()
-            setTaskDescription(taskDescription)
-        }
+        setTaskDescriptionLabel("YukiSU - $name")
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
 

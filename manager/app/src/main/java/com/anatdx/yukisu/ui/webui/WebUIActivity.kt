@@ -1,7 +1,6 @@
 package com.anatdx.yukisu.ui.webui
 
 import android.annotation.SuppressLint
-import android.app.ActivityManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -24,6 +23,7 @@ import androidx.webkit.WebViewAssetLoader
 import com.dergoogler.mmrl.platform.model.ModId
 import com.dergoogler.mmrl.webui.interfaces.WXOptions
 import com.anatdx.yukisu.ui.util.createRootShell
+import com.anatdx.yukisu.ui.util.setTaskDescriptionLabel
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -63,14 +63,7 @@ class WebUIActivity : ComponentActivity() {
     private fun setupWebView() {
         val moduleId = intent.getStringExtra("id") ?: finishAndRemoveTask().let { return }
         val name = intent.getStringExtra("name") ?: finishAndRemoveTask().let { return }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            @Suppress("DEPRECATION")
-            setTaskDescription(ActivityManager.TaskDescription("YukiSU - $name"))
-        } else {
-            val taskDescription =
-                ActivityManager.TaskDescription.Builder().setLabel("YukiSU - $name").build()
-            setTaskDescription(taskDescription)
-        }
+        setTaskDescriptionLabel("YukiSU - $name")
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         WebView.setWebContentsDebuggingEnabled(prefs.getBoolean("enable_web_debugging", false))
