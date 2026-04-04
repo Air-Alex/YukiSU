@@ -649,8 +649,10 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
                     }
-                    UninstallItem(navigator) {
-                        loadingDialog.withLoading(it)
+                    KsuIsValid {
+                        UninstallItem(navigator) {
+                            loadingDialog.withLoading(it)
+                        }
                     }
                 }
             )
