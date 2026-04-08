@@ -14,6 +14,8 @@ import androidx.annotation.Nullable;
 import androidx.webkit.WebViewAssetLoader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.function.Consumer;
 
 final class ModuleWebViewClient extends WebViewClient {
@@ -65,9 +67,13 @@ final class ModuleWebViewClient extends WebViewClient {
                 if (icon != null) {
                     ByteArrayOutputStream stream = new ByteArrayOutputStream();
                     icon.compress(Bitmap.CompressFormat.PNG, 100, stream);
-                    return new WebResourceResponse("image/png", null,
+                    return new WebResourceResponse("image/png", null, 200, "OK",
+                            Map.of("Access-Control-Allow-Origin", "*"),
                             new ByteArrayInputStream(stream.toByteArray()));
                 }
+                return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found",
+                        Map.of("Access-Control-Allow-Origin", "*"),
+                        new ByteArrayInputStream("No such package".getBytes(StandardCharsets.UTF_8)));
             }
         }
         return assetLoader.shouldInterceptRequest(url);
