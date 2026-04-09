@@ -93,6 +93,17 @@ const char* feature_id_to_description(uint32_t id) {
     return "Unknown feature";
 }
 
+std::map<uint32_t, uint64_t> get_current_feature_values() {
+    std::map<uint32_t, uint64_t> features;
+    for (const auto& [_, id] : get_feature_map()) {
+        auto [value, supported] = get_feature(id);
+        if (supported) {
+            features[id] = value;
+        }
+    }
+    return features;
+}
+
 }  // namespace
 
 int feature_get(const std::string& id) {
@@ -192,6 +203,7 @@ int feature_load_config() {
     // Parse simple key=value format
     std::istringstream iss(*content);
     std::string line;
+    std::map<uint32_t, uint64_t> loaded_features;
     while (std::getline(iss, line)) {
         line = trim(line);
         if (line.empty() || line[0] == '#')
@@ -209,6 +221,7 @@ int feature_load_config() {
             try {
                 const uint64_t value = std::stoull(val);
                 set_feature(feature_id, value);
+                loaded_features[feature_id] = value;
                 LOGI("Loaded feature %s = %" PRIu64, key.c_str(), value);
             } catch (...) {
                 LOGW("Invalid value for feature %s: %s", key.c_str(), val.c_str());
@@ -216,11 +229,16 @@ int feature_load_config() {
         }
     }
 
+    if (save_binary_config(loaded_features) != 0) {
+        LOGW("Failed to sync loaded feature config to binary cache");
+    }
+
     return 0;
 }
 
 int feature_save_config() {
     const std::string config_path = std::string(KSURC_PATH);
+    const auto current_features = get_current_feature_values();
     std::ofstream ofs(config_path);
     if (!ofs) {
         LOGE("Failed to open config file for writing");
@@ -229,10 +247,15 @@ int feature_save_config() {
 
     ofs << "# KernelSU feature configuration\n";
     for (const auto& [name, id] : get_feature_map()) {
-        auto [value, supported] = get_feature(id);
-        if (supported) {
-            ofs << name << "=" << value << "\n";
+        auto it = current_features.find(id);
+        if (it != current_features.end()) {
+            ofs << name << "=" << it->second << "\n";
         }
+    }
+
+    if (save_binary_config(current_features) != 0) {
+        LOGE("Failed to save feature binary config");
+        return 1;
     }
 
     LOGI("Saved feature config to %s", config_path.c_str());
