@@ -21,7 +21,10 @@ cmaker = "1.4"
 compose-material3 = "1.5.0-alpha28"
 compose-ui = "1.12.1"
 documentfile = "1.1.0"
-mmrl = "2bb00b3c2b"
+mmrl = "v34242"
+# JitPack publishes v438 (1cd1e76d9438) under the version without the v prefix.
+webuix = "438"
+swiperefreshlayout = "1.2.0"
 ndk = "29.0.14206865"
 foundation = "1.12.1"
 bouncycastle = "1.86"
@@ -97,7 +100,11 @@ commons-compress = { module = "org.apache.commons:commons-compress", version.ref
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
 
 
-mmrl-webui = { group = "com.github.MMRLApp.MMRL", name = "webui", version.ref = "mmrl" }
+mmrl-webui = { group = "com.github.MMRLApp.WebUI-X-Portable", name = "webui", version.ref = "webuix" }
+mmrl-hwui = { group = "com.github.MMRLApp.WebUI-X-Portable", name = "hwui", version.ref = "webuix" }
+androidx-swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
+mmrl-ext = { group = "com.github.MMRLApp.MMRL", name = "ext", version.ref = "mmrl" }
+mmrl-compat = { group = "com.github.MMRLApp.MMRL", name = "compat", version.ref = "mmrl" }
 mmrl-platform = { group = "com.github.MMRLApp.MMRL", name = "platform", version.ref = "mmrl" }
 mmrl-ui = { group = "com.github.MMRLApp.MMRL", name = "ui", version.ref = "mmrl" }
 mmrl-hidden-api = { group = "com.github.MMRLApp.MMRL", name = "hidden-api", version.ref = "mmrl" }

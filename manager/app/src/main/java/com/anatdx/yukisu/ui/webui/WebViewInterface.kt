@@ -2,18 +2,14 @@ package com.anatdx.yukisu.ui.webui
 
 import android.app.Activity
 import android.content.pm.ApplicationInfo
-import android.os.Handler
-import android.os.Looper
 import android.text.TextUtils
 import android.view.Window
+import android.webkit.WebView
 import android.webkit.JavascriptInterface
 import android.widget.Toast
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.dergoogler.mmrl.webui.interfaces.WXInterface
-import com.dergoogler.mmrl.webui.interfaces.WXOptions
-import com.dergoogler.mmrl.webui.model.JavaScriptInterface
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import com.anatdx.yukisu.ui.util.*
 import com.topjohnwu.superuser.CallbackList
@@ -26,15 +22,11 @@ import java.util.concurrent.CompletableFuture
 
 @Suppress("unused")
 open class WebViewInterface(
-    wxOptions: WXOptions,
-) : WXInterface(wxOptions) {
-    override var name: String = "ksu"
-
-    companion object {
-        fun factory() = JavaScriptInterface(WebViewInterface::class.java)
-    }
-
-    private val modDir get() = "/data/adb/modules/${modId.id}"
+    protected val activity: Activity,
+    protected val webView: WebView,
+    private val moduleId: String,
+) {
+    private val modDir get() = "/data/adb/modules/$moduleId"
 
     @JavascriptInterface
     fun exec(cmd: String): String {
@@ -167,20 +159,14 @@ open class WebViewInterface(
     @JavascriptInterface
     fun toast(msg: String) {
         webView.post {
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
     @JavascriptInterface
     open fun fullScreen(enable: Boolean) {
-        if (context is Activity) {
-            Handler(Looper.getMainLooper()).post {
-                if (enable) {
-                    hideSystemUI(activity.window)
-                } else {
-                    showSystemUI(activity.window)
-                }
-            }
+        webView.post {
+            if (enable) hideSystemUI(activity.window) else showSystemUI(activity.window)
         }
     }
 

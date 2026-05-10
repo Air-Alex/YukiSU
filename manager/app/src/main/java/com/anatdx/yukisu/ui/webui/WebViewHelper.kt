@@ -19,8 +19,6 @@ import com.anatdx.yukisu.ui.util.createRootShell
 import com.anatdx.yukisu.ui.util.listModules
 import com.anatdx.yukisu.ui.util.setTaskDescriptionLabel
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
-import com.dergoogler.mmrl.platform.model.ModId
-import com.dergoogler.mmrl.webui.interfaces.WXOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -139,7 +137,7 @@ internal suspend fun prepareWebView(activity: Activity, moduleId: String, state:
                 }
 
                 webView.addJavascriptInterface(
-                    KsuWebViewInterface(WXOptions(activity, webView, ModId(moduleId)), state), "ksu"
+                    KsuWebViewInterface(activity, webView, moduleId, state), "ksu"
                 )
                 state.uiEvent = WebUIEvent.WebViewReady
             }
@@ -150,9 +148,11 @@ internal suspend fun prepareWebView(activity: Activity, moduleId: String, state:
 }
 
 internal class KsuWebViewInterface(
-    options: WXOptions,
+    activity: Activity,
+    webView: WebView,
+    moduleId: String,
     private val state: WebUIState,
-) : WebViewInterface(options) {
+) : WebViewInterface(activity, webView, moduleId) {
     @JavascriptInterface
     fun enableEdgeToEdge(enable: Boolean) {
         webView.post { state.isInsetsEnabled = enable }

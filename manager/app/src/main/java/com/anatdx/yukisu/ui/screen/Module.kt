@@ -68,8 +68,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dergoogler.mmrl.platform.model.ModuleConfig
-import com.dergoogler.mmrl.platform.model.ModuleConfig.Companion.asModuleConfig
+import com.anatdx.yukisu.ui.webui.ModuleConfig
+import com.anatdx.yukisu.ui.webui.ModuleConfig.Companion.asModuleConfig
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.ExecuteModuleActionScreenDestination
@@ -504,44 +504,44 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                         lastClickTime = currentTime
 
                         if (hasWebUi) {
-                            try {
-                                val wxEngine = Intent(context, WebUIXActivity::class.java)
-                                    .setData("kernelsu://webuix/$id".toUri())
-                                    .putExtra("id", id)
-                                    .putExtra("name", name)
+                            scope.launch {
+                                try {
+                                    val wxEngine = Intent(context, WebUIXActivity::class.java)
+                                        .setData("kernelsu://webuix/$id".toUri())
+                                        .putExtra("id", id)
+                                        .putExtra("name", name)
 
-                                val ksuEngine = Intent(context, WebUIActivity::class.java)
-                                    .setData("kernelsu://webui/$id".toUri())
-                                    .putExtra("id", id)
-                                    .putExtra("name", name)
+                                    val ksuEngine = Intent(context, WebUIActivity::class.java)
+                                        .setData("kernelsu://webui/$id".toUri())
+                                        .putExtra("id", id)
+                                        .putExtra("name", name)
 
-                                val config = try {
-                                    id.asModuleConfig
+                                    val config = try {
+                                        withContext(Dispatchers.IO) { id.asModuleConfig }
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        Log.e("ModuleScreen", "Failed to get config from id: $id", e)
+                                        null
+                                    }
+
+                                    val globalEngine = prefs.getString("webui_engine", "default") ?: "default"
+                                    val moduleEngine = config?.getWebuiEngine(context)
+                                    val selectedEngine = when (globalEngine) {
+                                        "wx" -> wxEngine
+                                        "ksu" -> ksuEngine
+                                        // Automatic mode requires an explicit WebUI X preference.
+                                        "default" -> if (moduleEngine == "wx") wxEngine else ksuEngine
+                                        else -> ksuEngine
+                                    }
+                                    webUILauncher.launch(selectedEngine)
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
-                                    Log.e("ModuleScreen", "Failed to get config from id: $id", e)
-                                    null
-                                }
-
-                                val globalEngine = prefs.getString("webui_engine", "default") ?: "default"
-                                val moduleEngine = config?.getWebuiEngine(context)
-                                val selectedEngine = when (globalEngine) {
-                                    "wx" -> wxEngine
-                                    "ksu" -> ksuEngine
-                                    // WebUI X has the richer API but the worse
-                                    // compatibility record, so automatic means
-                                    // opt-in: a module gets it by asking for
-                                    // it. A module that declares nothing used
-                                    // to land on WebUI X whenever the MMRL
-                                    // platform happened to be up; it now runs
-                                    // on KSU WebUI.
-                                    "default" -> if (moduleEngine == "wx") wxEngine else ksuEngine
-                                    else -> ksuEngine
-                                }
-                                webUILauncher.launch(selectedEngine)
-                            } catch (e: Exception) {
-                                Log.e("ModuleScreen", "Error launching WebUI: ${e.message}", e)
-                                scope.launch {
-                                    snackBarHost.showSnackbar("Error launching WebUI: ${e.message}")
+                                    Log.e("ModuleScreen", "Error launching WebUI: ${e.message}", e)
+                                    scope.launch {
+                                        snackBarHost.showSnackbar("Error launching WebUI: ${e.message}")
+                                    }
                                 }
                             }
                             return@ModuleList

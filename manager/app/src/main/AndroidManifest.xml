@@ -86,7 +86,8 @@
             android:autoRemoveFromRecents="true"
             android:documentLaunchMode="intoExisting"
             android:exported="false"
-            android:theme="@style/Theme.KernelSU.WebUI" />
+            android:theme="@style/Theme.KernelSU.WebUI"
+            android:configChanges="density|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|locale|layoutDirection|fontScale|keyboard|keyboardHidden" />
 
         <activity
             android:name=".ui.SuRequestActivity"

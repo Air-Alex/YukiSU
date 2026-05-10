@@ -14,7 +14,7 @@ import com.anatdx.yukisu.integrity.KsudIntegrity
 import com.anatdx.yukisu.update.CiUpdateManager
 import coil.Coil
 import coil.ImageLoader
-import com.dergoogler.mmrl.platform.Platform
+import com.dergoogler.mmrl.platform.PlatformManager
 import me.zhanghai.android.appiconloader.coil.AppIconFetcher
 import me.zhanghai.android.appiconloader.coil.AppIconKeyer
 import okhttp3.Cache
@@ -52,7 +52,7 @@ class KernelSUApplication : Application(), ViewModelStoreOwner {
             superUserViewModel.fetchAppList()
         }
 
-        Platform.setHiddenApiExemptions()
+        PlatformManager.setHiddenApiExemptions()
 
         val context = this
         val iconSize = resources.getDimensionPixelSize(android.R.dimen.app_icon_size)

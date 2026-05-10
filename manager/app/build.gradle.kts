@@ -673,6 +673,10 @@ dependencies {
     implementation(libs.mmrl.platform)
     compileOnly(libs.mmrl.hidden.api)
     implementation(libs.mmrl.webui)
+    implementation(libs.mmrl.hwui)
+    implementation(libs.mmrl.ext)
+    implementation(libs.mmrl.compat)
+    implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.mmrl.ui)
 
     implementation(libs.accompanist.drawablepainter)
