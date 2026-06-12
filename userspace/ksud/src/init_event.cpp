@@ -7,6 +7,8 @@
 #include "defs.hpp"
 #include "dynamic_manager.hpp"
 #include "log.hpp"
+#include "magisk_compat/msud.hpp"
+#include "magisk_compat/su_mount.hpp"
 #include "module/metamodule.hpp"
 #include "module/module.hpp"
 #include "module/module_config.hpp"
@@ -251,6 +253,10 @@ int on_post_data_fs() {
     try_kasumi_metamount_mount();
 
     umount_apply_config();
+
+    // Register per-app unmount only after umount_apply_config resets the list.
+    mount_magisk_compat_su_if_enabled();
+
     run_stage("post-mount", true);
 
     chdir("/");
@@ -276,6 +282,8 @@ void on_boot_completed() {
 
     // Report to kernel
     report_boot_complete();
+
+    ensure_msud_running_if_enabled();
 
     // Run boot-completed stage
     run_stage("boot-completed", false);

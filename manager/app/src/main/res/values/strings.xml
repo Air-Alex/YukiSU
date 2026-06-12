@@ -838,4 +838,13 @@
     <string name="setting_change_failed">Setting failed</string>
     <string name="settings_auto_update_ksud">Auto-update ksud daemon</string>
     <string name="settings_auto_update_ksud_summary">Sync the bundled ksud binary to /data/adb/ksud on app cold-start. Off by default; otherwise use the manual button on the home page.</string>
+
+    <string name="su_request_title">Root access request</string>
+    <string name="su_request_desc">An app is requesting superuser (su) access.</string>
+    <string name="su_request_allow_forever">Allow always</string>
+    <string name="su_request_allow_once">Allow once</string>
+    <string name="su_request_deny">Deny</string>
+    <string name="su_request_deny_hide">Deny &amp; hide</string>
+    <string name="magisk_compat_title">Magisk-style su prompt</string>
+    <string name="magisk_compat_summary">Show a visible su to apps and ask for authorization on first use, instead of su silently failing for apps that are not in the allowlist.</string>
 </resources>

@@ -36,6 +36,8 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.theme.component.ImageEditorDialog
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.theme.*
+import com.anatdx.yukisu.ui.util.getFeatureStatus
+import androidx.compose.material.icons.rounded.EnhancedEncryption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,6 +62,7 @@ fun MoreSettingsScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val snackBarHost = remember { SnackbarHostState() }
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
     val systemIsDark = isSystemInDarkTheme()
 
@@ -130,6 +133,7 @@ fun MoreSettingsScreen(
                 scrollBehavior = scrollBehavior
             )
         },
+        snackbarHost = { SnackbarHost(snackBarHost) },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     ) { paddingValues ->
         Column(
@@ -158,7 +162,8 @@ fun MoreSettingsScreen(
             KsuIsValid {
                 AdvancedSettings(
                     state = settingsState,
-                    handlers = settingsHandlers
+                    handlers = settingsHandlers,
+                    snackBarHost = snackBarHost,
                 )
             }
         }
@@ -320,8 +325,18 @@ private fun HideOptionsSettings(
 @Composable
 private fun AdvancedSettings(
     state: MoreSettingsState,
-    handlers: MoreSettingsHandlers
+    handlers: MoreSettingsHandlers,
+    snackBarHost: SnackbarHostState,
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val rebootMsg = stringResource(R.string.reboot_to_apply)
+    val enhancedStatus by produceState(initialValue = "") {
+        value = getFeatureStatus("enhanced_security")
+    }
+    val magiskCompatStatus by produceState(initialValue = "") {
+        value = getFeatureStatus("magisk_compat")
+    }
+
     SettingsCard(title = stringResource(R.string.advanced_settings)) {
 
         SwitchSettingItem(
@@ -347,11 +362,43 @@ private fun AdvancedSettings(
         SettingsDivider()
 
         SwitchSettingItem(
+            icon = Icons.Rounded.EnhancedEncryption,
+            title = stringResource(R.string.settings_enable_enhanced_security),
+            summary = when (enhancedStatus) {
+                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
+                "managed" -> stringResource(R.string.feature_status_managed_summary)
+                else -> stringResource(R.string.settings_enable_enhanced_security_summary)
+            },
+            checked = state.enhancedSecurityEnabled,
+            enabled = enhancedStatus == "supported",
+            onChange = handlers::handleEnhancedSecurityChange,
+        )
+
+        SwitchSettingItem(
             icon = Icons.Filled.AdminPanelSettings,
             title = stringResource(R.string.allow_any_dynamic_manager),
             summary = stringResource(R.string.allow_any_dynamic_manager_summary),
             checked = state.allowAnyDynamicManager,
             onChange = handlers::handleAllowAnyDynamicManagerChange
+        )
+
+        SwitchSettingItem(
+            icon = Icons.Filled.Security,
+            title = stringResource(R.string.magisk_compat_title),
+            summary = when (magiskCompatStatus) {
+                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
+                "managed" -> stringResource(R.string.feature_status_managed_summary)
+                else -> stringResource(R.string.magisk_compat_summary)
+            },
+            checked = state.magiskCompatEnabled,
+            enabled = magiskCompatStatus == "supported",
+            onChange = { enabled ->
+                if (handlers.handleMagiskCompatChange(enabled) && enabled) {
+                    coroutineScope.launch {
+                        snackBarHost.showSnackbar(rebootMsg)
+                    }
+                }
+            },
         )
 
         SettingsDivider()

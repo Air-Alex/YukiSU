@@ -200,6 +200,34 @@ int set_feature(uint32_t feature_id, uint64_t value) {
     return ksuctl(KSU_IOCTL_SET_FEATURE, &cmd);
 }
 
+bool uid_granted_root(uint32_t uid) {
+    ksu_uid_granted_root_cmd cmd{};
+    cmd.uid = uid;
+    if (ksuctl(KSU_IOCTL_UID_GRANTED_ROOT, &cmd) != 0) {
+        return false;
+    }
+    return cmd.granted != 0;
+}
+
+int set_magisk_su_profile(const std::string& package, uint32_t uid, bool allow) {
+    if (package.empty()) {
+        return -1;
+    }
+    ksu_magisk_persist_cmd cmd{};
+    cmd.uid = uid;
+    cmd.allow = allow ? 1 : 0;
+    strncpy(cmd.package, package.c_str(), sizeof(cmd.package) - 1);
+    return ksuctl(KSU_IOCTL_MAGISK_PERSIST, &cmd);
+}
+
+int get_manager_uid() {
+    ksu_get_manager_uid_cmd cmd = {};
+    if (ksuctl(KSU_IOCTL_GET_MANAGER_UID, &cmd) != 0) {
+        return -1;
+    }
+    return static_cast<int>(cmd.uid);
+}
+
 int get_wrapped_fd(int fd) {
     GetWrapperFdCmd cmd = {static_cast<__u32>(fd), 0};
     return ksuctl(KSU_IOCTL_GET_WRAPPER_FD, &cmd);

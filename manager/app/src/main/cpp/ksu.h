@@ -54,6 +54,9 @@ void get_hook_type(char *hook_type);
 bool set_su_enabled(bool enabled);
 bool is_su_enabled();
 
+bool set_magisk_compat_enabled(bool enabled);
+bool is_magisk_compat_enabled();
+
 // Kernel umount
 bool set_kernel_umount_enabled(bool enabled);
 bool is_kernel_umount_enabled();

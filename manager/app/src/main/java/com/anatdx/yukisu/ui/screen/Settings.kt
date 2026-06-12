@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.rounded.EnhancedEncryption
 import androidx.compose.material.icons.rounded.FolderDelete
 import androidx.compose.material.icons.rounded.RemoveCircle
 import androidx.compose.material.icons.rounded.RemoveModerator
@@ -185,31 +184,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                                     content = clearKeyDialogContent,
                                     markdown = false
                                 )
-                            }
-                        )
-
-                        var enhancedSecurityEnabled by remember {
-                            mutableStateOf(Natives.isEnhancedSecurityEnabled())
-                        }
-                        val enhancedStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("enhanced_security")
-                        }
-                        val enhancedSummary = when (enhancedStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_enable_enhanced_security_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Rounded.EnhancedEncryption,
-                            title = stringResource(id = R.string.settings_enable_enhanced_security),
-                            summary = enhancedSummary,
-                            checked = enhancedSecurityEnabled,
-                            enabled = enhancedStatus == "supported",
-                            onCheckedChange = { enabled ->
-                                if (Natives.setEnhancedSecurityEnabled(enabled)) {
-                                    execKsud("feature save", true)
-                                    enhancedSecurityEnabled = Natives.isEnhancedSecurityEnabled()
-                                }
                             }
                         )
 

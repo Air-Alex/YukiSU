@@ -91,6 +91,8 @@ class MoreSettingsHandlers(
 
         state.selinuxEnabled = isSELinuxEnforcing()
         state.hideBlEnabled = ksudReadString("feature hide-bl").contains("enabled")
+        state.enhancedSecurityEnabled = Natives.isEnhancedSecurityEnabled()
+        state.magiskCompatEnabled = Natives.isMagiskCompatEnabled()
     }
 
     fun handleThemeModeChange(index: Int) {
@@ -293,6 +295,22 @@ class MoreSettingsHandlers(
     fun handleAllowAnyDynamicManagerChange(newValue: Boolean) {
         DynamicManagerSettings.setAllowAnyApp(context, newValue)
         state.allowAnyDynamicManager = newValue
+    }
+
+    fun handleEnhancedSecurityChange(enabled: Boolean) {
+        if (Natives.setEnhancedSecurityEnabled(enabled)) {
+            execKsud("feature save", true)
+            state.enhancedSecurityEnabled = Natives.isEnhancedSecurityEnabled()
+        }
+    }
+
+    fun handleMagiskCompatChange(enabled: Boolean): Boolean {
+        if (!Natives.setMagiskCompatEnabled(enabled)) return false
+        execKsud("feature save", true)
+        // Enabling defers the mount until boot; disabling tears it down now.
+        execKsud("magisk-compat apply", true)
+        state.magiskCompatEnabled = Natives.isMagiskCompatEnabled()
+        return true
     }
 
     fun handleSelinuxChange(enabled: Boolean) {

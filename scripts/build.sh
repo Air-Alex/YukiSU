@@ -213,8 +213,12 @@ cmake .. \
 	-DCMAKE_CXX_COMPILER="$CXX" \
 	-DCMAKE_BUILD_TYPE=Release
 
+# Build su first so ksud can embed it.
+ninja su
+cp "$KSUD_DIR/build/su" "$KSUD_ASSETS/su"
+
 ninja
-echo "    ksud 已构建"
+echo "    ksud 已构建 (含嵌入式 su)"
 
 echo ">>> [4/5] 构建 Manager App ..."
 MANAGER_DIR="$REPO_ROOT/manager"

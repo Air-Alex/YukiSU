@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,12 +124,14 @@ fun SwitchSettingItem(
     title: String,
     summary: String? = null,
     checked: Boolean,
+    enabled: Boolean = true,
     onChange: (Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onChange(!checked) }
+            .clickable(enabled = enabled) { onChange(!checked) }
+            .alpha(if (enabled) 1f else 0.6f)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -163,6 +166,7 @@ fun SwitchSettingItem(
 
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onChange
         )
     }

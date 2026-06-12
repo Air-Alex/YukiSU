@@ -75,4 +75,10 @@ int umount_list_add(const std::string& path, uint32_t flags);
 int umount_list_del(const std::string& path);
 std::optional<std::string> umount_list_list();
 
+bool uid_granted_root(uint32_t uid);
+
+int set_magisk_su_profile(const std::string& package, uint32_t uid, bool allow);
+
+int get_manager_uid();
+
 }  // namespace ksud

@@ -77,14 +77,16 @@ int su_main(int argc, char** argv) {
         return 1;
     }
 
-    // Only change uid/gid when we are the su binary and YukiSU kernel has granted root (grant_root
-    // just did the kernel side; we set userspace creds here). When the app is already root (e.g.
-    // third-party like IcePatch), do not call setuid/setgid — no need and seccomp would SIGSYS.
+    // Set userspace creds after kernel grant; skip if already root.
     if (geteuid() != 0 || getegid() != 0) {
         setgid(0);
         setuid(0);
     }
 
+    return run_su_shell(argc, argv);
+}
+
+int run_su_shell(int argc, char** argv) {
     // Parse options
     std::string command;
     std::string shell = "/system/bin/sh";  // Use system shell by default (like Rust version)

@@ -229,6 +229,18 @@ struct ksu_get_dynamic_managers_cmd {
   __aligned_u64 apps;
 };
 
+#define KSU_SU_CHOICE_ALLOW_FOREVER 1
+#define KSU_SU_CHOICE_ALLOW_ONCE 2
+#define KSU_SU_CHOICE_DENY 3
+#define KSU_SU_CHOICE_DENY_HIDE 4
+
+/* Root-only, constrained to allowlist or module-umount profiles. */
+struct ksu_magisk_persist_cmd {
+  __u32 uid;
+  __u8 allow;
+  char package[KSU_MAX_PACKAGE_NAME];
+};
+
 // IOCTL definitions
 #define KSU_IOCTL_GRANT_ROOT _IOC(_IOC_NONE, 'K', 1, 0)
 #define KSU_IOCTL_GET_INFO _IOC(_IOC_READ, 'K', 2, 0)
@@ -259,10 +271,11 @@ struct ksu_get_dynamic_managers_cmd {
 #define KSU_IOCTL_LIST_TRY_UMOUNT _IOC(_IOC_READ | _IOC_WRITE, 'K', 200, 0)
 #define KSU_IOCTL_GET_MANAGER_UID _IOC(_IOC_READ, 'K', 201, 0)
 
-/* YukiSU private range: keep away from low upstream KernelSU ioctl numbers. */
+/* YukiSU private ioctl range */
 #define KSU_IOCTL_SET_DYNAMIC_MANAGERS _IOC(_IOC_WRITE, 'K', 240, 0)
 #define KSU_IOCTL_GET_DYNAMIC_MANAGERS                                         \
   _IOWR('K', 241, struct ksu_get_dynamic_managers_cmd)
+#define KSU_IOCTL_MAGISK_PERSIST _IOW('K', 242, struct ksu_magisk_persist_cmd)
 
 #define KSU_IOCTL_SUPERKEY_AUTH _IOC(_IOC_READ | _IOC_WRITE, 'K', 107, 0)
 #define KSU_IOCTL_SUPERKEY_STATUS _IOC(_IOC_READ, 'K', 108, 0)

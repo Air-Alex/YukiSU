@@ -252,6 +252,7 @@ fun KernelSUTheme(
         null -> isSystemInDarkTheme()
     },
     dynamicColor: Boolean = ThemeConfig.useDynamicColor,
+    showBackground: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -268,13 +269,17 @@ fun KernelSUTheme(
         colorScheme = colorScheme,
         typography = Typography
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // 背景层
-            BackgroundLayer(darkTheme)
-            // 内容层
-            Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
-                content()
+        if (showBackground) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 背景层
+                BackgroundLayer(darkTheme)
+                // 内容层
+                Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
+                    content()
+                }
             }
+        } else {
+            content()
         }
     }
 }

@@ -19,12 +19,45 @@
 #include "klog.h" // IWYU pragma: keep
 #include "runtime/ksud.h"
 #include "sulog/event.h"
+#include "uapi/supercall.h"
 #include "feature/sucompat.h"
 
 #define SU_PATH "/system/bin/su"
 #define SH_PATH "/system/bin/sh"
 
 bool ksu_su_compat_enabled __read_mostly = true;
+static bool magisk_compat_enabled __read_mostly;
+
+static int magisk_compat_feature_get(u64 *value)
+{
+	*value = magisk_compat_enabled ? 1 : 0;
+	return 0;
+}
+
+static int magisk_compat_feature_set(u64 value)
+{
+	magisk_compat_enabled = value != 0;
+	pr_info("magisk_compat: set to %d\n", magisk_compat_enabled);
+	return 0;
+}
+
+static const struct ksu_feature_handler magisk_compat_handler = {
+    .feature_id = KSU_FEATURE_MAGISK_COMPAT,
+    .name = "magisk_compat",
+    .get_handler = magisk_compat_feature_get,
+    .set_handler = magisk_compat_feature_set,
+};
+
+void ksu_magisk_compat_init(void)
+{
+	if (ksu_register_feature_handler(&magisk_compat_handler))
+		pr_err("magisk_compat: failed to register feature handler\n");
+}
+
+void ksu_magisk_compat_exit(void)
+{
+	ksu_unregister_feature_handler(KSU_FEATURE_MAGISK_COMPAT);
+}
 
 static int su_compat_feature_get(u64 *value)
 {
@@ -210,12 +243,13 @@ do_orig_execve:
 // sucompat: permitted process can execute 'su' to gain root access.
 void ksu_sucompat_init()
 {
-	if (ksu_register_feature_handler(&su_compat_handler)) {
+	if (ksu_register_feature_handler(&su_compat_handler))
 		pr_err("Failed to register su_compat feature handler\n");
-	}
+	ksu_magisk_compat_init();
 }
 
 void ksu_sucompat_exit()
 {
+	ksu_magisk_compat_exit();
 	ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
 }

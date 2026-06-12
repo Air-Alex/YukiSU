@@ -21,6 +21,7 @@
 #include "arch.h"
 #include "policy/feature.h"
 #include "feature/selinux_hide.h"
+#include "feature/sucompat.h"
 #include "infra/file_wrapper.h"
 #include "feature/kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
@@ -378,6 +379,40 @@ static int do_set_app_profile(void __user *arg)
 		return -EFAULT;
 	}
 
+	return 0;
+#endif // #ifdef CONFIG_KSU_DISABLE_POLICY
+}
+
+/* Only persist the two policy shapes exposed by the su prompt. */
+static int do_magisk_persist(void __user *arg)
+{
+#ifdef CONFIG_KSU_DISABLE_POLICY
+	return -EOPNOTSUPP;
+#else
+	struct ksu_magisk_persist_cmd cmd;
+	struct app_profile profile;
+
+	if (copy_from_user(&cmd, arg, sizeof(cmd)))
+		return -EFAULT;
+	cmd.package[sizeof(cmd.package) - 1] = '\0';
+	if (!cmd.package[0])
+		return -EINVAL;
+
+	memset(&profile, 0, sizeof(profile));
+	profile.version = KSU_APP_PROFILE_VER;
+	strscpy(profile.key, cmd.package, sizeof(profile.key));
+	profile.curr_uid = cmd.uid;
+	if (cmd.allow) {
+		profile.allow_su = true;
+		profile.rp_config.use_default = true;
+	} else {
+		profile.allow_su = false;
+		profile.nrp_config.use_default = false;
+		profile.nrp_config.profile.umount_modules = true;
+	}
+
+	if (!ksu_set_app_profile(&profile, true))
+		return -EFAULT;
 	return 0;
 #endif // #ifdef CONFIG_KSU_DISABLE_POLICY
 }
@@ -1051,6 +1086,10 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
      .name = "GET_DYNAMIC_MANAGERS",
      .handler = do_get_dynamic_managers,
      .perm_check = manager_or_root},
+    {.cmd = KSU_IOCTL_MAGISK_PERSIST,
+     .name = "MAGISK_PERSIST",
+     .handler = do_magisk_persist,
+     .perm_check = only_root},
     {.cmd = KSU_IOCTL_GET_FULL_VERSION,
      .name = "GET_FULL_VERSION",
      .handler = do_get_full_version,

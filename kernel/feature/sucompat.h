@@ -16,4 +16,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
 long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr,
 				const struct pt_regs *regs);
 
+void ksu_magisk_compat_init(void);
+void ksu_magisk_compat_exit(void);
+
 #endif // #ifndef __KSU_H_SUCOMPAT

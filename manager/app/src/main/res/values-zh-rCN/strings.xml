@@ -815,4 +815,12 @@
     <string name="setting_change_failed">设置失败</string>
     <string name="settings_auto_update_ksud">自动更新 ksud</string>
     <string name="settings_auto_update_ksud_summary">应用冷启动时自动将内置的 ksud 同步到 /data/adb/ksud。默认关闭，需要时去主页手动同步。</string>
+    <string name="su_request_title">Root 权限请求</string>
+    <string name="su_request_desc">一个应用正在请求超级用户（su）权限。</string>
+    <string name="su_request_allow_forever">允许并记住</string>
+    <string name="su_request_allow_once">仅允许一次</string>
+    <string name="su_request_deny">拒绝</string>
+    <string name="su_request_deny_hide">拒绝并隐藏</string>
+    <string name="magisk_compat_title">Magisk 风格 su 弹窗</string>
+    <string name="magisk_compat_summary">向应用显示可见的 su，并在首次使用时弹窗请求授权，而不是对不在白名单中的应用静默拒绝。</string>
 </resources>

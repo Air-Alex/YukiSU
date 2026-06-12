@@ -14,6 +14,8 @@
 #include "late_load.hpp"
 #include "log.hpp"
 #include "magica/magica.hpp"
+#include "magisk_compat/msud.hpp"
+#include "magisk_compat/su_mount.hpp"
 #include "module/module.hpp"
 #include "module/module_config.hpp"
 #include "profile/profile.hpp"
@@ -152,6 +154,7 @@ void print_usage() {
     printf("  dynamic        Manage dynamic manager signatures\n");
     printf("  initrc         Manage init.rc injection\n");
     printf("  sulogd         Run sulog reader daemon\n");
+    printf("  msud           Run magisk-compat su prompt daemon\n");
     printf("  boot-patch     Patch boot image\n");
     printf("  boot-restore   Restore boot image\n");
     printf("  boot-info      Show boot information\n");
@@ -905,6 +908,20 @@ int cli_run(int argc, char** argv) {
         return cmd_initrc(args);
     } else if (cmd == "sulogd") {
         return run_sulogd();
+    } else if (cmd == "msud") {
+        return run_msud();
+    } else if (cmd == "magisk-compat") {
+        if (!args.empty() && args[0] == "apply") {
+            return apply_magisk_compat_now();
+        }
+        if (!args.empty() && args[0] == "mount") {
+            return mount_su_now();
+        }
+        if (!args.empty() && args[0] == "umount") {
+            return umount_su_now();
+        }
+        LOGE("Usage: ksud magisk-compat apply|mount|umount");
+        return 1;
     } else if (cmd == "boot-patch") {
         return boot_patch(args);
     } else if (cmd == "boot-restore") {

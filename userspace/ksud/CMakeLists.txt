@@ -271,6 +271,10 @@ set(KSUD_OUR_SOURCES
     src/umount.cpp
     src/debug.cpp
     src/sulog.cpp
+    src/magisk_compat/msud.cpp
+    src/magisk_compat/su_mount.cpp
+    src/magisk_compat/su_magic.cpp
+    src/magisk_compat/su_protocol.cpp
     src/magica/adb_client.cpp
     src/magica/magica.cpp
     src/core/hide_bootloader.cpp
@@ -430,3 +434,26 @@ add_custom_command(TARGET ksud POST_BUILD
 
 # Install
 install(TARGETS ksud DESTINATION bin)
+
+# Standalone su client embedded into ksud assets.
+add_executable(su
+    src/magisk_compat/su_client.cpp
+    src/magisk_compat/su_protocol.cpp
+)
+target_include_directories(su PRIVATE ${KSUD_INCLUDE_DIRS})
+target_compile_features(su PRIVATE cxx_std_17)
+target_compile_options(su PRIVATE -Os -ffunction-sections -fdata-sections)
+target_link_options(su PRIVATE -Wl,--gc-sections -Wl,--strip-all)
+
+if(LLVM_STRIP)
+    add_custom_command(TARGET su POST_BUILD
+        COMMAND ${LLVM_STRIP}
+            --strip-all
+            --remove-section=.comment
+            --remove-section=.note
+            --remove-section=.note.android.ident
+            --remove-section=.note.gnu.build-id
+            $<TARGET_FILE:su>
+        COMMENT "llvm-strip: shrinking standalone su..."
+    )
+endif()

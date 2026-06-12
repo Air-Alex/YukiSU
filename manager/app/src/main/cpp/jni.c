@@ -375,6 +375,14 @@ NativeBridge(setSuEnabled, jboolean, jboolean enabled) {
   return set_su_enabled(enabled);
 }
 
+NativeBridgeNP(isMagiskCompatEnabled, jboolean) {
+  return is_magisk_compat_enabled();
+}
+
+NativeBridge(setMagiskCompatEnabled, jboolean, jboolean enabled) {
+  return set_magisk_compat_enabled(enabled);
+}
+
 NativeBridgeNP(isKernelUmountEnabled, jboolean) {
   return is_kernel_umount_enabled();
 }

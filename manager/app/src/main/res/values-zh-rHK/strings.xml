@@ -372,4 +372,12 @@
     <string name="kasumi_uname_release_desc">核心版本號（如 5.15.0-generic）。設定後 Kasumi 將偽裝此值</string>
     <string name="kasumi_uname_version">編譯時間</string>
     <string name="kasumi_uname_version_desc">核心版本/編譯時間戳。設定後 Kasumi 將偽裝此值</string>
+    <string name="su_request_title">Root 權限請求</string>
+    <string name="su_request_desc">一個應用程式正在請求超級使用者（su）權限。</string>
+    <string name="su_request_allow_forever">允許並記住</string>
+    <string name="su_request_allow_once">僅允許一次</string>
+    <string name="su_request_deny">拒絕</string>
+    <string name="su_request_deny_hide">拒絕並隱藏</string>
+    <string name="magisk_compat_title">Magisk 風格 su 彈窗</string>
+    <string name="magisk_compat_summary">向應用程式顯示可見的 su，並在首次使用時彈窗請求授權，而不是對不在白名單中的應用程式靜默拒絕。</string>
 </resources>
