@@ -3,10 +3,8 @@
     <string name="home">主页</string>
     <string name="learn_more">了解更多</string>
     <string name="home_not_installed">未安装</string>
-    <string name="home_not_installed_or_auth">未安装或未认证</string>
     <string name="home_click_to_install">点击安装</string>
     <string name="home_working">工作中</string>
-    <string name="home_gki_builtin_unsupported">YukiSU 已不支持 built-in KernelSU！请使用 LKM 模式！</string>
     <string name="home_working_version">版本：%s</string>
     <string name="home_kernel">内核版本</string>
     <string name="home_manager_version">管理器版本</string>
@@ -53,11 +51,8 @@
     <string name="jailbreak_timeout">越狱可能失败了，请检查日志</string>
     <string name="reboot_to_apply">重启生效</string>
     <string name="module_magisk_conflict">因与 Magisk 有冲突，所有模块不可用！</string>
-    <string name="home_learn_kernelsu">了解 KernelSU</string>
-    <string name="home_learn_kernelsu_url">https://kernelsu.org/zh_CN/guide/what-is-kernelsu.html</string>
-    <string name="home_click_to_learn_kernelsu">了解如何安装 KernelSU 以及如何开发模块</string>
     <string name="home_support_title">支持开发</string>
-    <string name="home_support_content">KernelSU将保持免费开源，向官方KernelSU的开发者捐赠以表示支持</string>
+    <string name="home_support_content">KernelSU 将保持免费开源；向 KernelSU 官方开发者捐赠以表示支持。</string>
     <string name="about_source_code"><![CDATA[在 %1$s 查看源码<br/>加入我们的 %2$s 频道]]></string>
     <string name="profile_default">默认</string>
     <string name="profile_template">模版</string>
@@ -77,7 +72,7 @@
     <string name="allow_any_dynamic_manager_summary">实验性功能。开启后在所有应用的 App Profile 中显示动态管理器开关，而不是仅显示预置签名管理器。</string>
     <string name="require_kernel_version" formatted="false">当前 KernelSU 版本 %s 过低，管理器无法正常工作，请将内核 KernelSU 版本升级至 %s 或以上！</string>
     <string name="settings_umount_modules_default">默认卸载模块</string>
-    <string name="settings_umount_modules_default_summary">App Profile 中"卸载模块"的全局默认值，如果启用，将会为没有设置 Profile 的应用移除所有模块针对系统的修改。</string>
+    <string name="settings_umount_modules_default_summary">App Profile 中“卸载模块”的全局默认值。启用后，没有单独 Profile 的应用将移除所有模块对系统的修改。该选项默认关闭，因此新应用或未知应用仍会保留模块修改。</string>
     <string name="profile_umount_modules_summary">启用该选项后将允许 KernelSU 为本应用还原被模块修改过的文件。</string>
     <string name="profile_selinux_domain">域</string>
     <string name="profile_selinux_rules">规则</string>
@@ -206,7 +201,7 @@
     <string name="settings_custom_background_summary">选择一张图片作为应用背景</string>
     <string name="settings_card_alpha">卡片不透明度</string>
     <string name="home_android_version">Android 版本</string>
-    <string name="home_device_model">设备</string>
+    <string name="home_device_model">设备型号</string>
     <string name="su_not_allowed">不允许授予 %s 超级用户权限</string>
     <string name="settings_disable_su">禁用 su 命令</string>
     <string name="settings_disable_su_summary">禁止任何应用通过 su 命令获取 root 权限（已运行的 root 进程不受影响）。</string>
@@ -222,7 +217,7 @@
     <string name="more_settings">更多设置</string>
     <string name="selinux">SELinux</string>
     <string name="selinux_enabled">强制执行</string>
-    <string name="selinux_disabled">宽容模式</string>
+    <string name="selinux_disabled">已禁用</string>
     <string name="simple_mode">简洁模式</string>
     <string name="simple_mode_summary">开启后将隐藏不必要的卡片</string>
     <string name="hide_kernel_kernelsu_version">隐藏内核版本号</string>
@@ -241,8 +236,6 @@
     <string name="theme_follow_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
-    <string name="manual_hook">Manual Hook</string>
-    <string name="inline_hook">Inline Hook</string>
     <string name="dynamic_color_title">动态颜色</string>
     <string name="dynamic_color_summary">使用系统主题的动态颜色</string>
     <string name="choose_theme_color">选择主题色</string>
@@ -254,52 +247,19 @@
     <string name="color_gray">高级灰</string>
     <string name="color_yellow">黄色</string>
     <string name="color_trans_pride">Trans Pride</string>
-    <string name="root_required">需要 root 权限</string>
     <string name="reboot_complete_title">刷写完成</string>
     <string name="reboot_complete_msg">是否立即重启？</string>
     <string name="yes">是</string>
     <string name="no">否</string>
-    <string name="failed_reboot">重启失败</string>
-    <string name="kpm_title">内核模块</string>
-    <string name="kpm_empty">暂无已安装的内核模块</string>
-    <string name="kpm_version">版本</string>
-    <string name="kpm_author">作者</string>
-    <string name="kpm_uninstall">卸载</string>
-    <string name="kpm_uninstall_success">卸载成功</string>
-    <string name="kpm_uninstall_failed">卸载失败</string>
-    <string name="kpm_install_success">加载 KPM 模块成功</string>
-    <string name="kpm_install_failed">加载 KPM 模块失败</string>
-    <string name="kpm_args">参数</string>
-    <string name="kpm_control">调参</string>
-    <string name="home_kpm_version">KPM 版本</string>
-    <string name="close_notice">关闭</string>
-    <string name="kernel_module_notice">以下内核模块功能由 KernelPatch 开发，经过修改后加入 YukiSU 的内核模块功能</string>
-    <string name="home_ContributionCard_kernelsu">YukiSU 展望</string>
-    <string name="kpm_control_success">成功</string>
-    <string name="kpm_control_failed">错误</string>
-    <string name="home_click_to_ContributionCard_kernelsu">YukiSU是一个极其激进且特立独行的KSU分支，但是仍然感谢官方KernelSU和SukiSU、Magisk、Apatch等作出的贡献</string>
-    <string name="not_supported">不支持</string>
-    <string name="supported">支持</string>
-    <string name="kernel_patched">内核未进行补丁</string>
-    <string name="kernel_not_enabled">内核未配置</string>
+    <string name="home_ContributionCard_kernelsu">YukiSU 愿景</string>
+    <string name="home_click_to_ContributionCard_kernelsu">YukiSU 是一个极其激进且特立独行的 KSU 分支，但仍然感谢 KernelSU 官方项目以及 SukiSU、Magisk、APatch 等作出的贡献。</string>
     <string name="custom_settings">个性化设置</string>
-    <string name="kpm_install_mode">安装</string>
-    <string name="kpm_install_mode_load">加载</string>
-    <string name="kpm_install_mode_embed">嵌入</string>
-    <string name="kpm_install_mode_description">请选择: %1\$s 模块的安装模式 \n\n加载：临时加载模块\n嵌入：永久安装到系统</string>
-    <string name="snackbar_failed_to_check_module_file">无法检查模块文件是否存在</string>
     <string name="theme_color">主题颜色</string>
-    <string name="invalid_file_type">文件类型不正确，请选择 .kpm 文件</string>
-    <string name="confirm_uninstall_title_with_filename">卸载</string>
-    <string name="confirm_uninstall_content">将卸载以下 KPM 模块：\n%s</string>
     <string name="image_editor_hint">使用双指缩放图片，单指拖动调整位置</string>
-    <string name="reprovision">重置</string>
+    <string name="reprovision">使图像适应屏幕</string>
     <!-- Error Messages -->
-    <string name="flash_failed_message">刷写失败</string>
     <!-- lkm/gki install -->
     <string name="Lkm_install_methods">LKM 修补/安装</string>
-    <string name="kernel_version_log">内核版本：%1$s</string>
-    <string name="tool_version_log">使用修补工具：%1$s</string>
     <string name="configuration">配置</string>
     <string name="app_settings">应用设置</string>
     <string name="tools">工具</string>
@@ -319,9 +279,6 @@
     <string name="back">返回</string>
     <string name="background_set_success">背景设置成功</string>
     <string name="background_removed">已移除自定义背景</string>
-    <!-- KPM display settings -->
-    <string name="show_kpm_info">隐藏 KPM 功能</string>
-    <string name="show_kpm_info_summary">在主页和底栏隐藏 KPM 相关功能和信息</string>
     <!-- Webui X settings -->
     <string name="use_webuix">选择使用的 WebUI 引擎</string>
     <string name="engine_auto_select">自动选择</string>
@@ -396,60 +353,20 @@
     <string name="kernel_simple_kernel">内核版本简洁模式</string>
     <string name="kernel_simple_kernel_summary">启用或禁用 YukiSU 内核版本显示的简洁模式</string>
     <!-- 备份和还原相关字符串 -->
-    <string name="edit">编辑</string>
-    <string name="delete">删除</string>
-    <string name="update">更新</string>
-    <string name="app_paths_section">应用路径</string>
-    <string name="other_paths_section">其他路径</string>
-    <string name="add_custom_path">其他</string>
-    <string name="add_app_path">应用</string>
-    <string name="warning">警告</string>
-    <string name="search_apps">搜索应用</string>
     <string name="home_zygisk_implement">Zygisk 实现</string>
     <string name="home_meta_module_implement">元模块实现</string>
     <string name="home_hook_type">钩子类型</string>
-    <!-- KPM patching related strings -->
-    <string name="kpm_patch_options">KPM 修补</string>
-    <string name="kpm_patch_description">用于添加附加的 KPM 功能</string>
-    <string name="enable_kpm_patch">KPM 修补</string>
-    <string name="kpm_patch_switch_description">在刷写前对内核镜像进行KPM修补</string>
-    <string name="enable_kpm_undo_patch">KPM 撤销修补</string>
-    <string name="kpm_undo_patch_switch_description">撤销之前应用的KPM修补</string>
-    <string name="kpm_patch_enabled">KPM 修补已启用</string>
-    <string name="kpm_undo_patch_enabled">KPM 撤销修补已启用</string>
-    <string name="kpm_patch_mode">KPM 修补模式</string>
-    <string name="kpm_undo_patch_mode">KPM 撤销修补模式</string>
-    <!-- KPM workflow related -->
-    <string name="kpm_preparing_tools">准备 KPM 修补工具</string>
-    <string name="kpm_applying_patch">正在应用 KPM 修补</string>
-    <string name="kpm_undoing_patch">正在撤销 KPM 修补</string>
-    <string name="kpm_found_image_file">找到 Image 文件: %s</string>
-    <string name="kpm_patch_success">KPM 修补成功</string>
-    <string name="kpm_undo_patch_success">KPM 撤销修补成功</string>
-    <string name="kpm_file_repacked">文件重新打包完成</string>
-    <!-- KPM error messages -->
-    <string name="kpm_extract_zip_failed">解压压缩包失败</string>
-    <string name="kpm_image_file_not_found">未找到 Image 文件</string>
-    <string name="kpm_patch_failed">KPM 修补失败</string>
-    <string name="kpm_undo_patch_failed">KPM 撤销修补失败</string>
-    <string name="kpm_patch_operation_failed">KPM 修补操作失败: %s</string>
-    <!-- KPM option radio group strings -->
-    <string name="kpm_follow_kernel_file">跟随内核</string>
-    <string name="kpm_follow_kernel_description">原样使用内核，不进行任何 KPM 修改</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">确认安装</string>
     <string name="confirm_multiple_installation">确认安装（%d 个文件）</string>
     <string name="install_confirm">确认安装</string>
     <string name="module_package">模块</string>
-    <string name="kernel_package">内核</string>
     <string name="unknown_package">未知类型</string>
-    <string name="unknown_kernel">未知内核</string>
     <string name="unknown_file">未知文件</string>
     <string name="unsupported_file_format">不支持的文件格式，仅支持 Magisk/KernelSU 模块包。</string>
     <string name="version">版本</string>
     <string name="author">作者</string>
     <string name="description">描述</string>
-    <string name="supported_devices">支持设备</string>
     <!-- Log Viewer -->
     <string name="log_viewer_title">日志查看器</string>
     <string name="log_viewer_back">返回</string>
@@ -474,10 +391,8 @@
     <string name="log_viewer_exclude_subtypes">排除子类型</string>
     <string name="log_viewer_exclude_current_app">当前应用</string>
     <string name="log_viewer_exclude_viewer_refresh">日志查看器自刷新</string>
-    <string name="log_viewer_page_info">页面: %1$d/%2$d | 总日志: %3$d</string>
     <string name="log_viewer_page_info_compact">第 %1$d/%2$d 页</string>
     <string name="log_viewer_select_file">日志文件</string>
-    <string name="log_viewer_selected_file">当前文件：%1$s</string>
     <string name="log_viewer_file_count">文件数：%1$d</string>
     <string name="log_viewer_latest_file">最新</string>
     <string name="log_viewer_filters">筛选</string>
@@ -520,15 +435,12 @@
     <string name="superkey_input_hint">超级密钥</string>
     <string name="superkey_input_placeholder">请输入超级密钥</string>
     <string name="superkey_authenticate">认证</string>
-    <string name="superkey_auth_success">认证成功</string>
     <string name="superkey_auth_failed">认证失败</string>
-    <string name="superkey_required">需要超级密钥认证</string>
-    <string name="superkey_not_configured">内核未配置超级密钥</string>
     <string name="show_password">显示密码</string>
     <string name="hide_password">隐藏密码</string>
     <string name="superkey_optional_title">超级密钥（可选）</string>
     <string name="superkey_optional_desc">设置超级密钥用于 APatch 风格的认证。留空则使用签名认证。</string>
-    
+
     <!-- SuperKey 设置 -->
     <string name="settings_donot_store_superkey">不存储超级密钥</string>
     <string name="settings_donot_store_superkey_summary">启用后管理器不会保存超级密钥，每次重启都需手动输入。</string>
@@ -536,8 +448,6 @@
     <string name="settings_clear_super_key_dialog">确定要清除已存储的超级密钥吗？</string>
     <string name="signature_bypass_title">仅超级密钥模式</string>
     <string name="signature_bypass_desc">禁用 APK 签名验证。管理器将仅通过超级密钥认证来识别。</string>
-    <string name="gki_priority_title">GKI 优先模式</string>
-    <string name="gki_priority_desc">启用后，GKI 优先于 LKM。LKM 将不会触发 GKI 让位，会自行退出。</string>
     <string name="home_auth_superkey_tag">SuperKey</string>
     <string name="home_auth_signature_tag">Signature</string>
 
@@ -545,7 +455,6 @@
     <string name="kasumi_title">Kasumi 配置</string>
     <string name="kasumi_settings_summary">模块挂载、Maps 伪装、LKM、规则</string>
     <string name="kasumi_tab_status">状态</string>
-    <string name="kasumi_tab_modules">模块</string>
     <string name="kasumi_tab_settings">设置</string>
     <string name="kasumi_tab_rules">规则</string>
     <string name="kasumi_tab_logs">日志</string>
@@ -559,13 +468,7 @@
     <string name="kasumi_lkm_autoload_failed">设置失败</string>
     <string name="kasumi_lkm_kernel_label">内核 (SYS)</string>
     <string name="kasumi_lkm_kmi_label">uname 欺骗</string>
-    <string name="kasumi_lkm_kmi_override">KMI 覆盖</string>
     <string name="kasumi_lkm_kmi_override_desc">自动检测失败时手动指定 KMI 用于加载 LKM（如 6.6.30-android15）</string>
-    <string name="kasumi_lkm_kmi_override_set">设置</string>
-    <string name="kasumi_lkm_kmi_override_clear">清除</string>
-    <string name="kasumi_lkm_kmi_override_title">KMI 覆盖</string>
-    <string name="kasumi_lkm_kmi_override_placeholder">如 6.6.30-android15</string>
-    <string name="kasumi_lkm_kmi_override_current">当前: %s</string>
     <string name="kasumi_lkm_kmi_set_success">KMI 覆盖已设置</string>
     <string name="kasumi_lkm_kmi_cleared">KMI 覆盖已清除</string>
     <string name="kasumi_lkm_kmi_failed">设置 KMI 覆盖失败</string>
@@ -585,7 +488,6 @@
     <string name="kasumi_storage">存储</string>
     <string name="kasumi_modules_count">模块数</string>
     <string name="kasumi_system_info">系统信息</string>
-    <string name="kasumi_version">版本: %s</string>
     <string name="kasumi_builtin_mount">内置挂载</string>
     <string name="kasumi_builtin_mount_desc">使用内置的 hymo 挂载而非外部元模块。如果您想使用其他元模块，请禁用此选项。</string>
     <string name="kasumi_debug">调试日志</string>
@@ -602,8 +504,6 @@
     <string name="kasumi_hidexattr_desc">启用 mount_hide、maps_spoof、statfs_spoof、selinux_fix 和 stealth，随 hidexattr 自动隐藏其他特征</string>
     <string name="kasumi_selinux_fix">SELinux 守护</string>
     <string name="kasumi_selinux_fix_desc">拦截 app_zygote 对 SELinux 策略的探测（DirtySepolicy / Duck Detector）</string>
-    <string name="kasumi_avc_spoof">AVC 日志欺骗</string>
-    <string name="kasumi_avc_spoof_desc">伪造 SELinux AVC 拒绝日志</string>
     <string name="kasumi_enable_nuke">启用 Nuke</string>
     <string name="kasumi_enable_nuke_desc">允许清除 ext4 sysfs 条目</string>
     <string name="kasumi_ignore_protocol">忽略协议不匹配</string>
@@ -685,8 +585,6 @@
     <string name="kasumi_uname_restore_failed">恢复失败（需要已有全局应用）</string>
     <!-- Kasumi 内部提示 -->
     <string name="kasumi_toast_load_error">加载数据出错：%s</string>
-    <string name="kasumi_toast_mode_updated">模式已更新，重启后生效</string>
-    <string name="kasumi_toast_mode_failed">更新模式失败</string>
     <string name="kasumi_toast_settings_saved">设置已保存</string>
     <string name="kasumi_toast_settings_failed">保存设置失败</string>
     <string name="kasumi_saving">保存中…</string>
@@ -699,12 +597,29 @@
     <string name="kasumi_toast_builtin_enabled">内置挂载已启用，重启后生效</string>
     <string name="kasumi_toast_builtin_disabled">内置挂载已禁用，重启后生效</string>
     <string name="kasumi_toast_builtin_failed">更新内置挂载设置失败</string>
-    <string name="kasumi_module_mode">模式：</string>
-    <string name="kasumi_mode_auto">自动</string>
-    <string name="kasumi_mode_kasumi">Kasumi</string>
-    <string name="kasumi_mode_overlay">OverlayFS</string>
-    <string name="kasumi_mode_magic">Magic Mount</string>
-    <string name="kasumi_mode_none">不挂载</string>
+    <!-- Kasumi 内核特性 / Maps 伪装规则 -->
+    <string name="kasumi_features_title">内核特性</string>
+    <string name="kasumi_features_none">未报告任何特性</string>
+    <string name="kasumi_feature_mount_hide">挂载隐藏</string>
+    <string name="kasumi_feature_mount_hide_desc">从 /proc/mounts 和 mountinfo 隐藏 overlay 挂载</string>
+    <string name="kasumi_feature_maps_spoof">Maps 伪装</string>
+    <string name="kasumi_feature_maps_spoof_desc">伪装 /proc/pid/maps 中的 ino/dev/path。在下方添加规则。</string>
+    <string name="kasumi_feature_statfs_spoof">Statfs 伪装</string>
+    <string name="kasumi_feature_statfs_spoof_desc">随挂载隐藏自动启用；使 statfs() 与 mountinfo 一致（避免 INCONSISTENT_MOUNT）</string>
+    <string name="kasumi_maps_title">Maps 伪装（/proc/pid/maps）</string>
+    <string name="kasumi_maps_desc">伪装进程 maps 中的 inode/设备/路径。规则可通过 overlay 挂载添加；如有需要可在此清除所有规则。</string>
+    <string name="kasumi_maps_clear">清除 maps 规则</string>
+    <string name="kasumi_maps_clear_confirm">确定要清除所有 maps 伪装规则吗？</string>
+    <string name="kasumi_maps_cleared">maps 规则已清除</string>
+    <string name="kasumi_maps_clear_failed">清除 maps 规则失败</string>
+    <string name="kasumi_maps_add_rule">添加规则</string>
+    <string name="kasumi_maps_add_success">maps 规则已添加</string>
+    <string name="kasumi_maps_add_failed">添加 maps 规则失败</string>
+    <string name="kasumi_maps_target_ino">目标 inode</string>
+    <string name="kasumi_maps_target_dev">目标设备号（0=任意）</string>
+    <string name="kasumi_maps_spoof_ino">伪装 inode</string>
+    <string name="kasumi_maps_spoof_dev">伪装设备号</string>
+    <string name="kasumi_maps_spoof_path">伪装路径</string>
     <!-- Kasumi user hide rules -->
     <string name="kasumi_user_hide_title">自定义隐藏规则</string>
     <string name="kasumi_user_hide_empty">当前没有自定义隐藏规则。添加要从所有模块中隐藏的绝对路径。</string>
@@ -714,7 +629,6 @@
     <string name="kasumi_user_hide_remove_failed">删除隐藏规则失败</string>
     <!-- Kasumi per-module rules -->
     <string name="kasumi_module_rules_title">此模块的自定义规则</string>
-    <string name="kasumi_module_rules_empty">当前没有针对该模块的自定义规则。可以为特定路径单独指定挂载模式。</string>
     <string name="kasumi_module_rules_placeholder">/system 或 /vendor 下的路径</string>
     <string name="kasumi_mount_config">挂载配置</string>
     <string name="kasumi_mount_mode">挂载方式</string>
@@ -727,22 +641,16 @@
     <string name="kasumi_strategy_not_mounted">未挂载</string>
     <string name="kasumi_module_rules_add">添加</string>
     <string name="kasumi_module_rules_add_failed">添加模块规则失败</string>
-    <string name="kasumi_module_rules_remove_failed">删除模块规则失败</string>
-    
+
     <!-- Partition Manager -->
     <string name="partition_manager">分区管理器</string>
-    <string name="partition_list">分区列表</string>
     <string name="partition_slot_info">槽位信息</string>
     <string name="partition_device_type">设备类型</string>
     <string name="partition_current_slot">当前槽位</string>
     <string name="partition_other_slot">其他槽位</string>
-    <string name="partition_multi_select">多选备份</string>
-    <string name="partition_cancel_select">取消多选</string>
     <string name="partition_show_all">显示全部</string>
     <string name="partition_collapse">收起</string>
     <string name="partition_selected_count">已选择 %d 个分区</string>
-    <string name="partition_select_all">全选</string>
-    <string name="partition_filter_type">按类型筛选</string>
     <string name="partition_filter_all">所有分区</string>
     <string name="partition_filter_physical">仅物理分区</string>
     <string name="partition_filter_logical">仅逻辑分区</string>
@@ -751,7 +659,6 @@
     <string name="partition_mapping">正在映射槽位 %s 的逻辑分区…</string>
     <string name="partition_map_success">成功映射逻辑分区</string>
     <string name="partition_map_failed">映射逻辑分区失败：%s</string>
-    <string name="partition_deselect_all">全不选</string>
     <string name="partition_batch_backup">批量备份</string>
     <string name="partition_common">常用分区</string>
     <string name="partition_all">所有分区</string>
@@ -771,7 +678,6 @@
     <string name="partition_flash_warning">刷写分区可能导致设备无法启动！\n\n确定要刷写 %s 分区吗？</string>
     <string name="partition_dangerous_flash_warning">⚠️ 警告：%1$s 是危险分区！\n\n刷写此分区可能导致：\n• 设备无法启动\n• 丢失重要数据\n• 网络/蓝牙功能失效\n\n请确保您知道自己在做什么！\n\n确定要刷写 %2$s 分区吗？</string>
     <string name="partition_confirm_flash">确定刷写</string>
-    <string name="partition_backing_up">正在备份分区 %s…</string>
     <string name="partition_backing_up_to">正在备份 %1$s 到 %2$s…</string>
     <string name="partition_backup_directory">备份目录</string>
     <string name="partition_backup_directory_choose">选择</string>
@@ -798,13 +704,12 @@
     <string name="partition_batch_backup_partial">备份完成：成功 %1$d 个，失败 %2$d 个\n失败：%3$s</string>
     <string name="partition_no_selection">没有选择要备份的分区</string>
     <string name="partition_back">返回</string>
-    
+
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">高级工具</string>
     <string name="partition_manager_desc">备份/恢复分区、管理槽位</string>
 
     <!-- ksud daemon version / update -->
-    <string name="home_ksud_daemon_info">ksud 守护进程信息 / 手动更新</string>
     <string name="home_ksud_daemon_title">ksud 守护进程</string>
     <string name="home_ksud_daemon_apk_version">管理器内置 ksud：%1$s</string>
     <string name="home_ksud_daemon_installed_version">已安装 ksud（/data/adb/ksud）：%1$s</string>
@@ -815,7 +720,6 @@
     <string name="setting_change_failed">设置失败</string>
     <string name="settings_auto_update_ksud">自动更新 ksud</string>
     <string name="settings_auto_update_ksud_summary">应用冷启动时自动将内置的 ksud 同步到 /data/adb/ksud。默认关闭，需要时去主页手动同步。</string>
-    <string name="su_request_title">Root 权限请求</string>
     <string name="su_request_desc">一个应用正在请求超级用户（su）权限。</string>
     <string name="su_request_allow_forever">允许并记住</string>
     <string name="su_request_allow_once">仅允许一次</string>

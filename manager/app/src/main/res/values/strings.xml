@@ -4,10 +4,8 @@
     <string name="home">Home</string>
     <string name="learn_more">Learn more</string>
     <string name="home_not_installed">Not installed</string>
-    <string name="home_not_installed_or_auth">Not installed or not authenticated</string>
     <string name="home_click_to_install">Click to install</string>
     <string name="home_working">Working</string>
-    <string name="home_gki_builtin_unsupported">YukiSU no longer supports built-in KernelSU! Please use LKM mode!</string>
     <string name="home_working_version">Version: %s</string>
     <string name="home_kernel">Kernel version</string>
     <string name="home_manager_version">Manager version</string>
@@ -54,9 +52,6 @@
     <string name="jailbreak_timeout">Jailbreak may have failed, please check logs</string>
     <string name="reboot_to_apply">Reboot to take effect</string>
     <string name="module_magisk_conflict">Modules are unavailable due to a conflict with Magisk!</string>
-    <string name="home_learn_kernelsu">Learn KernelSU</string>
-    <string name="home_learn_kernelsu_url">https://kernelsu.org/guide/what-is-kernelsu.html</string>
-    <string name="home_click_to_learn_kernelsu">Learn how to install KernelSU and use modules</string>
     <string name="home_support_title">Support Development</string>
     <string name="home_support_content">KernelSU will remain free and open source; donate to official KernelSU developers to show your support.</string>
     <string name="about_source_code"><![CDATA[View source code at %1$s<br/>Join our %2$s channel]]></string>
@@ -129,8 +124,6 @@
     <string name="home_auth_signature_tag">Signature</string>
     <!-- Kasumi toasts -->
     <string name="kasumi_toast_load_error">Error loading data: %s</string>
-    <string name="kasumi_toast_mode_updated">Mode updated. Reboot to apply.</string>
-    <string name="kasumi_toast_mode_failed">Failed to update mode</string>
     <string name="kasumi_toast_settings_saved">Settings saved</string>
     <string name="kasumi_toast_settings_failed">Failed to save settings</string>
     <string name="kasumi_saving">Saving…</string>
@@ -166,7 +159,7 @@
     <string name="kasumi_maps_spoof_dev">Spoof dev</string>
     <string name="kasumi_maps_spoof_path">Spoof path</string>
     <string name="direct_install">Direct install (Recommended)</string>
-    <string name="select_file">Select a image that needs to be patched</string>
+    <string name="select_file">Select an image to patch</string>
     <string name="install_inactive_slot">Install to inactive slot (After OTA)</string>
     <string name="install_inactive_slot_warning">Your device will be **FORCED** to boot to the current inactive slot after a reboot!\nOnly use this option after OTA is done.\nContinue?</string>
     <string name="install_next">Next</string>
@@ -202,7 +195,7 @@
     <string name="save_log">Save logs</string>
     <string name="log_saved">Logs saved</string>
     <!-- Module related -->
-    <string name="module_install_confirm">Confirm install module %1$s？</string>
+    <string name="module_install_confirm">Install module %1$s?</string>
     <string name="unknown_module">Unknown module</string>
     <!-- Module shortcut related -->
     <string name="module_action_success">Module action finished</string>
@@ -283,8 +276,6 @@
     <string name="theme_follow_system">Follow system</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="manual_hook">Manual Hook</string>
-    <string name="inline_hook">Inline Hook</string>
     <string name="dynamic_color_title">Dynamic colours</string>
     <string name="dynamic_color_summary">Dynamic colours using system themes</string>
     <string name="choose_theme_color">Choose a theme colour</string>
@@ -296,52 +287,19 @@
     <string name="color_gray">Gray</string>
     <string name="color_yellow">Yellow</string>
     <string name="color_trans_pride">Trans Pride</string>
-    <string name="root_required">Requires root privileges</string>
     <string name="reboot_complete_title">Scrubbing complete</string>
     <string name="reboot_complete_msg">Whether to reboot immediately？</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>
-    <string name="failed_reboot">Reboot Failed</string>
-    <string name="kpm_title">KPM</string>
-    <string name="kpm_empty">No installed KernelPatch Modules at this time</string>
-    <string name="kpm_version">Version</string>
-    <string name="kpm_author">Author</string>
-    <string name="kpm_uninstall">Uninstall</string>
-    <string name="kpm_uninstall_success">Uninstalled successfully</string>
-    <string name="kpm_uninstall_failed">Failed to uninstall</string>
-    <string name="kpm_install_success">KPM loaded successfuly</string>
-    <string name="kpm_install_failed">Failed to load KPM</string>
-    <string name="kpm_args">Parameters</string>
-    <string name="kpm_control">Execute</string>
-    <string name="home_kpm_version">KPM Version</string>
-    <string name="close_notice">Close</string>
-    <string name="kernel_module_notice">The following kernel module functions were developed by KernelPatch and modified to include the kernel module functions of YukiSU</string>
     <string name="home_ContributionCard_kernelsu">YukiSU Vision</string>
-    <string name="kpm_control_success">Success</string>
-    <string name="kpm_control_failed">Failed</string>
     <string name="home_click_to_ContributionCard_kernelsu">YukiSU is an extremely aggressive and independent KSU branch, but we still thank official KernelSU, SukiSU, Magisk, APatch and others for their contributions.</string>
-    <string name="not_supported">Unsupported</string>
-    <string name="supported">Supported</string>
-    <string name="kernel_patched">Kernel not patched</string>
-    <string name="kernel_not_enabled">Kernel not configured</string>
     <string name="custom_settings">Custom settings</string>
-    <string name="kpm_install_mode">KPM Install</string>
-    <string name="kpm_install_mode_load">Load</string>
-    <string name="kpm_install_mode_embed">Embed</string>
-    <string name="kpm_install_mode_description">Please select: %1\$s Module Installation Mode \n\nLoad: Temporarily load the module \nEmbedded: Permanently install into the system</string>
-    <string name="snackbar_failed_to_check_module_file">Unable to check if module file exists</string>
     <string name="theme_color">Theme Color</string>
-    <string name="invalid_file_type">Incorrect file type! Please select .kpm file</string>
-    <string name="confirm_uninstall_title_with_filename">Uninstall</string>
-    <string name="confirm_uninstall_content">The following KPM will be uninstalled: %s</string>
     <string name="image_editor_hint">Use two fingers to zoom the image, and one finger to drag it to adjust the position</string>
-    <string name="reprovision">Reprovision</string>
+    <string name="reprovision">Fit image to screen</string>
     <!-- Error Messages -->
-    <string name="flash_failed_message">Flash failed</string>
     <!-- lkm/gki install -->
     <string name="Lkm_install_methods">LKM repair/installation</string>
-    <string name="kernel_version_log">Kernel version：%1$s</string>
-    <string name="tool_version_log">Using the patching tool：%1$s</string>
     <string name="configuration">Configure</string>
     <string name="app_settings">Application Settings</string>
     <string name="tools">Tools</string>
@@ -361,9 +319,6 @@
     <string name="back">Comeback</string>
     <string name="background_set_success">Background set successfully</string>
     <string name="background_removed">Removed custom backgrounds</string>
-    <!-- KPM display settings -->
-    <string name="show_kpm_info">Hide KPM Function</string>
-    <string name="show_kpm_info_summary">Hide KPM information and Function in home and bottom bar</string>
     <!-- Webui X settings -->
     <string name="use_webuix">Select the WebUI engine to use</string>
     <string name="engine_auto_select">Automatic Selection</string>
@@ -436,60 +391,20 @@
     <string name="show_more_module_info_summary">Display additional module information like update JSON URLs</string>
     <string name="kernel_simple_kernel">Kernel Version Concise Mode</string>
     <string name="kernel_simple_kernel_summary">Enable or disable the clean mode displayed by the YukiSU kernel version</string>
-    <string name="edit">Edit</string>
-    <string name="delete">Delete</string>
-    <string name="update">Update</string>
-    <string name="app_paths_section">Application Path</string>
-    <string name="other_paths_section">Other paths</string>
-    <string name="add_custom_path">Other</string>
-    <string name="add_app_path">App</string>
-    <string name="warning">Warning</string>
-    <string name="search_apps">Search Apps</string>
     <string name="home_zygisk_implement">Zygisk implement</string>
     <string name="home_meta_module_implement">Meta Module implement</string>
     <string name="home_hook_type">Hook type</string>
-    <!-- KPM patching related strings -->
-    <string name="kpm_patch_options">KPM Patch</string>
-    <string name="kpm_patch_description">For adding additional KPM features</string>
-    <string name="enable_kpm_patch">KPM Patch</string>
-    <string name="kpm_patch_switch_description">Apply KPM patch to kernel image before flashing</string>
-    <string name="enable_kpm_undo_patch">KPM Undo Patch</string>
-    <string name="kpm_undo_patch_switch_description">Undo previously applied KPM patch</string>
-    <string name="kpm_patch_enabled">KPM patch enabled</string>
-    <string name="kpm_undo_patch_enabled">KPM undo patch enabled</string>
-    <string name="kpm_patch_mode">KPM Patch Mode</string>
-    <string name="kpm_undo_patch_mode">KPM Undo Patch Mode</string>
-    <!-- KPM workflow related -->
-    <string name="kpm_preparing_tools">Preparing KPM tools</string>
-    <string name="kpm_applying_patch">Applying KPM patch</string>
-    <string name="kpm_undoing_patch">Undoing KPM patch</string>
-    <string name="kpm_found_image_file">Found Image file: %s</string>
-    <string name="kpm_patch_success">KPM patch applied successfully</string>
-    <string name="kpm_undo_patch_success">KPM patch undone successfully</string>
-    <string name="kpm_file_repacked">File repacked successfully</string>
-    <!-- KPM error messages -->
-    <string name="kpm_extract_zip_failed">Failed to extract zip file</string>
-    <string name="kpm_image_file_not_found">Image file not found</string>
-    <string name="kpm_patch_failed">KPM patch failed</string>
-    <string name="kpm_undo_patch_failed">KPM undo patch failed</string>
-    <string name="kpm_patch_operation_failed">KPM patch operation failed: %s</string>
-    <!-- KPM option radio group strings -->
-    <string name="kpm_follow_kernel_file">Follow Kernel</string>
-    <string name="kpm_follow_kernel_description">Use kernel as-is without any KPM modifications</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Confirm Installation</string>
     <string name="confirm_multiple_installation">Confirm Installation (%d files)</string>
     <string name="install_confirm">Install</string>
     <string name="module_package">Module</string>
-    <string name="kernel_package">Kernel</string>
     <string name="unknown_package">Unknown</string>
-    <string name="unknown_kernel">Unknown Kernel</string>
     <string name="unknown_file">Unknown File</string>
     <string name="unsupported_file_format">Unsupported file format. Only Magisk/KernelSU module packages are supported.</string>
     <string name="version">Version</string>
     <string name="author">Author</string>
     <string name="description">Description</string>
-    <string name="supported_devices">Supported Devices</string>
     <string name="log_viewer_title">Log Viewer</string>
     <string name="log_viewer_back">Back</string>
     <string name="log_viewer_search">Search</string>
@@ -513,10 +428,8 @@
     <string name="log_viewer_exclude_subtypes">Exclude sub-types</string>
     <string name="log_viewer_exclude_current_app">Current App</string>
     <string name="log_viewer_exclude_viewer_refresh">Log Viewer Self-Refresh</string>
-    <string name="log_viewer_page_info">Page: %1$d/%2$d | Total logs: %3$d</string>
     <string name="log_viewer_page_info_compact">Page %1$d/%2$d</string>
     <string name="log_viewer_select_file">Log File</string>
-    <string name="log_viewer_selected_file">Selected file: %1$s</string>
     <string name="log_viewer_file_count">Files: %1$d</string>
     <string name="log_viewer_latest_file">Latest</string>
     <string name="log_viewer_filters">Filters</string>
@@ -560,10 +473,7 @@
     <string name="superkey_input_hint">SuperKey</string>
     <string name="superkey_input_placeholder">Enter your SuperKey</string>
     <string name="superkey_authenticate">Authenticate</string>
-    <string name="superkey_auth_success">Authentication successful</string>
     <string name="superkey_auth_failed">Authentication failed</string>
-    <string name="superkey_required">SuperKey authentication required</string>
-    <string name="superkey_not_configured">SuperKey not configured in kernel</string>
     <string name="show_password">Show password</string>
     <string name="hide_password">Hide password</string>
     <string name="superkey_optional_title">SuperKey (Optional)</string>
@@ -576,14 +486,11 @@
     <string name="settings_clear_super_key_dialog">Do you really want to clear the stored SuperKey?</string>
     <string name="signature_bypass_title">SuperKey Only Mode</string>
     <string name="signature_bypass_desc">Disable APK signature verification. Manager will only be recognized through SuperKey authentication.</string>
-    <string name="gki_priority_title">GKI Priority Mode</string>
-    <string name="gki_priority_desc">When enabled, GKI takes priority over LKM. The LKM will not trigger GKI yield and both will run independently.</string>
 
     <!-- Kasumi Configuration -->
     <string name="kasumi_title">Kasumi Configuration</string>
     <string name="kasumi_settings_summary">Module mount, Maps spoof, LKM, rules</string>
     <string name="kasumi_tab_status">Status</string>
-    <string name="kasumi_tab_modules">Modules</string>
     <string name="kasumi_tab_settings">Settings</string>
     <string name="kasumi_tab_rules">Rules</string>
     <string name="kasumi_tab_logs">Logs</string>
@@ -597,13 +504,7 @@
     <string name="kasumi_lkm_autoload_failed">Failed to set</string>
     <string name="kasumi_lkm_kernel_label">Kernel (SYS)</string>
     <string name="kasumi_lkm_kmi_label">uname override</string>
-    <string name="kasumi_lkm_kmi_override">KMI Override</string>
     <string name="kasumi_lkm_kmi_override_desc">Override KMI for LKM loading when auto-detect fails (e.g. 6.6.30-android15)</string>
-    <string name="kasumi_lkm_kmi_override_set">Set</string>
-    <string name="kasumi_lkm_kmi_override_clear">Clear</string>
-    <string name="kasumi_lkm_kmi_override_title">KMI Override</string>
-    <string name="kasumi_lkm_kmi_override_placeholder">e.g. 6.6.30-android15</string>
-    <string name="kasumi_lkm_kmi_override_current">Current: %s</string>
     <string name="kasumi_lkm_kmi_set_success">KMI override set</string>
     <string name="kasumi_lkm_kmi_cleared">KMI override cleared</string>
     <string name="kasumi_lkm_kmi_failed">Failed to set KMI override</string>
@@ -623,7 +524,6 @@
     <string name="kasumi_storage">Storage</string>
     <string name="kasumi_modules_count">Modules</string>
     <string name="kasumi_system_info">System Info</string>
-    <string name="kasumi_version">Version: %s</string>
     <string name="kasumi_builtin_mount">Built-in Mount</string>
     <string name="kasumi_builtin_mount_desc">Use built-in hymo mount instead of external metamodule. Disable this if you want to use another metamodule.</string>
     <string name="kasumi_debug">Debug logging</string>
@@ -640,8 +540,6 @@
     <string name="kasumi_hidexattr_desc">Enable mount_hide, maps_spoof, statfs_spoof, selinux_fix and stealth to hide traces from detection</string>
     <string name="kasumi_selinux_fix">SELinux Guard</string>
     <string name="kasumi_selinux_fix_desc">Block app_zygote SELinux policy probes (DirtySepolicy / Duck Detector)</string>
-    <string name="kasumi_avc_spoof">AVC Log Spoofing</string>
-    <string name="kasumi_avc_spoof_desc">Spoof SELinux AVC deny logs</string>
     <string name="kasumi_enable_nuke">Enable Nuke</string>
     <string name="kasumi_enable_nuke_desc">Allow nuking ext4 sysfs entries</string>
     <string name="kasumi_ignore_protocol">Ignore Protocol Mismatch</string>
@@ -714,12 +612,6 @@
     <string name="kasumi_fs_type_ext4">EXT4 image</string>
     <string name="kasumi_fs_type_erofs">EROFS image</string>
     <string name="kasumi_fs_type_tmpfs">Tmpfs (RAM)</string>
-    <string name="kasumi_module_mode">Mode:</string>
-    <string name="kasumi_mode_auto">Auto</string>
-    <string name="kasumi_mode_kasumi">Kasumi</string>
-    <string name="kasumi_mode_overlay">OverlayFS</string>
-    <string name="kasumi_mode_magic">Magic Mount</string>
-    <string name="kasumi_mode_none">None</string>
     <string name="kasumi_mirror_path">Mount base / mirror path</string>
     <string name="kasumi_mirror_path_desc">Auto: use /dev/kasumi_mirror when Kasumi is on, /data/adb/hymo/img_mnt when off. Or choose a preset / custom path (overrides auto).</string>
     <string name="kasumi_mirror_preset_auto">Auto</string>
@@ -737,7 +629,6 @@
 
     <!-- Kasumi per-module rules -->
     <string name="kasumi_module_rules_title">Custom rules for this module</string>
-    <string name="kasumi_module_rules_empty">No custom rules. Add paths to override how this module mounts specific locations.</string>
     <string name="kasumi_module_rules_placeholder">/path/inside/system/or/vendor</string>
     <string name="kasumi_mount_config">Mount config</string>
     <string name="kasumi_mount_mode">Mount mode</string>
@@ -750,22 +641,16 @@
     <string name="kasumi_strategy_not_mounted">Not mounted</string>
     <string name="kasumi_module_rules_add">Add</string>
     <string name="kasumi_module_rules_add_failed">Failed to add module rule</string>
-    <string name="kasumi_module_rules_remove_failed">Failed to remove module rule</string>
 
     <!-- Partition Manager -->
     <string name="partition_manager">Partition Manager</string>
-    <string name="partition_list">Partition List</string>
     <string name="partition_slot_info">Slot Information</string>
     <string name="partition_device_type">Device Type</string>
     <string name="partition_current_slot">Current Slot</string>
     <string name="partition_other_slot">Other Slot</string>
-    <string name="partition_multi_select">Multi-select Backup</string>
-    <string name="partition_cancel_select">Cancel Multi-select</string>
     <string name="partition_show_all">Show All</string>
     <string name="partition_collapse">Collapse</string>
     <string name="partition_selected_count">Selected %d partitions</string>
-    <string name="partition_select_all">Select All</string>
-    <string name="partition_filter_type">Filter by Type</string>
     <string name="partition_filter_all">All Partitions</string>
     <string name="partition_filter_physical">Physical Only</string>
     <string name="partition_filter_logical">Logical Only</string>
@@ -774,7 +659,6 @@
     <string name="partition_mapping">Mapping logical partitions for slot %s…</string>
     <string name="partition_map_success">Successfully mapped logical partitions</string>
     <string name="partition_map_failed">Failed to map logical partitions: %s</string>
-    <string name="partition_deselect_all">Deselect All</string>
     <string name="partition_batch_backup">Batch Backup</string>
     <string name="partition_common">Common Partitions</string>
     <string name="partition_all">All Partitions</string>
@@ -794,7 +678,6 @@
     <string name="partition_flash_warning">Flashing partition may cause device unable to boot!\n\nAre you sure you want to flash %s partition?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Warning: %1$s is a dangerous partition!\n\nFlashing this partition may cause:\n• Device unable to boot\n• Loss of important data\n• Network/Bluetooth malfunction\n\nPlease make sure you know what you are doing!\n\nAre you sure you want to flash %2$s partition?</string>
     <string name="partition_confirm_flash">Confirm Flash</string>
-    <string name="partition_backing_up">Backing up partition %s…</string>
     <string name="partition_backing_up_to">Backing up %1$s to %2$s…</string>
     <string name="partition_backup_directory">Backup Directory</string>
     <string name="partition_backup_directory_choose">Choose</string>
@@ -827,7 +710,6 @@
     <string name="partition_manager_desc">Backup/restore partitions, manage slots</string>
 
     <!-- ksud daemon version / update -->
-    <string name="home_ksud_daemon_info">ksud daemon info / manual update</string>
     <string name="home_ksud_daemon_title">ksud daemon</string>
     <string name="home_ksud_daemon_apk_version">Manager-bundled ksud: %1$s</string>
     <string name="home_ksud_daemon_installed_version">Installed ksud (/data/adb/ksud): %1$s</string>
@@ -839,7 +721,6 @@
     <string name="settings_auto_update_ksud">Auto-update ksud daemon</string>
     <string name="settings_auto_update_ksud_summary">Sync the bundled ksud binary to /data/adb/ksud on app cold-start. Off by default; otherwise use the manual button on the home page.</string>
 
-    <string name="su_request_title">Root access request</string>
     <string name="su_request_desc">An app is requesting superuser (su) access.</string>
     <string name="su_request_allow_forever">Allow always</string>
     <string name="su_request_allow_once">Allow once</string>
