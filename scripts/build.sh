@@ -199,6 +199,26 @@ done
 
 cp "$KSUINIT_DIR/build/ksuinit" "$KSUD_ASSETS/"
 
+# Build the standalone magisk-compat su (its own project, like ksuinit) and stage
+# it into ksud assets BEFORE ksud configures, so embed_assets picks it up as a
+# prebuilt asset -- ksud no longer compiles su itself.
+echo ">>> 构建 su (magisk-compat) ..."
+SU_DIR="$REPO_ROOT/userspace/su"
+rm -rf "$SU_DIR/build"
+mkdir -p "$SU_DIR/build"
+cd "$SU_DIR/build"
+cmake .. \
+	-G Ninja \
+	-DCMAKE_SYSTEM_NAME=Android \
+	-DCMAKE_ANDROID_ARCH_ABI="$ABI" \
+	-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+	-DCMAKE_C_COMPILER="$CC" \
+	-DCMAKE_CXX_COMPILER="$CXX" \
+	-DCMAKE_BUILD_TYPE=Release
+ninja
+cp "$SU_DIR/build/su" "$KSUD_ASSETS/su"
+echo "    su 已构建并嵌入 assets"
+
 KSUD_DIR="$REPO_ROOT/userspace/ksud"
 rm -rf "$KSUD_DIR/build"
 mkdir -p "$KSUD_DIR/build"
@@ -213,10 +233,8 @@ cmake .. \
 	-DCMAKE_CXX_COMPILER="$CXX" \
 	-DCMAKE_BUILD_TYPE=Release
 
-# Build su first so ksud can embed it.
-ninja su
-cp "$KSUD_DIR/build/su" "$KSUD_ASSETS/su"
-
+# su, ksuinit and the .ko assets are all staged into assets/ above (before this
+# configure), so ksud just embeds whatever is there -- no in-tree su target.
 ninja
 echo "    ksud 已构建 (含嵌入式 su)"
 

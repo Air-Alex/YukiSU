@@ -188,12 +188,10 @@ if(NOT VERSION_RESULT EQUAL 0)
     message(WARNING "Failed to generate version file, using defaults")
 endif()
 
-# Run embed_assets.py to generate assets_data.cpp (embedded tools / ko / ksuinit
-# / su). DEPEND on the asset files themselves, not just the script: build.sh
-# drops su into assets/ AFTER configure, so without this a reused build dir keeps
-# a stale assets_data.cpp and su is silently missing -- the boot mount then fails
-# with "Asset not found: su" and no visible su appears. CONFIGURE_DEPENDS re-globs
-# when assets/ changes so a freshly added asset is picked up.
+# Run embed_assets.py to generate assets_data.cpp from everything in assets/. All
+# assets (ko, ksuinit, su) are staged into assets/ by build.sh BEFORE configure,
+# so the glob catches them. DEPEND on the asset files (not just the script) plus
+# CONFIGURE_DEPENDS so the table regenerates whenever an asset is added/changed.
 file(GLOB ASSET_FILES CONFIGURE_DEPENDS ${ASSETS_DIR}/*)
 add_custom_command(
     OUTPUT ${ASSETS_CPP}
@@ -441,25 +439,6 @@ add_custom_command(TARGET ksud POST_BUILD
 # Install
 install(TARGETS ksud DESTINATION bin)
 
-# Standalone su client embedded into ksud assets.
-add_executable(su
-    src/magisk_compat/su_client.cpp
-    src/magisk_compat/su_protocol.cpp
-)
-target_include_directories(su PRIVATE ${KSUD_INCLUDE_DIRS})
-target_compile_features(su PRIVATE cxx_std_17)
-target_compile_options(su PRIVATE -Os -ffunction-sections -fdata-sections)
-target_link_options(su PRIVATE -Wl,--gc-sections -Wl,--strip-all)
-
-if(LLVM_STRIP)
-    add_custom_command(TARGET su POST_BUILD
-        COMMAND ${LLVM_STRIP}
-            --strip-all
-            --remove-section=.comment
-            --remove-section=.note
-            --remove-section=.note.android.ident
-            --remove-section=.note.gnu.build-id
-            $<TARGET_FILE:su>
-        COMMENT "llvm-strip: shrinking standalone su..."
-    )
-endif()
+# NOTE: the standalone magisk-compat `su` is built separately (userspace/su,
+# like ksuinit) and staged into assets/ by build.sh BEFORE this CMake configures,
+# so it is embedded as an ordinary prebuilt asset -- ksud does NOT compile it.

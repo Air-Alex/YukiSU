@@ -67,6 +67,21 @@ jobs:
           cp ksuinit-${{ inputs.target }}/ksuinit ./userspace/ksud/assets/
         fi
 
+    - name: Prepare su
+      run: |
+        set -euo pipefail
+        # su is built ahead of time by su.yml (like ksuinit) and arrives as an
+        # artifact; stage it into assets/ before ksud is built. ksud does NOT
+        # compile su. Fail loudly if it is missing rather than silently shipping
+        # a ksud with no embedded su.
+        mkdir -p ./userspace/ksud/assets
+        if [ ! -f su-${{ inputs.target }}/su ]; then
+          echo "::error::su artifact (su-${{ inputs.target }}/su) missing -- did build-su run?"
+          exit 1
+        fi
+        cp su-${{ inputs.target }}/su ./userspace/ksud/assets/
+        echo "su staged into ksud/assets:"; ls -lh ./userspace/ksud/assets/su
+
     - name: Determine target settings
       id: target
       run: |
