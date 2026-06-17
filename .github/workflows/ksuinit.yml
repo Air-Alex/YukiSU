@@ -10,11 +10,14 @@ on:
         required: false
         type: string
         default: ubuntu-latest
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     runs-on: ${{ inputs.os }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -105,7 +108,7 @@ jobs:
         fi
 
     - name: Upload ksuinit artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ksuinit-${{ inputs.target }}
         path: |

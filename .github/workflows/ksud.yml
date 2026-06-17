@@ -19,17 +19,20 @@ on:
         type: boolean
         default: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     runs-on: ${{ inputs.os }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
         submodules: recursive
 
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
     
     - name: Prepare LKM files
       if: ${{ inputs.pack_lkm }}
@@ -182,7 +185,7 @@ jobs:
         fi
 
     - name: Upload ksud artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ksud-${{ inputs.target }}
         path: |

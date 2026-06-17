@@ -22,6 +22,9 @@ on:
         default: "20260313"
         type: string
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     name: Build Kasumi ${{ inputs.arch }} ${{ inputs.kmi }}
@@ -38,7 +41,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -119,7 +122,7 @@ jobs:
           ls -lh "${KO_FILE}.asc"
 
       - name: Upload .ko
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.KMI }}-${{ env.TARGET_ARCH }}-kasumi-lkm
           path: |

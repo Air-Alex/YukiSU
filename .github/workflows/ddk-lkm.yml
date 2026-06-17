@@ -13,6 +13,9 @@ on:
         default: '20260313'
         type: string
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-kernelsu-ko:
     name: Build kernelsu.ko for ${{ inputs.kmi }}
@@ -23,7 +26,7 @@ jobs:
 
     steps:
     - name: Checkout source code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Build kernelsu.ko
       run: |
@@ -78,7 +81,7 @@ jobs:
         fi
 
     - name: Upload kernelsu.ko artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ inputs.kmi }}-lkm
         path: |
