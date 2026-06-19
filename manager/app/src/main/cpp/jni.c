@@ -222,12 +222,20 @@ NativeBridge(getAppProfile, jobject, jstring pkg, jint uid) {
       }
     }
 
+    // Apps on the default root profile report an empty selinux_domain (the
+    // kernel zeros rp_config for use_default). Surface the default su domain so
+    // switching such an app to a custom profile carries a valid, non-empty
+    // domain instead of being rejected by the kernel's profile_valid.
+    const char *sel_domain = profile.rp_config.profile.selinux_domain;
     GetEnvironment()->SetObjectField(
         env, obj, domainField,
         GetEnvironment()->NewStringUTF(
-            env, profile.rp_config.profile.selinux_domain));
+            env, sel_domain[0] != '\0' ? sel_domain : "u:r:su:s0"));
     GetEnvironment()->SetIntField(env, obj, namespacesField,
                                   profile.rp_config.profile.namespaces);
+    GetEnvironment()->SetLongField(
+        env, obj, GetEnvironment()->GetFieldID(env, cls, "flags", "J"),
+        (jlong)profile.rp_config.profile.flags);
     GetEnvironment()->SetBooleanField(env, obj, allowSuField, profile.allow_su);
   } else {
     GetEnvironment()->SetBooleanField(env, obj, nonRootUseDefaultField,
@@ -339,9 +347,17 @@ NativeBridge(setAppProfile, jboolean, jobject profile) {
         GetEnvironment()->GetStringUTFChars(env, (jstring)domain, nullptr);
     strcpy(p.rp_config.profile.selinux_domain, cdomain);
     GetEnvironment()->ReleaseStringUTFChars(env, (jstring)domain, cdomain);
+    // A custom root profile must carry a non-empty SELinux domain or the kernel
+    // rejects it (profile_valid). Fall back to the default su domain.
+    if (!p.rp_config.use_default &&
+        p.rp_config.profile.selinux_domain[0] == '\0') {
+      strcpy(p.rp_config.profile.selinux_domain, "u:r:su:s0");
+    }
 
     p.rp_config.profile.namespaces =
         GetEnvironment()->GetIntField(env, profile, namespacesField);
+    p.rp_config.profile.flags = (uint64_t)GetEnvironment()->GetLongField(
+        env, profile, GetEnvironment()->GetFieldID(env, cls, "flags", "J"));
   } else {
     p.nrp_config.use_default =
         GetEnvironment()->GetBooleanField(env, profile, nonRootUseDefaultField);
