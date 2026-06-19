@@ -860,7 +860,11 @@ int cli_run(int argc, char** argv) {
     if (cmd == "help" || cmd == "-h" || cmd == "--help") {
         print_usage();
         return 0;
-    } else if (cmd == "version" || cmd == "-v" || cmd == "--version") {
+    } else if (cmd == "version" || cmd == "-v" || cmd == "-V" ||
+               cmd == "--version") {
+        // -V is the conventional version flag (upstream's clap-based ksud
+        // accepts it); some root-gating apps probe `ksud -V` and treat its
+        // absence as "no/incompatible root". Alias it to `version`.
         print_version();
         return 0;
     } else if (cmd == "insmod") {
