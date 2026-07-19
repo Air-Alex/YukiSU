@@ -59,6 +59,7 @@ val managerVersionCode: Int by rootProject.extra
 val managerVersionName: String by rootProject.extra
 val ksudBundledVersion: String by rootProject.extra
 val androidCmakeVersion: String by rootProject.extra
+val ciRunId = System.getenv("GITHUB_RUN_ID")?.toLongOrNull() ?: 0L
 
 fun exposeSigningProperty(propertyName: String, envName: String) {
     if (project.findProperty(propertyName) == null) {
@@ -94,6 +95,8 @@ android {
 
     defaultConfig {
         buildConfigField("String", "KSUD_BUNDLED_VERSION", "\"$ksudBundledVersion\"")
+        buildConfigField("long", "CI_RUN_ID", "${ciRunId}L")
+        manifestPlaceholders["ciRunId"] = "run-$ciRunId"
     }
 
     buildTypes {
@@ -124,6 +127,7 @@ android {
             // https://stackoverflow.com/a/58956288
             // It will break Layout Inspector, but it's unused for release build.
             excludes += "META-INF/*.version"
+            pickFirsts += "META-INF/LICENSE.md"
             // https://github.com/Kotlin/kotlinx.coroutines?tab=readme-ov-file#avoiding-including-the-debug-infrastructure-in-the-resulting-apk
             excludes += "DebugProbesKt.bin"
             // https://issueantenna.com/repo/kotlin/kotlinx.coroutines/issues/3158
@@ -177,6 +181,8 @@ ksp {
 }
 
 dependencies {
+    implementation(libs.bouncycastle.bcpg)
+    implementation(libs.bouncycastle.bcprov)
     implementation(libs.gson)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)

@@ -201,16 +201,23 @@ jobs:
           echo "title=Manager" >> "$GITHUB_OUTPUT"
           echo "topicid=${{ vars.MESSAGE_THREAD_ID }}" >> "$GITHUB_OUTPUT"
 
-      - name: Check GPG available
+      - name: Check nightly signing available
         id: gpg_check
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PROD_KEYSTORE: ${{ secrets.KEYSTORE }}
         run: |
-          if [ -n "$GPG_PRIVATE_KEY" ]; then
+          if [ -n "$GPG_PRIVATE_KEY" ] && [ -n "$PROD_KEYSTORE" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Require signing keys for main nightly
+        if: github.ref_name == 'main' && steps.gpg_check.outputs.available != 'true'
+        run: |
+          echo 'Production APK and GPG signing keys are required for main nightly builds.' >&2
+          exit 1
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -295,18 +302,18 @@ jobs:
         if: steps.gpg_check.outputs.available == 'true'
         run: |
           cd dist
-          for apk in ./*.apk; do
-            if [ -f "$apk" ]; then
-              echo "Signing $apk..."
-              gpg --detach-sign --local-user an@anatdx.com --batch --yes --pinentry-mode loopback \
-                --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
-                --output "${apk}.sig" "$apk"
-            fi
-          done
-          echo "Signatures created:"
-          ls -lh ./*.sig || true
+          mapfile -t APKS < <(find . -maxdepth 1 -type f -name '*.apk')
+          test "${#APKS[@]}" -eq 1
+          mv "${APKS[0]}" app-release.apk
+          gpg --detach-sign --local-user 'C09CE484EEA3F2D88E9CDCC8EBDB0D663D7AB2F6!' \
+            --batch --yes --pinentry-mode loopback \
+            --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+            --output app-release.sig app-release.apk
+          test -s app-release.apk
+          test -s app-release.sig
 
       - name: Upload build artifact
+        if: steps.gpg_check.outputs.available == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: Manager-arm64-v8a

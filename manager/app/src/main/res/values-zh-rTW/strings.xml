@@ -109,6 +109,17 @@
     <string name="module_changelog_failed">獲取更新日誌失敗：%s</string>
     <string name="settings_check_update">檢查更新</string>
     <string name="settings_check_update_summary">在應用程式啟動後自動檢查是否有最新版本</string>
+    <string name="settings_check_ci_update">偵測 CI 更新</string>
+    <string name="settings_check_ci_update_summary">開啟應用程式時偵測已簽署的 nightly 管理器版本，預設關閉</string>
+    <string name="ci_update_title">發現新 CI 版本</string>
+    <string name="ci_update_message">發現新 CI 版本 %1$d，目前版本為 %2$d。</string>
+    <string name="ci_update_download">下載並安裝</string>
+    <string name="ci_update_downloading">正在下載… %1$d%%</string>
+    <string name="ci_update_verifying">正在驗證 PGP 與 APK 簽章…</string>
+    <string name="ci_update_installing">正在安裝更新…</string>
+    <string name="ci_update_retry">重試</string>
+    <string name="ci_update_failed">CI 更新失敗：%1$s</string>
+    <string name="ci_update_root_installed">CI 更新已安裝，請重新開啟應用程式</string>
     <string name="settings_auto_jailbreak">自動越獄</string>
     <string name="settings_auto_jailbreak_summary">開機偵測到 Permissive SELinux 時自動使用 Magica 引導 late-load。需要授予本應用程式自動啟動權限。</string>
     <string name="settings_adb_root">ADB Root</string>

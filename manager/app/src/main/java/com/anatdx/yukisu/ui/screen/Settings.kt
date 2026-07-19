@@ -421,6 +421,22 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
+                    var checkCiUpdate by rememberSaveable {
+                        mutableStateOf(prefs.getBoolean("check_ci_update", false))
+                    }
+                    if (checkUpdate) {
+                        SwitchItem(
+                            icon = Icons.Filled.DeveloperMode,
+                            title = stringResource(R.string.settings_check_ci_update),
+                            summary = stringResource(R.string.settings_check_ci_update_summary),
+                            checked = checkCiUpdate,
+                            onCheckedChange = { enabled ->
+                                prefs.edit { putBoolean("check_ci_update", enabled) }
+                                checkCiUpdate = enabled
+                            }
+                        )
+                    }
+
                     var autoUpdateKsud by rememberSaveable {
                         mutableStateOf(prefs.getBoolean("auto_update_ksud", false))
                     }

@@ -26,6 +26,7 @@ documentfile = "1.1.0"
 mmrl = "2bb00b3c2b"
 ndk = "29.0.14206865"
 foundation = "1.9.4"
+bouncycastle = "1.85"
 
 [plugins]
 agp-app = { id = "com.android.application", version.ref = "agp" }
@@ -91,3 +92,5 @@ mmrl-platform = { group = "com.github.MMRLApp.MMRL", name = "platform", version.
 mmrl-ui = { group = "com.github.MMRLApp.MMRL", name = "ui", version.ref = "mmrl" }
 mmrl-hidden-api = { group = "com.github.MMRLApp.MMRL", name = "hidden-api", version.ref = "mmrl" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+bouncycastle-bcpg = { group = "org.bouncycastle", name = "bcpg-jdk18on", version.ref = "bouncycastle" }
+bouncycastle-bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }

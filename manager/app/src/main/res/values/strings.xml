@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name" translatable="false">YukiSU</string>
     <string name="home">Home</string>
     <string name="learn_more">Learn more</string>
@@ -127,6 +127,17 @@
     <string name="module_changelog_failed">Fetch changelog failed: %s</string>
     <string name="settings_check_update">Check for updates</string>
     <string name="settings_check_update_summary">Automatically check for updates when opening the app</string>
+    <string name="settings_check_ci_update" tools:ignore="MissingTranslation">Check for CI updates</string>
+    <string name="settings_check_ci_update_summary" tools:ignore="MissingTranslation">Check for signed nightly manager builds when the app opens. Disabled by default.</string>
+    <string name="ci_update_title" tools:ignore="MissingTranslation">New CI build found</string>
+    <string name="ci_update_message" tools:ignore="MissingTranslation">CI run %1$d is newer than the installed build (%2$d).</string>
+    <string name="ci_update_download" tools:ignore="MissingTranslation">Download and install</string>
+    <string name="ci_update_downloading" tools:ignore="MissingTranslation">Downloading… %1$d%%</string>
+    <string name="ci_update_verifying" tools:ignore="MissingTranslation">Verifying PGP and APK signatures…</string>
+    <string name="ci_update_installing" tools:ignore="MissingTranslation">Installing update…</string>
+    <string name="ci_update_retry" tools:ignore="MissingTranslation">Retry</string>
+    <string name="ci_update_failed" tools:ignore="MissingTranslation">CI update failed: %1$s</string>
+    <string name="ci_update_root_installed" tools:ignore="MissingTranslation">CI update installed. Reopen the app to use it.</string>
     <string name="settings_auto_jailbreak">Auto jailbreak</string>
     <string name="settings_auto_jailbreak_summary">Automatically use Magica to bootstrap late-load when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
     <string name="settings_adb_root">ADB Root</string>
