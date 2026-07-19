@@ -24,6 +24,9 @@ import com.maxkeppeler.sheets.list.models.ListSelection
 import ui.screen.moreSettings.util.LocaleHelper
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.theme.*
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
+import com.anatdx.yukisu.ui.component.YukiDialogTheme
 import ui.screen.moreSettings.MoreSettingsHandlers
 import ui.screen.moreSettings.state.MoreSettingsState
 
@@ -32,6 +35,16 @@ fun MoreSettingsDialogs(
     state: MoreSettingsState,
     handlers: MoreSettingsHandlers
 ) {
+    if (state.showUiStyleDialog) {
+        SingleChoiceDialog(
+            title = stringResource(R.string.ui_style),
+            options = state.uiStyleOptions,
+            selectedIndex = state.uiStyleIndex,
+            onOptionSelected = handlers::handleUiStyleChange,
+            onDismiss = { state.showUiStyleDialog = false }
+        )
+    }
+
     if (state.showThemeModeDialog) {
         SingleChoiceDialog(
             title = stringResource(R.string.theme_mode),
@@ -78,7 +91,7 @@ fun SingleChoiceDialog(
     onOptionSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
@@ -122,7 +135,7 @@ fun ConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
@@ -251,31 +264,33 @@ fun LanguageSelectionDialog(
             mutableIntStateOf(allOptions.indexOfFirst { (tag, _) -> currentLocale == tag })
         }
 
-        ListDialog(
-            state = rememberUseCaseState(
-                visible = true,
-                onFinishedRequest = {
-                    if (selectedIndex >= 0 && selectedIndex < allOptions.size) {
-                        val newLocale = allOptions[selectedIndex].first
-                        prefs.edit { putString("app_locale", newLocale) }
-                        onLanguageSelected(newLocale)
+        YukiDialogTheme {
+            ListDialog(
+                state = rememberUseCaseState(
+                    visible = true,
+                    onFinishedRequest = {
+                        if (selectedIndex >= 0 && selectedIndex < allOptions.size) {
+                            val newLocale = allOptions[selectedIndex].first
+                            prefs.edit { putString("app_locale", newLocale) }
+                            onLanguageSelected(newLocale)
+                        }
+                        onDismiss()
+                    },
+                    onCloseRequest = {
+                        onDismiss()
                     }
-                    onDismiss()
-                },
-                onCloseRequest = {
-                    onDismiss()
+                ),
+                header = Header.Default(
+                    title = stringResource(R.string.settings_language),
+                ),
+                selection = ListSelection.Single(
+                    showRadioButtons = true,
+                    options = options
+                ) { index, _ ->
+                    selectedIndex = index
                 }
-            ),
-            header = Header.Default(
-                title = stringResource(R.string.settings_language),
-            ),
-            selection = ListSelection.Single(
-                showRadioButtons = true,
-                options = options
-            ) { index, _ ->
-                selectedIndex = index
-            }
-        )
+            )
+        }
     }
 }
 @Composable
@@ -299,7 +314,7 @@ fun ThemeColorDialog(
         baseThemeColorOptions
     }
 
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.choose_theme_color)) },
         text = {
@@ -337,7 +352,7 @@ fun ThemeColorDialog(
                         Text(name)
                         Spacer(modifier = Modifier.weight(1f))
                         if (ThemeConfig.currentTheme::class == theme::class) {
-                            Icon(
+                            YukiIcon(
                                 Icons.Default.Check,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary

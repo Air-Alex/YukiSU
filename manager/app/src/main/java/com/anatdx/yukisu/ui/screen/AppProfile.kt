@@ -3,13 +3,13 @@ package com.anatdx.yukisu.ui.screen
 import android.annotation.SuppressLint
 import androidx.annotation.StringRes
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Security
@@ -18,14 +18,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
@@ -43,12 +46,15 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.SwitchItem
+import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.profile.AppProfileConfig
 import com.anatdx.yukisu.ui.component.profile.RootProfileConfig
 import com.anatdx.yukisu.ui.component.profile.TemplateConfig
 import com.anatdx.yukisu.ui.theme.CardConfig
+import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import com.anatdx.yukisu.ui.viewmodel.getTemplateInfoById
@@ -67,7 +73,12 @@ fun AppProfileScreen(
 ) {
     val context = LocalContext.current
     val snackBarHost = LocalSnackbarHost.current
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     val scope = rememberCoroutineScope()
     val viewModelStoreOwner = checkNotNull(LocalViewModelStoreOwner.current)
     val superUserViewModel = viewModel<SuperUserViewModel>(viewModelStoreOwner = viewModelStoreOwner)
@@ -126,20 +137,18 @@ fun AppProfileScreen(
     }
 
     val colorScheme = MaterialTheme.colorScheme
-    val cardColor = if (CardConfig.isCustomBackgroundEnabled) {
+    val cardColor = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
         colorScheme.surfaceContainerLow
     } else {
         colorScheme.background
     }
-    val cardAlpha = CardConfig.cardAlpha
-
     Scaffold(
         topBar = {
             TopBar(
                 title = if (isSharedUid) "UID ${appInfo.uid}" else appInfo.label,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = cardColor.copy(alpha = cardAlpha),
-                    scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
+                    containerColor = cardColor,
+                    scrolledContainerColor = cardColor
                 ),
                 onBack = dropUnlessResumed { navigator.popBackStack() },
                 scrollBehavior = scrollBehavior
@@ -260,11 +269,15 @@ private fun AppProfileInner(
 
     MaterialTheme(
         colorScheme = MaterialTheme.colorScheme.copy(
-            surface = if (CardConfig.isCustomBackgroundEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh
+            surface = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
+                Color.Transparent
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
         )
     ) {
         Column(modifier = modifier) {
-            ElevatedCard(
+            ProfileSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -288,8 +301,8 @@ private fun AppProfileInner(
                             )
                         },
                         leadingContent = {
-                            Icon(
-                                imageVector = Icons.Filled.AccountCircle,
+                            YukiIcon(
+                                imageVector = Icons.Filled.Android,
                                 contentDescription = null,
                                 modifier = Modifier.size(48.dp),
                             )
@@ -317,7 +330,7 @@ private fun AppProfileInner(
                 }
             }
 
-            ElevatedCard(
+            ProfileSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -334,7 +347,7 @@ private fun AppProfileInner(
             }
 
             if (showDynamicManagerSwitch) {
-                ElevatedCard(
+                ProfileSurface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -372,7 +385,7 @@ private fun AppProfileInner(
                             mutableStateOf(initialMode)
                         }
 
-                        ElevatedCard(
+                        ProfileSurface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -399,7 +412,7 @@ private fun AppProfileInner(
                             enter = fadeIn() + expandVertically(),
                             exit = fadeOut() + shrinkVertically()
                         ) {
-                            ElevatedCard(
+                            ProfileSurface(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -439,7 +452,7 @@ private fun AppProfileInner(
                     } else {
                         val mode = if (profile.nonRootUseDefault) Mode.Default else Mode.Custom
 
-                        ElevatedCard(
+                        ProfileSurface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -457,7 +470,7 @@ private fun AppProfileInner(
                             enter = fadeIn() + expandVertically(),
                             exit = fadeOut() + shrinkVertically()
                         ) {
-                            ElevatedCard(
+                            ProfileSurface(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -490,33 +503,67 @@ private fun AppProfileInner(
 }
 
 @Composable
+private fun ProfileSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = MaterialTheme.shapes.medium,
+    colors: CardColors = CardDefaults.elevatedCardColors(),
+    elevation: CardElevation = CardDefaults.elevatedCardElevation(),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (isExpressiveUi) {
+        Column(
+            modifier = modifier
+                .clip(MaterialTheme.shapes.large)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
+                ),
+            content = content,
+        )
+    } else {
+        ElevatedCard(
+            modifier = modifier,
+            shape = shape,
+            colors = colors,
+            elevation = elevation,
+            content = content,
+        )
+    }
+}
+
+@Composable
 private fun SharedUidAppsCard(
     apps: List<SuperUserViewModel.AppInfo>,
     cardColors: CardColors,
 ) {
     val context = LocalContext.current
 
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.medium,
-        colors = cardColors,
-        elevation = getCardElevation(),
-    ) {
+    if (isExpressiveUi) {
         Text(
             text = stringResource(R.string.group_contains_apps, apps.size),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Normal,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(horizontal = 24.dp, vertical = 14.dp),
         )
         apps.forEachIndexed { index, app ->
-            if (index > 0) {
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-            }
             ListItem(
+                modifier = Modifier
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = ListItemDefaults.SegmentedGap / 2,
+                    )
+                    .clip(ListItemDefaults.segmentedShapes(index, apps.size).shape)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
+                    ),
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = {
                     Text(
                         text = app.label,
+                        fontWeight = FontWeight.Normal,
                         maxLines = 1,
                     )
                 },
@@ -538,6 +585,50 @@ private fun SharedUidAppsCard(
                 },
             )
         }
+    } else {
+        ElevatedCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = MaterialTheme.shapes.medium,
+            colors = cardColors,
+            elevation = getCardElevation(),
+        ) {
+            Text(
+                text = stringResource(R.string.group_contains_apps, apps.size),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            apps.forEachIndexed { index, app ->
+                if (index > 0) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                }
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = app.label,
+                            maxLines = 1,
+                        )
+                    },
+                    supportingContent = {
+                        Text(
+                            text = app.packageName,
+                            maxLines = 1,
+                        )
+                    },
+                    leadingContent = {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(app.packageInfo)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = app.label,
+                            modifier = Modifier.size(40.dp),
+                        )
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -556,35 +647,48 @@ private fun TopBar(
     colors: TopAppBarColors,
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
-    TopAppBar(
-        title = {
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-        },
-        colors = colors,
-        navigationIcon = {
-            IconButton(
-                onClick = onBack,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back)
-                )
-            }
-        },
-        windowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-        ),
-        scrollBehavior = scrollBehavior,
-        modifier = Modifier.shadow(
-            elevation = if ((scrollBehavior?.state?.overlappedFraction ?: 0f) > 0.01f)
-                4.dp else 0.dp,
+    val titleContent: @Composable () -> Unit = {
+        Text(
+            text = title,
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
         )
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.back)
+            )
+        }
+    }
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
     )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = titleContent,
+            colors = colors,
+            navigationIcon = navigationIcon,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = titleContent,
+            colors = colors,
+            navigationIcon = navigationIcon,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+            modifier = Modifier.shadow(
+                elevation = if ((scrollBehavior?.state?.overlappedFraction ?: 0f) > 0.01f) {
+                    4.dp
+                } else {
+                    0.dp
+                },
+            ),
+        )
+    }
 }
 
 @Composable
@@ -608,8 +712,8 @@ private fun ProfileBox(
                 )
             },
             leadingContent = {
-                Icon(
-                    imageVector = Icons.Filled.AccountCircle,
+                YukiIcon(
+                    imageVector = Icons.Filled.AdminPanelSettings,
                     contentDescription = null,
                 )
             },
@@ -761,7 +865,7 @@ private fun AppProfilePreview() {
                 uid = 10000,
                 uidApps = emptyList(),
                 appIcon = {
-                    Icon(
+                    YukiIcon(
                         imageVector = Icons.Filled.Android,
                         contentDescription = null,
                     )

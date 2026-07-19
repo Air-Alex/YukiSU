@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ramcosta.composedestinations.annotation.Destination
@@ -44,10 +45,13 @@ import kotlinx.coroutines.launch
 import ui.screen.moreSettings.component.ColorCircle
 import ui.screen.moreSettings.component.LanguageSelectionDialog
 import ui.screen.moreSettings.component.MoreSettingsDialogs
+import ui.screen.moreSettings.component.MoreSettingsItemPosition
 import ui.screen.moreSettings.component.SettingItem
 import ui.screen.moreSettings.component.SettingsCard
+import ui.screen.moreSettings.component.SettingsControlGroup
 import ui.screen.moreSettings.component.SettingsDivider
 import ui.screen.moreSettings.component.SwitchSettingItem
+import com.anatdx.yukisu.ui.component.YukiIcon
 import ui.screen.moreSettings.state.MoreSettingsState
 import kotlin.math.roundToInt
 
@@ -59,7 +63,12 @@ fun MoreSettingsScreen(
     navigator: DestinationsNavigator
 ) {
 
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackBarHost = remember { SnackbarHostState() }
@@ -110,26 +119,8 @@ fun MoreSettingsScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.more_settings),
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navigator.popBackStack() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = CardConfig.cardAlpha),
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = CardConfig.cardAlpha)
-                ),
-                windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+            MoreSettingsTopBar(
+                onBack = { navigator.popBackStack() },
                 scrollBehavior = scrollBehavior
             )
         },
@@ -170,6 +161,53 @@ fun MoreSettingsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MoreSettingsTopBar(
+    onBack: () -> Unit,
+    scrollBehavior: TopAppBarScrollBehavior
+) {
+    val title: @Composable () -> Unit = {
+        Text(
+            text = stringResource(R.string.more_settings),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null
+        )
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.back)
+            )
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior
+        )
+    }
+}
+
 @Composable
 private fun AppearanceSettings(
     state: MoreSettingsState,
@@ -181,6 +219,12 @@ private fun AppearanceSettings(
 
         LanguageSetting(state = state)
 
+        SettingItem(
+            icon = Icons.Default.AutoAwesome,
+            title = stringResource(R.string.ui_style),
+            subtitle = state.uiStyleOptions[state.uiStyleIndex],
+            onClick = { state.showUiStyleDialog = true }
+        )
 
         SettingItem(
             icon = Icons.Default.DarkMode,
@@ -238,6 +282,7 @@ private fun CustomizationSettings(
             title = stringResource(R.string.show_more_module_info),
             summary = stringResource(R.string.show_more_module_info_summary),
             checked = state.showMoreModuleInfo,
+            groupPosition = MoreSettingsItemPosition.First,
             onChange = handlers::handleShowMoreModuleInfoChange
         )
 
@@ -327,6 +372,7 @@ private fun HideOptionsSettings(
         title = stringResource(R.string.hide_tag_card),
         summary = stringResource(R.string.hide_tag_card_summary),
         checked = state.isHideTagRow,
+        groupPosition = MoreSettingsItemPosition.Last,
         onChange = handlers::handleHideTagRowChange
     )
 }
@@ -355,6 +401,7 @@ private fun AdvancedSettings(
                 stringResource(R.string.selinux_enabled) else
                 stringResource(R.string.selinux_disabled),
             checked = state.selinuxEnabled,
+            groupPosition = MoreSettingsItemPosition.First,
             onChange = handlers::handleSelinuxChange
         )
 
@@ -417,6 +464,11 @@ private fun AdvancedSettings(
             title = stringResource(R.string.enable_web_debugging),
             summary = stringResource(R.string.enable_web_debugging_summary),
             checked = state.enableWebDebugging,
+            groupPosition = if (state.enableWebDebugging && state.webuiEngine == "wx") {
+                MoreSettingsItemPosition.Middle
+            } else {
+                MoreSettingsItemPosition.Last
+            },
             onChange = handlers::handleWebDebuggingChange
         )
 
@@ -430,6 +482,7 @@ private fun AdvancedSettings(
                 title = stringResource(R.string.use_webuix_eruda),
                 summary = stringResource(R.string.use_webuix_eruda_summary),
                 checked = state.useWebUIXEruda,
+                groupPosition = MoreSettingsItemPosition.Last,
                 onChange = handlers::handleWebUIXErudaChange
             )
         }
@@ -508,7 +561,7 @@ private fun DpiSliderControls(
     state: MoreSettingsState,
     handlers: MoreSettingsHandlers
 ) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    SettingsControlGroup {
         val sliderValue by animateFloatAsState(
             targetValue = state.tempDpi.toFloat(),
             label = "DPI Slider Animation"
@@ -584,7 +637,7 @@ private fun DpiSliderControls(
                 .padding(top = 8.dp),
             enabled = state.tempDpi != state.currentDpi
         ) {
-            Icon(
+            YukiIcon(
                 Icons.Default.Check,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp)
@@ -602,11 +655,17 @@ private fun CustomBackgroundSettings(
     pickImageLauncher: ActivityResultLauncher<String>,
     coroutineScope: CoroutineScope
 ) {
+    val hasCustomBackground = ThemeConfig.customBackgroundUri != null
     SwitchSettingItem(
         icon = Icons.Filled.Wallpaper,
         title = stringResource(id = R.string.settings_custom_background),
         summary = stringResource(id = R.string.settings_custom_background_summary),
         checked = state.isCustomBackgroundEnabled,
+        groupPosition = if (hasCustomBackground) {
+            MoreSettingsItemPosition.Middle
+        } else {
+            MoreSettingsItemPosition.Last
+        },
         onChange = { isChecked ->
             if (isChecked) {
                 pickImageLauncher.launch("image/*")
@@ -617,7 +676,7 @@ private fun CustomBackgroundSettings(
     )
 
     AnimatedVisibility(
-        visible = ThemeConfig.customBackgroundUri != null,
+        visible = hasCustomBackground,
         enter = fadeIn() + slideInVertically(),
         exit = fadeOut() + slideOutVertically()
     ) {
@@ -635,7 +694,7 @@ private fun BackgroundAdjustmentControls(
     handlers: MoreSettingsHandlers,
     coroutineScope: CoroutineScope
 ) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    SettingsControlGroup(groupPosition = MoreSettingsItemPosition.Last) {
         AlphaSlider(state = state, handlers = handlers, coroutineScope = coroutineScope)
 
         DimSlider(state = state, handlers = handlers, coroutineScope = coroutineScope)
@@ -652,7 +711,7 @@ private fun AlphaSlider(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(bottom = 4.dp)
     ) {
-        Icon(
+        YukiIcon(
             Icons.Filled.Opacity,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
@@ -705,7 +764,7 @@ private fun DimSlider(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
     ) {
-        Icon(
+        YukiIcon(
             Icons.Filled.LightMode,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
@@ -771,6 +830,7 @@ private fun LanguageSetting(state: MoreSettingsState) {
         icon = Icons.Filled.Translate,
         title = language,
         subtitle = currentLanguageDisplay,
+        groupPosition = MoreSettingsItemPosition.First,
         onClick = { state.showLanguageDialog = true }
     )
 

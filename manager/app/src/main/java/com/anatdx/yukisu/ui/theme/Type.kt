@@ -106,3 +106,12 @@ val Typography = Typography(
         letterSpacing = 0.5.sp
     )
 )
+
+val ExpressiveTypography = Typography.copy(
+    displaySmall = Typography.displaySmall.copy(fontWeight = FontWeight.Bold),
+    headlineLarge = Typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold),
+    headlineMedium = Typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+    headlineSmall = Typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+    titleLarge = Typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+    titleMedium = Typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+)

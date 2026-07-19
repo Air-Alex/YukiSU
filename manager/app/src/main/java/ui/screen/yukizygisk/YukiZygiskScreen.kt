@@ -6,6 +6,7 @@
  */
 package ui.screen.yukizygisk
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -32,11 +34,11 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +63,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -73,18 +77,25 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
+import com.anatdx.yukisu.ui.theme.CardConfig
+import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getRootShell
 import com.anatdx.yukisu.ui.util.withNewRootShell
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.topjohnwu.superuser.ShellUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import ui.screen.moreSettings.component.MoreSettingsItemPosition
 import ui.screen.moreSettings.component.SettingsCard
+import ui.screen.moreSettings.component.SettingsControlGroup
 import ui.screen.moreSettings.component.SwitchSettingItem
 
 private const val YZCONFIG_DIR = "/data/adb/ksu/yukizygisk"
@@ -314,8 +325,12 @@ private const val YZ_POLL_INTERVAL_MS = 2000L
 @Destination<RootGraph>
 @Composable
 fun YukiZygiskScreen(navigator: DestinationsNavigator) {
-    val scrollBehavior =
-        TopAppBarDefaults.pinnedScrollBehavior(androidx.compose.material3.rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     val scope = rememberCoroutineScope()
     val snackBarHost = remember { SnackbarHostState() }
 
@@ -374,7 +389,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     }
 
     monitorDialog?.let { dialog ->
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = { monitorDialog = null },
             title = { Text(dialog.title) },
             text = { Text(dialog.message) },
@@ -389,24 +404,8 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(R.string.settings_yukizygisk),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navigator.popBackStack() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                        )
-                    }
-                },
-                windowInsets = WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                ),
+            YukiZygiskTopBar(
+                onBack = { navigator.popBackStack() },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -423,48 +422,56 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 .padding(horizontal = 16.dp)
                 .padding(top = 8.dp),
         ) {
-            SettingsCard(title = stringResource(R.string.yukizygisk_injection_status)) {
-                StatusRow(
-                    stringResource(R.string.yukizygisk_kernel_injection),
-                    when {
+            val injectionStatusRows = mutableListOf<Pair<String, String>>().apply {
+                add(
+                    stringResource(R.string.yukizygisk_kernel_injection) to when {
                         safeMode -> stringResource(R.string.yukizygisk_status_safe_mode)
                         injectionActive -> stringResource(R.string.yukizygisk_status_active)
                         else -> stringResource(R.string.yukizygisk_status_off)
-                    },
+                    }
                 )
                 if (safeMode) {
-                    StatusRow(
-                        stringResource(R.string.yukizygisk_zygote_crashes),
-                        zygoteCrashes.toString(),
+                    add(
+                        stringResource(R.string.yukizygisk_zygote_crashes) to
+                            zygoteCrashes.toString()
                     )
                 }
-                StatusRow(
-                    stringResource(R.string.yukizygisk_module_loader),
-                    if (config.yukilinker) stringResource(R.string.yukizygisk_loader_anon)
-                    else stringResource(R.string.yukizygisk_loader_system),
+                add(
+                    stringResource(R.string.yukizygisk_module_loader) to
+                        if (config.yukilinker) {
+                            stringResource(R.string.yukizygisk_loader_anon)
+                        } else {
+                            stringResource(R.string.yukizygisk_loader_system)
+                        }
                 )
-                StatusRow(
-                    stringResource(R.string.yukizygisk_denylist_behaviour),
-                    when (config.denylistMode) {
-                        1 -> stringResource(R.string.yukizygisk_denylist_force_long)
-                        2 -> stringResource(R.string.yukizygisk_denylist_restore_long)
-                        else -> stringResource(R.string.yukizygisk_status_off)
-                    },
+                add(
+                    stringResource(R.string.yukizygisk_denylist_behaviour) to
+                        when (config.denylistMode) {
+                            1 -> stringResource(R.string.yukizygisk_denylist_force_long)
+                            2 -> stringResource(R.string.yukizygisk_denylist_restore_long)
+                            else -> stringResource(R.string.yukizygisk_status_off)
+                        }
                 )
-                StatusRow(
-                    stringResource(R.string.yukizygisk_injections_session),
-                    injectionCount.toString(),
+                add(
+                    stringResource(R.string.yukizygisk_injections_session) to
+                        injectionCount.toString()
                 )
+            }
+
+            SettingsCard(title = stringResource(R.string.yukizygisk_injection_status)) {
+                injectionStatusRows.forEachIndexed { index, (label, value) ->
+                    StatusRow(
+                        label = label,
+                        value = value,
+                        index = index,
+                        count = injectionStatusRows.size,
+                    )
+                }
             }
 
             SettingsCard(title = stringResource(R.string.yukizygisk_injected_zygotes)) {
                 if (monitoredZygotes.isEmpty()) {
-                    Text(
-                        stringResource(R.string.yukizygisk_no_zygotes),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
+                    EmptyMonitorGroup(stringResource(R.string.yukizygisk_no_zygotes))
                 } else {
                     monitoredZygotes.forEach { zygote ->
                         val dialog = zygoteDialog(zygote)
@@ -561,19 +568,9 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 }
 
                 if (nativeMonitorMode == NativeMonitorMode.Module && moduleRows.isEmpty()) {
-                    Text(
-                        stringResource(R.string.yukizygisk_no_native_modules),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
+                    EmptyMonitorGroup(stringResource(R.string.yukizygisk_no_native_modules))
                 } else if (nativeMonitorMode == NativeMonitorMode.Process && processRows.isEmpty()) {
-                    Text(
-                        stringResource(R.string.yukizygisk_no_native_injections),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
+                    EmptyMonitorGroup(stringResource(R.string.yukizygisk_no_native_injections))
                 } else if (nativeMonitorMode == NativeMonitorMode.Module) {
                     moduleRows.forEach { module ->
                         val dialog = nativeModuleDialog(module)
@@ -597,34 +594,35 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                     title = stringResource(R.string.yukizygisk_anon_loading_title),
                     summary = stringResource(R.string.yukizygisk_anon_loading_summary),
                     checked = config.yukilinker,
+                    groupPosition = MoreSettingsItemPosition.First,
                     onChange = { save(config.copy(yukilinker = it)) },
                 )
-                Text(
-                    stringResource(R.string.yukizygisk_loaded_modules_count, modulesLoadedCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 4.dp, bottom = 4.dp),
-                )
+                SettingsControlGroup(groupPosition = MoreSettingsItemPosition.Last) {
+                    Text(
+                        stringResource(
+                            R.string.yukizygisk_loaded_modules_count,
+                            modulesLoadedCount,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             SettingsCard(title = stringResource(R.string.yukizygisk_denylist_behaviour)) {
-                Text(
-                    stringResource(R.string.yukizygisk_denylist_desc),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp),
-                )
-                DenylistModeSelector(
-                    mode = config.denylistMode,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                ) { save(config.copy(denylistMode = it)) }
+                SettingsControlGroup(groupPosition = MoreSettingsItemPosition.Only) {
+                    Text(
+                        stringResource(R.string.yukizygisk_denylist_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    DenylistModeSelector(
+                        mode = config.denylistMode,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { save(config.copy(denylistMode = it)) }
+                }
             }
 
             SettingsCard(title = stringResource(R.string.yukizygisk_log_dmesg_title)) {
@@ -633,6 +631,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                     title = stringResource(R.string.yukizygisk_log_dmesg_title),
                     summary = stringResource(R.string.yukizygisk_log_dmesg_summary),
                     checked = config.dmesgLog,
+                    groupPosition = MoreSettingsItemPosition.Only,
                     onChange = { save(config.copy(dmesgLog = it)) },
                 )
             }
@@ -640,16 +639,70 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun YukiZygiskTopBar(
+    onBack: () -> Unit,
+    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
+) {
+    val title: @Composable () -> Unit = {
+        Text(
+            text = stringResource(R.string.settings_yukizygisk),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+        )
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.back),
+            )
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    }
+}
+
 @Composable
 private fun ZygoteMonitorRow(zygote: ZygoteMonitorEntry, onStatusClick: () -> Unit) {
     ListItem(
+        modifier = monitorGroupModifier(),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
-            Icon(
+            YukiIcon(
                 imageVector = Icons.Filled.Adb,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp),
+                tint = if (isExpressiveUi) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier
+                    .padding(4.dp)
+                    .size(28.dp),
             )
         },
         headlineContent = {
@@ -681,13 +734,20 @@ private fun ZygoteMonitorRow(zygote: ZygoteMonitorEntry, onStatusClick: () -> Un
 @Composable
 private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusClick: () -> Unit) {
     ListItem(
+        modifier = monitorGroupModifier(),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
-            Icon(
+            YukiIcon(
                 imageVector = Icons.Filled.Extension,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp),
+                tint = if (isExpressiveUi) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier
+                    .padding(4.dp)
+                    .size(28.dp),
             )
         },
         headlineContent = {
@@ -721,13 +781,20 @@ private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusCli
 @Composable
 private fun NativeProcessMonitorRow(process: NativeProcessEntry, onStatusClick: () -> Unit) {
     ListItem(
+        modifier = monitorGroupModifier(),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
-            Icon(
+            YukiIcon(
                 imageVector = Icons.Filled.Terminal,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp),
+                tint = if (isExpressiveUi) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier
+                    .padding(4.dp)
+                    .size(28.dp),
             )
         },
         headlineContent = {
@@ -784,7 +851,7 @@ private fun MonitorStateButton(state: MonitorState, onClick: () -> Unit) {
             .padding(start = 8.dp)
             .size(40.dp),
     ) {
-        Icon(
+        YukiIcon(
             imageVector = icon,
             contentDescription = null,
             tint = tint,
@@ -799,30 +866,56 @@ private fun MonitorCard(
     trailing: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp),
-        colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHigh),
-        elevation = getCardElevation(),
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+    if (isExpressiveUi) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 20.dp),
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .padding(start = 16.dp, end = 8.dp),
+                    .padding(horizontal = 8.dp),
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
                 trailing?.invoke()
             }
             content()
+        }
+    } else {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHigh),
+            elevation = getCardElevation(),
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(start = 16.dp, end = 8.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    trailing?.invoke()
+                }
+                content()
+            }
         }
     }
 }
@@ -879,12 +972,36 @@ private fun appendDetail(base: String, detail: String): String =
     if (detail.isBlank()) base else "$base\n$detail"
 
 @Composable
-private fun StatusRow(label: String, value: String) {
+private fun StatusRow(label: String, value: String, index: Int, count: Int) {
+    val expressiveShape = if (count == 1) {
+        MaterialTheme.shapes.large
+    } else {
+        ListItemDefaults.segmentedShapes(index, count).shape
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .then(
+                if (isExpressiveUi) {
+                    Modifier
+                        .padding(
+                            horizontal = 6.dp,
+                            vertical = ListItemDefaults.SegmentedGap / 2,
+                        )
+                        .defaultMinSize(minHeight = 56.dp)
+                        .clip(expressiveShape)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainer.copy(
+                                alpha = CardConfig.cardAlpha,
+                            )
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                } else {
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                }
+            ),
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             label,
@@ -900,6 +1017,48 @@ private fun StatusRow(label: String, value: String) {
             modifier = Modifier.padding(start = 12.dp),
         )
     }
+}
+
+@Composable
+private fun monitorGroupModifier(): Modifier = if (isExpressiveUi) {
+    Modifier
+        .fillMaxWidth()
+        .padding(
+            horizontal = 6.dp,
+            vertical = ListItemDefaults.SegmentedGap / 2,
+        )
+        .defaultMinSize(minHeight = ExpressiveListGroupMinHeight)
+        .clip(ListItemDefaults.shapes().shape)
+        .background(
+            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = CardConfig.cardAlpha)
+        )
+} else {
+    Modifier.fillMaxWidth()
+}
+
+@Composable
+private fun EmptyMonitorGroup(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = if (isExpressiveUi) {
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 6.dp,
+                    vertical = ListItemDefaults.SegmentedGap / 2,
+                )
+                .defaultMinSize(minHeight = 56.dp)
+                .clip(MaterialTheme.shapes.large)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = CardConfig.cardAlpha)
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        } else {
+            Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -5,6 +5,7 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,16 +16,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.KeyEventBlocker
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
 import com.anatdx.yukisu.ui.util.runModuleAction
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +42,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @SuppressLint("LocalContextGetResourceValueCall")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 @Destination<RootGraph>
 fun ExecuteModuleActionScreen(navigator: DestinationsNavigator, moduleId: String) {
@@ -45,6 +53,12 @@ fun ExecuteModuleActionScreen(navigator: DestinationsNavigator, moduleId: String
     val activity = LocalActivity.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     var isActionRunning by rememberSaveable { mutableStateOf(true) }
 
     val fromShortcut = remember(activity) {
@@ -94,6 +108,7 @@ fun ExecuteModuleActionScreen(navigator: DestinationsNavigator, moduleId: String
         topBar = {
             TopBar(
                 isActionRunning = isActionRunning,
+                scrollBehavior = scrollBehavior,
                 onSave = {
                     if (!isActionRunning) {
                         scope.launch {
@@ -114,7 +129,9 @@ fun ExecuteModuleActionScreen(navigator: DestinationsNavigator, moduleId: String
             if (!isActionRunning) {
                 ExtendedFloatingActionButton(
                     text = { Text(text = stringResource(R.string.close)) },
-                    icon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                    icon = {
+                        YukiIcon(Icons.Filled.Close, contentDescription = null)
+                    },
                     onClick = {
                         if (fromShortcut && activity != null) {
                             activity.finish()
@@ -134,13 +151,26 @@ fun ExecuteModuleActionScreen(navigator: DestinationsNavigator, moduleId: String
             modifier = Modifier
                 .fillMaxSize(1f)
                 .padding(innerPadding)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .then(
+                    if (isExpressiveUi) {
+                        Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .clip(MaterialTheme.shapes.large)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
+                            )
+                    } else {
+                        Modifier
+                    }
+                )
                 .verticalScroll(scrollState),
         ) {
             LaunchedEffect(text) {
                 scrollState.animateScrollTo(scrollState.maxValue)
             }
             Text(
-                modifier = Modifier.padding(8.dp),
+                modifier = Modifier.padding(if (isExpressiveUi) 16.dp else 8.dp),
                 text = text,
                 fontSize = MaterialTheme.typography.bodySmall.fontSize,
                 fontFamily = FontFamily.Monospace,
@@ -152,19 +182,54 @@ fun ExecuteModuleActionScreen(navigator: DestinationsNavigator, moduleId: String
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TopBar(isActionRunning: Boolean, onSave: () -> Unit = {}) {
-    TopAppBar(
-        title = { Text(stringResource(R.string.action)) },
-        actions = {
-            IconButton(
-                onClick = onSave,
-                enabled = !isActionRunning
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Save,
-                    contentDescription = stringResource(id = R.string.save_log),
-                )
-            }
+private fun TopBar(
+    isActionRunning: Boolean,
+    onSave: () -> Unit = {},
+    scrollBehavior: TopAppBarScrollBehavior? = null,
+) {
+    val title: @Composable () -> Unit = {
+        Text(
+            text = stringResource(R.string.action),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+        )
+    }
+    val actions: @Composable RowScope.() -> Unit = {
+        IconButton(
+            onClick = onSave,
+            enabled = !isActionRunning
+        ) {
+            YukiIcon(
+                imageVector = Icons.Filled.Save,
+                contentDescription = stringResource(id = R.string.save_log),
+            )
         }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = if (isExpressiveUi) {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        scrolledContainerColor = if (isExpressiveUi) {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        } else {
+            MaterialTheme.colorScheme.background
+        },
     )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            actions = actions,
+            colors = colors,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            actions = actions,
+            colors = colors,
+            scrollBehavior = scrollBehavior,
+        )
+    }
 }

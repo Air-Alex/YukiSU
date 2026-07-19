@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ramcosta.composedestinations.annotation.Destination
@@ -24,9 +25,11 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.component.ConfirmResult
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,7 +48,12 @@ data class UmountPathEntry(
 @Destination<RootGraph>
 @Composable
 fun UmountManagerScreen(navigator: DestinationsNavigator) {
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     val snackBarHost = LocalSnackbarHost.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -73,24 +81,10 @@ fun UmountManagerScreen(navigator: DestinationsNavigator) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.umount_path_manager)) },
-                navigationIcon = {
-                    IconButton(onClick = { navigator.navigateUp() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { loadPaths() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null)
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(
-                        alpha = CardConfig.cardAlpha
-                    )
-                )
+            UmountManagerTopBar(
+                onBack = { navigator.navigateUp() },
+                onRefresh = { loadPaths() },
+                scrollBehavior = scrollBehavior
             )
         },
         floatingActionButton = {
@@ -266,6 +260,58 @@ fun UmountManagerScreen(navigator: DestinationsNavigator) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UmountManagerTopBar(
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    scrollBehavior: TopAppBarScrollBehavior
+) {
+    val title: @Composable () -> Unit = {
+        Text(
+            text = stringResource(R.string.umount_path_manager),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null
+        )
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+        }
+    }
+    val actions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = onRefresh) {
+            Icon(Icons.Filled.Refresh, contentDescription = null)
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior
+        )
+    }
+}
+
 @Composable
 fun UmountPathCard(
     entry: UmountPathEntry,
@@ -341,7 +387,7 @@ fun AddUmountPathDialog(
     var path by rememberSaveable { mutableStateOf("") }
     var flags by rememberSaveable { mutableStateOf("0") }
 
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.add_umount_path)) },
         text = {

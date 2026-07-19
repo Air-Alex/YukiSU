@@ -2,10 +2,10 @@ package com.anatdx.yukisu.ui.component.profile
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReadMore
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowDropUp
-import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.util.listAppProfileTemplates
 import com.anatdx.yukisu.ui.util.setSepolicy
 import com.anatdx.yukisu.ui.viewmodel.getTemplateInfoById
@@ -54,10 +55,10 @@ fun TemplateConfig(
                         IconButton(
                             onClick = onManageTemplate
                         ) {
-                            Icon(Icons.Filled.Create, null)
+                            YukiIcon(Icons.Filled.Add, null)
                         }
-                    } else if (expanded) Icon(Icons.Filled.ArrowDropUp, null)
-                    else Icon(Icons.Filled.ArrowDropDown, null)
+                    } else if (expanded) YukiIcon(Icons.Filled.KeyboardArrowUp, null)
+                    else YukiIcon(Icons.Filled.KeyboardArrowDown, null)
                 },
             )
             if (profileTemplates.isEmpty()) {
@@ -94,7 +95,7 @@ fun TemplateConfig(
                             IconButton(onClick = {
                                 onViewTemplate(tid)
                             }) {
-                                Icon(Icons.AutoMirrored.Filled.ReadMore, null)
+                                YukiIcon(Icons.AutoMirrored.Filled.NavigateNext, null)
                             }
                         }
                     )

@@ -56,6 +56,7 @@ import com.anatdx.yukisu.ui.component.InstallConfirmationDialog
 import com.anatdx.yukisu.ui.component.ZipFileInfo
 import com.anatdx.yukisu.ui.screen.BottomBarDestination
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
+import com.anatdx.yukisu.ui.theme.ThemeManager
 import com.anatdx.yukisu.ui.util.KsuCli
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
 import com.anatdx.yukisu.ui.util.install
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
 
             super.onCreate(savedInstanceState)
             resetTaskDescriptionToAppName()
+            ThemeManager.loadUiStyle(this)
 
             // Note: ksud installation moved to KsuCli.refreshShells()
             // which is called after SuperKey authentication succeeds.

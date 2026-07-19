@@ -31,7 +31,6 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.*
 import com.anatdx.yukisu.ui.theme.CardConfig
-import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.util.*
@@ -998,8 +997,8 @@ private fun LogViewerTopBar(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = cardColor.copy(alpha = cardAlpha),
-                scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
+                containerColor = cardColor,
+                scrolledContainerColor = cardColor
             ),
             windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
             scrollBehavior = scrollBehavior

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import io.noties.markwon.Markwon
 import io.noties.markwon.utils.NoCopySpannableFactory
 import kotlinx.coroutines.*
@@ -390,7 +391,8 @@ private fun LoadingDialog() {
         properties = DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false)
     ) {
         Surface(
-            modifier = Modifier.size(100.dp), shape = RoundedCornerShape(8.dp)
+            modifier = Modifier.size(100.dp),
+            shape = if (isExpressiveUi) MaterialTheme.shapes.extraLarge else RoundedCornerShape(8.dp)
         ) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -403,7 +405,7 @@ private fun LoadingDialog() {
 
 @Composable
 private fun ConfirmDialog(visuals: ConfirmDialogVisuals, confirm: () -> Unit, dismiss: () -> Unit) {
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = {
             dismiss()
         },

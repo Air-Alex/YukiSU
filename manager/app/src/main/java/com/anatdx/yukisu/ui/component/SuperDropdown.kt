@@ -96,12 +96,11 @@ fun SuperDropdown(
     }
 
     if (showDialog && itemsNotEmpty) {
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = { showDialog = false },
             title = { 
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall
+                    text = title
                 ) 
             },
             text = {

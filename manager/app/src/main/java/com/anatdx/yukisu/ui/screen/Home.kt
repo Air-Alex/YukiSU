@@ -8,11 +8,16 @@ import android.system.Os
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,15 +27,19 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
@@ -47,11 +56,14 @@ import com.anatdx.yukisu.magica.MagicaHelper
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.component.rememberLoadingDialog
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiPullToRefreshBox
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
-import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
 import com.anatdx.yukisu.ui.theme.CardConfig.cardElevation
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.checkNewVersion
 import com.anatdx.yukisu.ui.util.module.LatestVersionInfo
 import com.anatdx.yukisu.ui.util.reboot
@@ -118,7 +130,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         )
     ) { innerPadding ->
-        PullToRefreshBox(
+        YukiPullToRefreshBox(
             isRefreshing = viewModel.isRefreshing,
             onRefresh = { viewModel.onPullRefresh(context) },
             modifier = Modifier
@@ -398,11 +410,53 @@ fun UpdateCard() {
     }
 }
 
+private data class RebootMenuOption(
+    @param:StringRes val label: Int,
+    val reason: String = "",
+)
+
 @Composable
-fun RebootDropdownItem(@StringRes id: Int, reason: String = "") {
-    DropdownMenuItem(
-        text = { Text(stringResource(id)) },
-        onClick = { reboot(reason) })
+private fun RebootDropdownItem(
+    option: RebootMenuOption,
+    index: Int,
+    count: Int,
+    onSelected: () -> Unit,
+) {
+    if (isExpressiveUi) {
+        val shape = MenuDefaults.itemShape(index, count).shape
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = ListItemDefaults.SegmentedGap / 2)
+                .defaultMinSize(minHeight = 48.dp)
+                .clip(shape)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(
+                        alpha = CardConfig.cardAlpha
+                    )
+                )
+                .clickable {
+                    onSelected()
+                    reboot(option.reason)
+                }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(option.label),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Normal,
+            )
+        }
+    } else {
+        DropdownMenuItem(
+            text = { Text(stringResource(option.label)) },
+            onClick = {
+                onSelected()
+                reboot(option.reason)
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -414,22 +468,37 @@ private fun TopBar(
 ) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
+    val snowflakeRotation = remember { Animatable(0f) }
     val cardColor = if (CardConfig.isCustomBackgroundEnabled) {
         colorScheme.surfaceContainerLow
     } else {
         colorScheme.background
     }
 
+    LaunchedEffect(Unit) {
+        snowflakeRotation.animateTo(
+            targetValue = 360f,
+            animationSpec = tween(
+                durationMillis = 1200,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+
     TopAppBar(
         title = {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge
+            Icon(
+                painter = painterResource(R.drawable.ic_launcher_monochrome),
+                contentDescription = stringResource(R.string.app_name),
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .size(52.dp)
+                    .graphicsLayer { rotationZ = snowflakeRotation.value },
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = cardColor.copy(alpha = cardAlpha),
-            scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
+            containerColor = cardColor,
+            scrolledContainerColor = cardColor
         ),
         actions = {
             if (isDataLoaded) {
@@ -439,27 +508,51 @@ private fun TopBar(
                     IconButton(onClick = {
                         showDropdown = true
                     }) {
-                        Icon(
+                        YukiIcon(
                             imageVector = Icons.Filled.PowerSettingsNew,
                             contentDescription = stringResource(id = R.string.reboot)
                         )
 
-                        DropdownMenu(expanded = showDropdown, onDismissRequest = {
-                            showDropdown = false
-                        }) {
-                            RebootDropdownItem(id = R.string.reboot)
-                            RebootDropdownItem(id = R.string.reboot_soft, reason = "soft_reboot")
-
-                            val pm =
-                                LocalContext.current.getSystemService(Context.POWER_SERVICE) as PowerManager?
+                        val pm = LocalContext.current.getSystemService(
+                            Context.POWER_SERVICE
+                        ) as PowerManager?
+                        val rebootOptions = buildList {
+                            add(RebootMenuOption(R.string.reboot))
+                            add(RebootMenuOption(R.string.reboot_soft, "soft_reboot"))
                             @Suppress("DEPRECATION")
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && pm?.isRebootingUserspaceSupported == true) {
-                                RebootDropdownItem(id = R.string.reboot_userspace, reason = "userspace")
+                            if (
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                pm?.isRebootingUserspaceSupported == true
+                            ) {
+                                add(RebootMenuOption(R.string.reboot_userspace, "userspace"))
                             }
-                            RebootDropdownItem(id = R.string.reboot_recovery, reason = "recovery")
-                            RebootDropdownItem(id = R.string.reboot_bootloader, reason = "bootloader")
-                            RebootDropdownItem(id = R.string.reboot_download, reason = "download")
-                            RebootDropdownItem(id = R.string.reboot_edl, reason = "edl")
+                            add(RebootMenuOption(R.string.reboot_recovery, "recovery"))
+                            add(RebootMenuOption(R.string.reboot_bootloader, "bootloader"))
+                            add(RebootMenuOption(R.string.reboot_download, "download"))
+                            add(RebootMenuOption(R.string.reboot_edl, "edl"))
+                        }
+
+                        DropdownMenu(
+                            expanded = showDropdown,
+                            onDismissRequest = { showDropdown = false },
+                            modifier = Modifier,
+                            shape = if (isExpressiveUi) RectangleShape else MenuDefaults.shape,
+                            containerColor = if (isExpressiveUi) {
+                                Color.Transparent
+                            } else {
+                                MenuDefaults.containerColor
+                            },
+                            tonalElevation = if (isExpressiveUi) 0.dp else MenuDefaults.TonalElevation,
+                            shadowElevation = if (isExpressiveUi) 0.dp else MenuDefaults.ShadowElevation,
+                        ) {
+                            rebootOptions.forEachIndexed { index, option ->
+                                RebootDropdownItem(
+                                    option = option,
+                                    index = index,
+                                    count = rebootOptions.size,
+                                    onSelected = { showDropdown = false },
+                                )
+                            }
                         }
                     }
                 }
@@ -507,7 +600,7 @@ private fun StatusCard(
                         else -> stringResource(id = R.string.home_working)
                     }
 
-                    Icon(
+                    YukiIcon(
                         Icons.Outlined.TaskAlt,
                         contentDescription = stringResource(R.string.home_working),
                         tint = MaterialTheme.colorScheme.primary,
@@ -666,7 +759,7 @@ private fun StatusCard(
 
                 // 需要 SuperKey 认证（未安装或未认证）
                 needsSuperKeyAuth -> {
-                    Icon(
+                    YukiIcon(
                         Icons.Outlined.Warning,
                         contentDescription = stringResource(R.string.home_not_installed),
                         tint = MaterialTheme.colorScheme.error,
@@ -695,7 +788,7 @@ private fun StatusCard(
                         onClick = onSuperKeyAuth,
                         modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(
+                        YukiIcon(
                             imageVector = Icons.Default.Key,
                             contentDescription = stringResource(R.string.superkey_auth_title),
                             tint = MaterialTheme.colorScheme.tertiary
@@ -704,7 +797,7 @@ private fun StatusCard(
                 }
 
                 else -> {
-                    Icon(
+                    YukiIcon(
                         Icons.Outlined.Warning,
                         contentDescription = stringResource(R.string.home_not_installed),
                         tint = MaterialTheme.colorScheme.error,
@@ -778,35 +871,82 @@ fun WarningCard(
 }
 
 @Composable
-fun ContributionCard() {
-    val uriHandler = LocalUriHandler.current
-    val links = listOf("https://github.com/ShirkNeko", "https://github.com/udochina")
-
-    ElevatedCard(
-        colors = getCardColors(MaterialTheme.colorScheme.surfaceContainer),
-        elevation = getCardElevation(),
-    ) {
+private fun ExpressiveHomeTextGroup(
+    title: String,
+    content: String,
+    onClick: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Normal,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    val randomIndex = Random.nextInt(links.size)
-                    uriHandler.openUri(links[randomIndex])
-                }
-                .padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .defaultMinSize(minHeight = 56.dp)
+                .clip(CardDefaults.elevatedShape)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(
+                        alpha = CardConfig.cardAlpha
+                    )
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                Text(
-                    text = stringResource(R.string.home_ContributionCard_kernelsu),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
 
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.home_click_to_ContributionCard_kernelsu),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+@Composable
+fun ContributionCard() {
+    val uriHandler = LocalUriHandler.current
+    val links = listOf("https://github.com/ShirkNeko", "https://github.com/udochina")
+    val title = stringResource(R.string.home_ContributionCard_kernelsu)
+    val content = stringResource(R.string.home_click_to_ContributionCard_kernelsu)
+    val onClick = {
+        val randomIndex = Random.nextInt(links.size)
+        uriHandler.openUri(links[randomIndex])
+    }
+
+    if (isExpressiveUi) {
+        ExpressiveHomeTextGroup(
+            title = title,
+            content = content,
+            onClick = onClick,
+        )
+    } else {
+        ElevatedCard(
+            colors = getCardColors(MaterialTheme.colorScheme.surfaceContainer),
+            elevation = getCardElevation(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick)
+                    .padding(24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = content,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }
@@ -815,35 +955,157 @@ fun ContributionCard() {
 @Composable
 fun DonateCard() {
     val uriHandler = LocalUriHandler.current
+    val title = stringResource(R.string.home_support_title)
+    val content = stringResource(R.string.home_support_content)
+    val onClick = { uriHandler.openUri("https://patreon.com/weishu") }
 
-    ElevatedCard(
-        colors = getCardColors(MaterialTheme.colorScheme.surfaceContainer),
-        elevation = getCardElevation(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    uriHandler.openUri("https://patreon.com/weishu")
-                }
-                .padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically
+    if (isExpressiveUi) {
+        ExpressiveHomeTextGroup(
+            title = title,
+            content = content,
+            onClick = onClick,
+        )
+    } else {
+        ElevatedCard(
+            colors = getCardColors(MaterialTheme.colorScheme.surfaceContainer),
+            elevation = getCardElevation(),
         ) {
-            Column {
-                Text(
-                    text = stringResource(R.string.home_support_title),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick)
+                    .padding(24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
 
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.home_support_content),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = content,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }
 }
+
+@Composable
+private fun HomeInfoItem(
+    label: String,
+    content: String,
+    icon: ImageVector? = null,
+    contentColor: Color = Color.Unspecified,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+    index: Int = 0,
+    count: Int = 1,
+) {
+    val expressive = isExpressiveUi
+    val cardShape = CardDefaults.elevatedShape
+    val compactShape = ListItemDefaults.shapes().shape
+    val cardCorners = cardShape as? CornerBasedShape
+    val compactCorners = compactShape as? CornerBasedShape
+    val expressiveShape = when {
+        count == 1 -> cardShape
+        cardCorners == null || compactCorners == null -> compactShape
+        index == 0 -> RoundedCornerShape(
+            topStart = cardCorners.topStart,
+            topEnd = cardCorners.topEnd,
+            bottomEnd = compactCorners.bottomEnd,
+            bottomStart = compactCorners.bottomStart,
+        )
+        index == count - 1 -> RoundedCornerShape(
+            topStart = compactCorners.topStart,
+            topEnd = compactCorners.topEnd,
+            bottomEnd = cardCorners.bottomEnd,
+            bottomStart = cardCorners.bottomStart,
+        )
+        else -> compactShape
+    }
+    Row(
+        verticalAlignment = if (expressive) Alignment.CenterVertically else Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (expressive) {
+                    Modifier
+                        .padding(vertical = ListItemDefaults.SegmentedGap / 2)
+                        .defaultMinSize(minHeight = 56.dp)
+                        .clip(expressiveShape)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainer.copy(
+                                alpha = CardConfig.cardAlpha
+                            )
+                        )
+                } else {
+                    Modifier.padding(vertical = 8.dp)
+                }
+            )
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (expressive) {
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        if (icon != null) {
+            YukiIcon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = if (expressive) {
+                    Modifier
+                        .size(32.dp)
+                        .padding(4.dp)
+                } else {
+                    Modifier
+                        .size(28.dp)
+                        .padding(vertical = 4.dp)
+                },
+            )
+        }
+        Spacer(modifier = Modifier.width(if (expressive) 12.dp else 16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (expressive) FontWeight.Normal else null,
+            )
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (contentColor == Color.Unspecified) {
+                    LocalContentColor.current
+                } else {
+                    contentColor
+                },
+                softWrap = true,
+            )
+        }
+        trailing?.invoke()
+    }
+}
+
+private data class HomeInfoEntry(
+    val label: String,
+    val content: String,
+    val icon: ImageVector? = null,
+    val contentColor: Color = Color.Unspecified,
+    val onClick: (() -> Unit)? = null,
+    val trailing: (@Composable () -> Unit)? = null,
+)
 
 @Composable
 private fun InfoCard(
@@ -866,187 +1128,156 @@ private fun InfoCard(
         ksudInstalledVersion = installed
     }
 
-    ElevatedCard(
-        colors = getCardColors(MaterialTheme.colorScheme.surfaceContainer),
-        elevation = getCardElevation(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 16.dp),
-        ) {
-            @Composable
-            fun InfoCardItem(
-                label: String,
-                content: String,
-                icon: ImageVector? = null,
-                contentColor: Color = Color.Unspecified,
-                onClick: (() -> Unit)? = null,
-                trailing: @Composable (() -> Unit)? = null,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .let { base ->
-                            if (onClick != null) {
-                                base.clickable { onClick() }
+    val ksudUnknown = stringResource(id = R.string.home_ksud_daemon_unknown)
+    val apkVer = ksudApkVersion
+    val installedVer = ksudInstalledVersion
+    val hasMismatch = apkVer != null && installedVer != null && apkVer != installedVer
+    val ksudContent = when {
+        apkVer == null && installedVer == null -> ksudUnknown
+        installedVer == null -> apkVer ?: ksudUnknown
+        apkVer == null -> installedVer
+        apkVer == installedVer -> apkVer
+        else -> "$installedVer / APK: $apkVer"
+    }
+    val seccompText = when (systemInfo.seccompStatus) {
+        -1 -> stringResource(R.string.seccomp_status_not_supported)
+        0 -> stringResource(R.string.seccomp_status_disabled)
+        1 -> stringResource(R.string.seccomp_status_strict)
+        2 -> stringResource(R.string.seccomp_status_filter)
+        else -> stringResource(R.string.seccomp_status_unknown)
+    }
+    val entries = buildList {
+        add(HomeInfoEntry(
+            label = stringResource(R.string.home_kernel),
+            content = systemInfo.kernelRelease,
+            icon = Icons.Default.Memory,
+        ))
+        if (!isSimpleMode) {
+            add(HomeInfoEntry(
+                label = stringResource(R.string.home_android_version),
+                content = systemInfo.androidVersion,
+                icon = Icons.Default.Android,
+            ))
+        }
+        add(HomeInfoEntry(
+            label = stringResource(R.string.home_device_model),
+            content = systemInfo.deviceModel,
+            icon = Icons.Default.PhoneAndroid,
+        ))
+        add(HomeInfoEntry(
+            label = stringResource(R.string.home_manager_version),
+            content = "${systemInfo.managerVersion.first} (${systemInfo.managerVersion.second.toInt()}/${Natives.getManagerUapiVersion()})",
+            icon = Icons.Default.SettingsSuggest,
+        ))
+        add(HomeInfoEntry(
+            label = stringResource(id = R.string.home_ksud_daemon_title),
+            content = ksudContent,
+            icon = Icons.Filled.Engineering,
+            contentColor = if (hasMismatch) MaterialTheme.colorScheme.error else Color.Unspecified,
+            onClick = { showKsudDialog = true },
+        ))
+        if (!isSimpleMode) {
+            add(HomeInfoEntry(
+                label = stringResource(R.string.home_hook_type),
+                content = Natives.getHookType(),
+                icon = Icons.Default.Link,
+            ))
+        }
+        add(HomeInfoEntry(
+            label = stringResource(R.string.home_selinux_status),
+            content = systemInfo.seLinuxStatus,
+            icon = Icons.Default.Security,
+        ))
+        if (!isHideSeccompStatus) {
+            add(HomeInfoEntry(
+                label = stringResource(R.string.home_seccomp_status),
+                content = seccompText,
+                icon = Icons.Default.LocalPolice,
+            ))
+        }
+        if (!isHideZygiskImplement && !isSimpleMode && systemInfo.zygiskImplement != "None") {
+            val isYukiZygisk = systemInfo.zygiskImplement == "YukiZygisk"
+            add(HomeInfoEntry(
+                label = stringResource(R.string.home_zygisk_implement),
+                content = systemInfo.zygiskImplement,
+                icon = Icons.Default.Adb,
+                trailing = if (isYukiZygisk) {
+                    {
+                        YukiIcon(
+                            imageVector = Icons.Filled.Build,
+                            contentDescription = stringResource(R.string.settings_yukizygisk),
+                            modifier = if (isExpressiveUi) {
+                                Modifier
+                                    .size(36.dp)
+                                    .clickable(onClick = onYukiZygiskClick)
+                                    .padding(4.dp)
                             } else {
-                                base
-                            }
-                        }
-                ) {
-                    if (icon != null) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .padding(vertical = 4.dp),
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                    ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            text = content,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (contentColor == Color.Unspecified) {
-                                LocalContentColor.current
-                            } else {
-                                contentColor
-                            },
-                            softWrap = true
-                        )
-                    }
-                    if (trailing != null) {
-                        trailing()
-                    }
-                }
-            }
-
-            InfoCardItem(
-                stringResource(R.string.home_kernel),
-                systemInfo.kernelRelease,
-                icon = Icons.Default.Memory,
-            )
-
-            if (!isSimpleMode) {
-                InfoCardItem(
-                    stringResource(R.string.home_android_version),
-                    systemInfo.androidVersion,
-                    icon = Icons.Default.Android,
-                )
-            }
-
-            InfoCardItem(
-                stringResource(R.string.home_device_model),
-                systemInfo.deviceModel,
-                icon = Icons.Default.PhoneAndroid,
-            )
-
-            InfoCardItem(
-                stringResource(R.string.home_manager_version),
-                "${systemInfo.managerVersion.first} (${systemInfo.managerVersion.second.toInt()}/${Natives.getManagerUapiVersion()})",
-                icon = Icons.Default.SettingsSuggest,
-            )
-            // ksud daemon info row: same style as other InfoCard items, clickable, highlight on mismatch
-            val ksudUnknown = stringResource(id = R.string.home_ksud_daemon_unknown)
-            val apkVer = ksudApkVersion
-            val installedVer = ksudInstalledVersion
-            val hasMismatch = apkVer != null && installedVer != null && apkVer != installedVer
-
-            val ksudContent = when {
-                apkVer == null && installedVer == null -> ksudUnknown
-                installedVer == null -> apkVer ?: ksudUnknown
-                apkVer == null -> installedVer
-                apkVer == installedVer -> apkVer
-                else -> "$installedVer / APK: $apkVer"
-            }
-
-            InfoCardItem(
-                label = stringResource(id = R.string.home_ksud_daemon_title),
-                content = ksudContent,
-                icon = Icons.Filled.Engineering,
-                contentColor = if (hasMismatch) MaterialTheme.colorScheme.error else Color.Unspecified,
-                onClick = { showKsudDialog = true }
-            )
-
-            if (!isSimpleMode) {
-                InfoCardItem(
-                    stringResource(R.string.home_hook_type),
-                    Natives.getHookType(),
-                    icon = Icons.Default.Link
-                )
-            }
-
-            InfoCardItem(
-                stringResource(R.string.home_selinux_status),
-                systemInfo.seLinuxStatus,
-                icon = Icons.Default.Security,
-            )
-
-            if (!isHideSeccompStatus) {
-                val seccompText = when (systemInfo.seccompStatus) {
-                    -1 -> stringResource(R.string.seccomp_status_not_supported)
-                    0 -> stringResource(R.string.seccomp_status_disabled)
-                    1 -> stringResource(R.string.seccomp_status_strict)
-                    2 -> stringResource(R.string.seccomp_status_filter)
-                    else -> stringResource(R.string.seccomp_status_unknown)
-                }
-                InfoCardItem(
-                    stringResource(R.string.home_seccomp_status),
-                    seccompText,
-                    icon = Icons.Default.LocalPolice,
-                )
-            }
-
-            if (!isHideZygiskImplement && !isSimpleMode && systemInfo.zygiskImplement != "None") {
-                val isYukiZygisk = systemInfo.zygiskImplement == "YukiZygisk"
-                InfoCardItem(
-                    stringResource(R.string.home_zygisk_implement),
-                    systemInfo.zygiskImplement,
-                    icon = Icons.Default.Adb,
-                    trailing = if (isYukiZygisk) {
-                        {
-                            Icon(
-                                imageVector = Icons.Filled.Build,
-                                contentDescription = stringResource(R.string.settings_yukizygisk),
-                                modifier = Modifier
+                                Modifier
                                     .size(28.dp)
                                     .clickable(onClick = onYukiZygiskClick)
-                                    .padding(vertical = 4.dp),
-                            )
-                        }
-                    } else null,
-                )
-            }
-
-            if (!isHideMetaModuleImplement && !isSimpleMode && systemInfo.metaModuleImplement != "None") {
-                InfoCardItem(
-                    stringResource(R.string.home_meta_module_implement),
-                    systemInfo.metaModuleImplement,
-                    icon = Icons.Default.Extension,
-                )
-            }
-
-            if (showKsudDialog) {
-                KsudVersionDialog(
-                    onDismiss = { showKsudDialog = false },
-                    onVersionsUpdated = { apk, installed ->
-                        ksudApkVersion = apk
-                        ksudInstalledVersion = installed
+                                    .padding(vertical = 4.dp)
+                            },
+                        )
                     }
+                } else null,
+            ))
+        }
+        if (!isHideMetaModuleImplement && !isSimpleMode && systemInfo.metaModuleImplement != "None") {
+            add(HomeInfoEntry(
+                label = stringResource(R.string.home_meta_module_implement),
+                content = systemInfo.metaModuleImplement,
+                icon = Icons.Default.Extension,
+            ))
+        }
+    }
+
+    if (isExpressiveUi) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            entries.forEachIndexed { index, entry ->
+                HomeInfoItem(
+                    label = entry.label,
+                    content = entry.content,
+                    icon = entry.icon,
+                    contentColor = entry.contentColor,
+                    onClick = entry.onClick,
+                    trailing = entry.trailing,
+                    index = index,
+                    count = entries.size,
                 )
             }
         }
+    } else {
+        ElevatedCard(
+            colors = getCardColors(MaterialTheme.colorScheme.surfaceContainer),
+            elevation = getCardElevation(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 16.dp),
+            ) {
+                entries.forEach { entry ->
+                    HomeInfoItem(
+                        label = entry.label,
+                        content = entry.content,
+                        icon = entry.icon,
+                        contentColor = entry.contentColor,
+                        onClick = entry.onClick,
+                        trailing = entry.trailing,
+                    )
+                }
+            }
+        }
+    }
+
+    if (showKsudDialog) {
+        KsudVersionDialog(
+            onDismiss = { showKsudDialog = false },
+            onVersionsUpdated = { apk, installed ->
+                ksudApkVersion = apk
+                ksudInstalledVersion = installed
+            }
+        )
     }
 }
 
@@ -1071,7 +1302,7 @@ private fun KsudVersionDialog(
         loading = false
     }
 
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = { if (!syncing) onDismiss() },
         title = { Text(stringResource(id = R.string.home_ksud_daemon_title)) },
         text = {

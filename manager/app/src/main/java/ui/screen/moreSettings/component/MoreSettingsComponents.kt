@@ -13,12 +13,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.anatdx.yukisu.ui.theme.*
+import com.anatdx.yukisu.ui.component.YukiSwitch
+import com.anatdx.yukisu.ui.component.YukiIcon
 
 private val SETTINGS_GROUP_SPACING = 16.dp
+
+enum class MoreSettingsItemPosition(val index: Int, val count: Int) {
+    First(0, 3),
+    Middle(1, 3),
+    Last(2, 3),
+    Only(0, 1)
+}
 
 @Composable
 fun SettingsCard(
@@ -26,24 +36,21 @@ fun SettingsCard(
     icon: ImageVector? = null,
     content: @Composable () -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = SETTINGS_GROUP_SPACING),
-        colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHigh),
-        elevation = getCardElevation(),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+    if (isExpressiveUi) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 20.dp)
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 8.dp)
             ) {
                 if (icon != null) {
-                    Icon(
+                    YukiIcon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
@@ -53,10 +60,43 @@ fun SettingsCard(
                 }
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
-            content()
+            Column(content = { content() })
+        }
+    } else {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = SETTINGS_GROUP_SPACING),
+            colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHigh),
+            elevation = getCardElevation(),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    if (icon != null) {
+                        YukiIcon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
+                    Text(text = title, style = MaterialTheme.typography.titleMedium)
+                }
+                content()
+            }
         }
     }
 }
@@ -66,31 +106,48 @@ fun SettingItem(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    groupPosition: MoreSettingsItemPosition = MoreSettingsItemPosition.Middle,
     onClick: () -> Unit,
     iconTint: Color = MaterialTheme.colorScheme.primary,
     trailingContent: @Composable (() -> Unit)? = {
-        Icon(
+        YukiIcon(
             Icons.AutoMirrored.Filled.NavigateNext,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 ) {
+    val expressiveShape = if (groupPosition == MoreSettingsItemPosition.Only) {
+        MaterialTheme.shapes.large
+    } else {
+        ListItemDefaults.segmentedShapes(groupPosition.index, groupPosition.count).shape
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .then(
+                if (isExpressiveUi) {
+                    Modifier
+                        .padding(
+                            horizontal = 6.dp,
+                            vertical = ListItemDefaults.SegmentedGap / 2
+                        )
+                        .defaultMinSize(minHeight = ExpressiveListGroupMinHeight)
+                        .clip(expressiveShape)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainer.copy(
+                                alpha = CardConfig.cardAlpha
+                            )
+                        )
+                        .clickable(onClick = onClick)
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
             .padding(horizontal = 16.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = if (isExpressiveUi) Alignment.CenterVertically else Alignment.Top
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = iconTint,
-            modifier = Modifier
-                .padding(end = 16.dp)
-                .size(24.dp)
-        )
+        MoreSettingsLeadingIcon(icon = icon, tint = iconTint)
 
         Column(
             modifier = Modifier.weight(1f),
@@ -99,6 +156,7 @@ fun SettingItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
                 maxLines = Int.MAX_VALUE,
                 overflow = TextOverflow.Visible
             )
@@ -125,23 +183,47 @@ fun SwitchSettingItem(
     summary: String? = null,
     checked: Boolean,
     enabled: Boolean = true,
+    groupPosition: MoreSettingsItemPosition = MoreSettingsItemPosition.Middle,
     onChange: (Boolean) -> Unit
 ) {
+    val expressiveShape = if (groupPosition == MoreSettingsItemPosition.Only) {
+        MaterialTheme.shapes.large
+    } else {
+        ListItemDefaults.segmentedShapes(groupPosition.index, groupPosition.count).shape
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled) { onChange(!checked) }
             .alpha(if (enabled) 1f else 0.6f)
+            .then(
+                if (isExpressiveUi) {
+                    Modifier
+                        .padding(
+                            horizontal = 6.dp,
+                            vertical = ListItemDefaults.SegmentedGap / 2
+                        )
+                        .defaultMinSize(minHeight = ExpressiveListGroupMinHeight)
+                        .clip(expressiveShape)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainer.copy(
+                                alpha = CardConfig.cardAlpha
+                            )
+                        )
+                        .clickable(enabled = enabled) { onChange(!checked) }
+                } else {
+                    Modifier.clickable(enabled = enabled) { onChange(!checked) }
+                }
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = if (isExpressiveUi) Alignment.CenterVertically else Alignment.Top
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .padding(end = 16.dp)
-                .size(24.dp)
+        MoreSettingsLeadingIcon(
+            icon = icon,
+            tint = if (checked) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
         )
 
         Column(
@@ -151,6 +233,7 @@ fun SwitchSettingItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
                 lineHeight = 20.sp,
             )
             if (summary != null) {
@@ -164,10 +247,63 @@ fun SwitchSettingItem(
             }
         }
 
-        Switch(
+        YukiSwitch(
             checked = checked,
             enabled = enabled,
             onCheckedChange = onChange
+        )
+    }
+}
+
+@Composable
+fun SettingsControlGroup(
+    groupPosition: MoreSettingsItemPosition = MoreSettingsItemPosition.Middle,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val expressiveShape = if (groupPosition == MoreSettingsItemPosition.Only) {
+        MaterialTheme.shapes.large
+    } else {
+        ListItemDefaults.segmentedShapes(groupPosition.index, groupPosition.count).shape
+    }
+    Column(
+        modifier = if (isExpressiveUi) {
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 6.dp,
+                    vertical = ListItemDefaults.SegmentedGap / 2
+                )
+                .clip(expressiveShape)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = CardConfig.cardAlpha)
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        } else {
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        },
+        content = content
+    )
+}
+
+@Composable
+private fun MoreSettingsLeadingIcon(icon: ImageVector, tint: Color) {
+    if (isExpressiveUi) {
+        YukiIcon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(end = 16.dp)
+                .size(24.dp)
+        )
+    } else {
+        YukiIcon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier
+                .padding(end = 16.dp)
+                .size(24.dp)
         )
     }
 }

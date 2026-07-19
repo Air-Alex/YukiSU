@@ -146,7 +146,7 @@ fun InstallConfirmationDialog(
     if (show && zipFiles.isNotEmpty()) {
         val context = LocalContext.current
 
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = onDismiss,
             title = {
                 Row(
@@ -165,8 +165,7 @@ fun InstallConfirmationDialog(
                             context.getString(R.string.confirm_installation)
                         } else {
                             context.getString(R.string.confirm_multiple_installation, zipFiles.size)
-                        },
-                        style = MaterialTheme.typography.headlineSmall
+                        }
                     )
                 }
             },

@@ -14,14 +14,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -43,7 +44,11 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.navigation.EmptyDestinationsNavigator
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.KeyEventBlocker
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
+import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
 import com.anatdx.yukisu.ui.util.module.ModuleUtils
 import com.anatdx.yukisu.ui.viewmodel.ModuleViewModel
@@ -143,7 +148,12 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
     val snackBarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     val viewModel: ModuleViewModel = viewModel()
 
     val errorCodeString = stringResource(R.string.error_code)
@@ -153,10 +163,10 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
 
     val alertDialog = rememberCustomDialog { dismiss: () -> Unit ->
         val uriHandler = LocalUriHandler.current
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = { dismiss() },
             icon = {
-                Icon(Icons.Outlined.Info, contentDescription = null)
+                YukiIcon(Icons.Outlined.Info, contentDescription = null)
             },
             title = {
                 Row(modifier = Modifier
@@ -440,7 +450,7 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
                         }
                     },
                     icon = {
-                        Icon(
+                        YukiIcon(
                             Icons.Filled.Refresh,
                             contentDescription = stringResource(id = R.string.reboot)
                         )
@@ -521,19 +531,7 @@ fun ModuleInstallProgressBar(
         label = "InstallProgress"
     )
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+    FlashProgressSurface {
             // ???????
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -555,14 +553,23 @@ fun ModuleInstallProgressBar(
             Spacer(modifier = Modifier.height(8.dp))
 
             // ???
-            LinearProgressIndicator(
-                progress = { progress.value },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp),
-                color = progressColor,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+            if (isExpressiveUi) {
+                LinearWavyProgressIndicator(
+                    progress = { progress.value },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = progressColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+            } else {
+                LinearProgressIndicator(
+                    progress = { progress.value },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                    color = progressColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -576,8 +583,8 @@ fun ModuleInstallProgressBar(
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Error,
+                        YukiIcon(
+                            imageVector = Icons.Outlined.Warning,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(16.dp)
@@ -614,6 +621,41 @@ fun ModuleInstallProgressBar(
                     }
                 }
             }
+    }
+}
+
+@Composable
+private fun FlashProgressSurface(content: @Composable ColumnScope.() -> Unit) {
+    if (isExpressiveUi) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = ListItemDefaults.SegmentedGap / 2,
+                )
+                .clip(MaterialTheme.shapes.large)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
+                )
+                .padding(16.dp),
+            content = content,
+        )
+    } else {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                content = content,
+            )
         }
     }
 }
@@ -628,68 +670,88 @@ private fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val cardColor = if (CardConfig.isCustomBackgroundEnabled) {
+    val cardColor = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
         colorScheme.surfaceContainerLow
     } else {
         colorScheme.background
     }
-    val cardAlpha = CardConfig.cardAlpha
-
     val statusColor = when(status) {
         FlashingStatus.FLASHING -> MaterialTheme.colorScheme.primary
         FlashingStatus.SUCCESS -> MaterialTheme.colorScheme.tertiary
         FlashingStatus.FAILED -> MaterialTheme.colorScheme.error
     }
 
-    TopAppBar(
-        title = {
-            Column {
+    val title: @Composable () -> Unit = {
+        Column {
+            Text(
+                text = stringResource(
+                    when (status) {
+                        FlashingStatus.FLASHING -> R.string.flashing
+                        FlashingStatus.SUCCESS -> R.string.flash_success
+                        FlashingStatus.FAILED -> R.string.flash_failed
+                    }
+                ),
+                fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+                color = statusColor
+            )
+
+            if (moduleStatus.failedModules.isNotEmpty()) {
                 Text(
                     text = stringResource(
-                        when (status) {
-                            FlashingStatus.FLASHING -> R.string.flashing
-                            FlashingStatus.SUCCESS -> R.string.flash_success
-                            FlashingStatus.FAILED -> R.string.flash_failed
-                        }
+                        R.string.module_failed_count,
+                        moduleStatus.failedModules.size,
                     ),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = statusColor
-                )
-
-                if (moduleStatus.failedModules.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.module_failed_count, moduleStatus.failedModules.size),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
                 )
             }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = cardColor.copy(alpha = cardAlpha),
-            scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
-        ),
-        actions = {
-            IconButton(onClick = onSave) {
-                Icon(
-                    imageVector = Icons.Filled.Save,
-                    contentDescription = stringResource(id = R.string.save_log),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        scrollBehavior = scrollBehavior
+        }
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+    val actions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = onSave) {
+            YukiIcon(
+                imageVector = Icons.Filled.Save,
+                contentDescription = stringResource(id = R.string.save_log),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = cardColor,
+        scrolledContainerColor = cardColor
     )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    }
 }
 
 suspend fun getModuleNameFromUri(context: Context, uri: Uri): String {

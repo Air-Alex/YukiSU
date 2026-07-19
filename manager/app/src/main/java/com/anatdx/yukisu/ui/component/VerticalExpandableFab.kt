@@ -166,7 +166,7 @@ fun VerticalExpandableFab(
                         pressedElevation = 6.dp
                     )
                 ) {
-                    Icon(
+                    YukiIcon(
                         imageVector = menuItem.icon,
                         contentDescription = stringResource(menuItem.labelRes),
                         modifier = Modifier.size(20.dp)
@@ -187,7 +187,7 @@ fun VerticalExpandableFab(
                 hoveredElevation = 8.dp
             )
         ) {
-            Icon(
+            YukiIcon(
                 imageVector = if (isExpanded) mainButtonExpandedIcon else mainButtonIcon,
                 contentDescription = stringResource(
                     if (isExpanded) R.string.collapse_menu else R.string.expand_menu

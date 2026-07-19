@@ -1,5 +1,4 @@
-import com.android.build.api.dsl.ApplicationDefaultConfig
-import com.android.build.api.dsl.CommonExtension
+import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.gradle.api.AndroidBasePlugin
 
 plugins {
@@ -35,7 +34,7 @@ cmaker {
 
 val androidMinSdkVersion = 26
 val androidTargetSdkVersion = 36
-val androidCompileSdkVersion = 36
+val androidCompileSdkVersion = 37
 val androidBuildToolsVersion = "36.1.0"
 val androidCompileNdkVersion by extra(libs.versions.ndk.get())
 val androidCmakeVersion by extra("3.22.0+")
@@ -83,18 +82,16 @@ fun computeKsudBundledVersion(): String {
 
 subprojects {
     plugins.withType(AndroidBasePlugin::class.java) {
-        extensions.configure(CommonExtension::class.java) {
+        extensions.configure(ApplicationExtension::class.java) {
             compileSdk = androidCompileSdkVersion
             ndkVersion = androidCompileNdkVersion
             buildToolsVersion = androidBuildToolsVersion
 
             defaultConfig {
                 minSdk = androidMinSdkVersion
-                if (this is ApplicationDefaultConfig) {
-                    targetSdk = androidTargetSdkVersion
-                    versionCode = managerVersionCode
-                    versionName = managerVersionName
-                }
+                targetSdk = androidTargetSdkVersion
+                versionCode = managerVersionCode
+                versionName = managerVersionName
                 ndk {
                     abiFilters += buildAbiList.get()
                 }

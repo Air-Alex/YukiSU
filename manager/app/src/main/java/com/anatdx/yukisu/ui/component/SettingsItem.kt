@@ -11,9 +11,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import com.dergoogler.mmrl.ui.component.LabelItem
 import com.dergoogler.mmrl.ui.component.text.TextRow
 import com.anatdx.yukisu.ui.theme.CardConfig
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 
 @Composable
 fun SwitchItem(
@@ -30,7 +32,11 @@ fun SwitchItem(
 
     MaterialTheme(
         colorScheme = MaterialTheme.colorScheme.copy(
-            surface = if (CardConfig.isCustomBackgroundEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh
+            surface = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
+                Color.Transparent
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
         )
     ) {
         ListItem(
@@ -57,12 +63,13 @@ fun SwitchItem(
                     Text(
                         modifier = Modifier.then(stateAlpha),
                         text = title,
+                        fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
                     )
                 }
             },
             leadingContent = icon?.let {
                 {
-                    Icon(
+                    YukiIcon(
                         modifier = Modifier.then(stateAlpha),
                         imageVector = icon,
                         contentDescription = title
@@ -70,7 +77,7 @@ fun SwitchItem(
                 }
             },
             trailingContent = {
-                Switch(
+                YukiSwitch(
                     checked = checked,
                     enabled = enabled,
                     onCheckedChange = onCheckedChange,

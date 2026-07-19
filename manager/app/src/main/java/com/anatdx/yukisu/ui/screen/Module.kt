@@ -22,7 +22,6 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -40,7 +39,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -51,7 +49,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -69,7 +66,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -95,6 +91,7 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.*
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
 import com.anatdx.yukisu.ui.util.module.ModuleModify
 import com.anatdx.yukisu.ui.util.module.ModuleUtils
@@ -335,7 +332,12 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
     }
     val hideInstallButton = isSafeMode || hasMagisk
 
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
 
     val webUILauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -371,7 +373,12 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
     Scaffold(
         topBar = {
             SearchAppBar(
-                title = { Text(stringResource(R.string.module)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.module),
+                        fontWeight = if (isExpressiveUi) FontWeight.Normal else null
+                    )
+                },
                 searchText = viewModel.search,
                 onSearchTextChange = { viewModel.search = it },
                 onClearClick = { viewModel.search = "" },
@@ -379,7 +386,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                     IconButton(
                         onClick = { showBottomSheet = true },
                     ) {
-                        Icon(
+                        YukiIcon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = stringResource(id = R.string.settings),
                         )
@@ -391,6 +398,11 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
         floatingActionButton = {
             AnimatedFab(visible = !hideInstallButton && fabVisible) {
                 FloatingActionButton(
+                    shape = if (isExpressiveUi) {
+                        CircleShape
+                    } else {
+                        FloatingActionButtonDefaults.shape
+                    },
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     containerColor = MaterialTheme.colorScheme.primary,
                     onClick = {
@@ -427,7 +439,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(
+                        YukiIcon(
                             imageVector = Icons.Outlined.Warning,
                             contentDescription = null,
                             modifier = Modifier
@@ -553,7 +565,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
 
     // 快捷方式类型选择对话框
     if (showShortcutTypeDialog) {
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = { showShortcutTypeDialog = false },
             title = { Text(stringResource(R.string.module_shortcut_type_title)) },
             text = {
@@ -592,7 +604,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
 
     // 快捷方式创建/编辑对话框
     if (showShortcutDialog) {
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = { showShortcutDialog = false },
             title = { Text(stringResource(R.string.module_shortcut_title)) },
             text = {
@@ -650,7 +662,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                             IconButton(
                                 onClick = { shortcutIconUri = defaultShortcutIconUri }
                             ) {
-                                Icon(
+                                YukiIcon(
                                     imageVector = Icons.Filled.Undo,
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
@@ -798,7 +810,7 @@ private fun ModuleBottomSheetContent(
                     text = stringResource(R.string.module_sort_action_first),
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Switch(
+                YukiSwitch(
                     checked = viewModel.sortActionFirst,
                     onCheckedChange = { checked ->
                         viewModel.sortActionFirst = checked
@@ -824,7 +836,7 @@ private fun ModuleBottomSheetContent(
                     text = stringResource(R.string.module_sort_enabled_first),
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Switch(
+                YukiSwitch(
                     checked = viewModel.sortEnabledFirst,
                     onCheckedChange = { checked ->
                         viewModel.sortEnabledFirst = checked
@@ -877,7 +889,7 @@ private fun ModuleBottomSheetMenuItemView(menuItem: ModuleBottomSheetMenuItem) {
             Box(
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
+                YukiIcon(
                     imageVector = menuItem.icon,
                     contentDescription = stringResource(menuItem.titleRes),
                     modifier = Modifier.size(24.dp)
@@ -1064,7 +1076,7 @@ private fun ModuleList(
         }
     }
 
-    PullToRefreshBox(
+    YukiPullToRefreshBox(
         modifier = boxModifier,
         onRefresh = {
             viewModel.fetchModuleList()
@@ -1095,7 +1107,7 @@ private fun ModuleList(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                Icon(
+                                YukiIcon(
                                     imageVector = Icons.Outlined.Extension,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
@@ -1209,12 +1221,17 @@ fun ModuleItem(
     val hapticFeedback = LocalHapticFeedback.current
 
     ElevatedCard(
-        colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = getCardColors(
+            if (isExpressiveUi) {
+                MaterialTheme.colorScheme.surfaceContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
+        ),
         elevation = getCardElevation(),
+        shape = if (isExpressiveUi) MaterialTheme.shapes.large else CardDefaults.elevatedShape,
     ) {
         val textDecoration = if (!module.remove) null else TextDecoration.LineThrough
-        val interactionSource = remember { MutableInteractionSource() }
-        val indication = LocalIndication.current
         val viewModel = viewModel<ModuleViewModel>()
         
         var localEnabled by remember(module.enabled) { mutableStateOf(module.enabled) }
@@ -1227,22 +1244,7 @@ fun ModuleItem(
         }
 
         Column(
-            modifier = Modifier
-                .run {
-                    if (module.hasWebUi) {
-                        toggleable(
-                            value = localEnabled,
-                            enabled = !module.remove && localEnabled,
-                            interactionSource = interactionSource,
-                            role = Role.Button,
-                            indication = indication,
-                            onValueChange = { onClick(module) }
-                        )
-                    } else {
-                        this
-                    }
-                }
-                .padding(22.dp, 18.dp, 22.dp, 12.dp)
+            modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1327,7 +1329,7 @@ fun ModuleItem(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    Switch(
+                    YukiSwitch(
                         enabled = !module.update && !conflictDisabled,
                         checked = localEnabled,
                         onCheckedChange = { newChecked ->
@@ -1339,7 +1341,6 @@ fun ModuleItem(
                                 }
                             }
                         },
-                        interactionSource = if (!module.hasWebUi) interactionSource else null,
                     )
                 }
             }
@@ -1477,93 +1478,115 @@ fun ModuleItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (module.hasActionScript) {
-                    FilledTonalButton(
-                        modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+                    ModuleActionButton(
                         enabled = !module.remove && localEnabled,
                         onClick = {
                             navigator.navigate(ExecuteModuleActionScreenDestination(module.dirId))
                             viewModel.markNeedRefresh()
                         },
-                        contentPadding = ButtonDefaults.TextButtonContentPadding,
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = Icons.Outlined.PlayArrow,
-                            contentDescription = null
-                        )
-                    }
+                        imageVector = Icons.Outlined.PlayArrow,
+                        contentDescription = null
+                    )
                 }
 
                 if (module.hasWebUi) {
-                    FilledTonalButton(
-                        modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+                    ModuleActionButton(
                         enabled = !module.remove && localEnabled,
                         onClick = { onClick(module) },
-                        interactionSource = interactionSource,
-                        contentPadding = ButtonDefaults.TextButtonContentPadding,
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = Icons.AutoMirrored.Outlined.Wysiwyg,
-                            contentDescription = null
-                        )
-                    }
+                        imageVector = Icons.AutoMirrored.Outlined.Wysiwyg,
+                        contentDescription = null
+                    )
                 }
 
                 Spacer(modifier = Modifier.weight(1f, true))
 
                 if (module.hasActionScript || module.hasWebUi) {
-                    FilledTonalButton(
-                        modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+                    ModuleActionButton(
                         enabled = !module.remove,
                         onClick = onAddShortcut,
-                        contentPadding = ButtonDefaults.TextButtonContentPadding,
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = Icons.Outlined.AddCircle,
-                            contentDescription = stringResource(R.string.module_shortcut_add)
-                        )
-                    }
+                        imageVector = Icons.Outlined.AddCircle,
+                        contentDescription = stringResource(R.string.module_shortcut_add)
+                    )
                 }
 
                 if (updateUrl.isNotEmpty()) {
-                    Button(
-                        modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+                    ModuleActionButton(
                         enabled = !module.remove,
                         onClick = { onUpdate(module) },
-                        shape = ButtonDefaults.textShape,
-                        contentPadding = ButtonDefaults.TextButtonContentPadding,
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = Icons.Outlined.Download,
-                            contentDescription = null
-                        )
-                    }
+                        imageVector = Icons.Outlined.Download,
+                        contentDescription = null,
+                        prominent = true
+                    )
                 }
 
-                FilledTonalButton(
-                    modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+                ModuleActionButton(
                     onClick = { onUninstallClicked(module) },
-                    contentPadding = ButtonDefaults.TextButtonContentPadding,
-                ) {
-                    if (!module.remove) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = Icons.Outlined.Delete,
-                            contentDescription = null,
-                        )
-                    } else {
-                        Icon(
-                            modifier = Modifier.size(20.dp).rotate(180f),
-                            imageVector = Icons.Outlined.Refresh,
-                            contentDescription = null
-                        )
-                    }
-                }
+                    imageVector = if (!module.remove) Icons.Outlined.Delete else Icons.Outlined.Refresh,
+                    iconModifier = if (!module.remove) Modifier else Modifier.rotate(180f),
+                    contentDescription = null
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun ModuleActionButton(
+    imageVector: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    prominent: Boolean = false,
+    interactionSource: MutableInteractionSource? = null,
+    iconModifier: Modifier = Modifier
+) {
+    val icon: @Composable () -> Unit = {
+        YukiIcon(
+            modifier = iconModifier.size(20.dp),
+            imageVector = imageVector,
+            contentDescription = contentDescription
+        )
+    }
+
+    if (isExpressiveUi) {
+        if (prominent) {
+            FilledIconButton(
+                onClick = onClick,
+                shapes = IconButtonDefaults.shapes(),
+                modifier = Modifier.size(40.dp),
+                enabled = enabled,
+                interactionSource = interactionSource,
+                content = icon
+            )
+        } else {
+            FilledTonalIconButton(
+                onClick = onClick,
+                shapes = IconButtonDefaults.shapes(),
+                modifier = Modifier.size(40.dp),
+                enabled = enabled,
+                interactionSource = interactionSource,
+                content = icon
+            )
+        }
+    } else if (prominent) {
+        Button(
+            modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+            enabled = enabled,
+            onClick = onClick,
+            shape = ButtonDefaults.textShape,
+            interactionSource = interactionSource,
+            contentPadding = ButtonDefaults.TextButtonContentPadding,
+            content = { icon() }
+        )
+    } else {
+        FilledTonalButton(
+            modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+            enabled = enabled,
+            onClick = onClick,
+            interactionSource = interactionSource,
+            contentPadding = ButtonDefaults.TextButtonContentPadding,
+            content = { icon() }
+        )
     }
 }
 

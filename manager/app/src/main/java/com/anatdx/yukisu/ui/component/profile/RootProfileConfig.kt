@@ -26,6 +26,8 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.profile.Capabilities
 import com.anatdx.yukisu.profile.Groups
 import com.anatdx.yukisu.ui.component.rememberCustomDialog
+import com.anatdx.yukisu.ui.component.YukiSwitch
+import com.anatdx.yukisu.ui.component.YukiDialogTheme
 import com.anatdx.yukisu.ui.util.isSepolicyValid
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -169,7 +171,7 @@ fun RootProfileConfig(
                 Text(stringResource(R.string.profile_no_new_privs_summary))
             },
             trailingContent = {
-                Switch(
+                YukiSwitch(
                     checked = noNewPrivs,
                     onCheckedChange = { checked ->
                         val newFlags = if (checked) {
@@ -220,28 +222,30 @@ fun GroupsPanel(selected: List<Groups>, closeSelection: (selection: Set<Groups>)
                 surface = MaterialTheme.colorScheme.surfaceContainerHigh
             )
         ) {
-            ListDialog(
-                state = rememberUseCaseState(visible = true, onFinishedRequest = {
-                    closeSelection(selection)
-                }, onCloseRequest = {
-                    dismiss()
-                }),
-                header = Header.Default(
-                    title = stringResource(R.string.profile_groups),
-                ),
-                selection = ListSelection.Multiple(
-                    showCheckBoxes = true,
-                    options = options,
-                    maxChoices = 32, // Kernel only supports 32 groups at most
-                ) { indecies, _ ->
-                    // Handle selection
-                    selection.clear()
-                    indecies.forEach { index ->
-                        val group = groups[index]
-                        selection.add(group)
+            YukiDialogTheme {
+                ListDialog(
+                    state = rememberUseCaseState(visible = true, onFinishedRequest = {
+                        closeSelection(selection)
+                    }, onCloseRequest = {
+                        dismiss()
+                    }),
+                    header = Header.Default(
+                        title = stringResource(R.string.profile_groups),
+                    ),
+                    selection = ListSelection.Multiple(
+                        showCheckBoxes = true,
+                        options = options,
+                        maxChoices = 32, // Kernel only supports 32 groups at most
+                    ) { indecies, _ ->
+                        // Handle selection
+                        selection.clear()
+                        indecies.forEach { index ->
+                            val group = groups[index]
+                            selection.add(group)
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 
@@ -299,27 +303,29 @@ fun CapsPanel(
                 surface = MaterialTheme.colorScheme.surfaceContainerHigh
             )
         ) {
-            ListDialog(
-                state = rememberUseCaseState(visible = true, onFinishedRequest = {
-                    closeSelection(selection)
-                }, onCloseRequest = {
-                    dismiss()
-                }),
-                header = Header.Default(
-                    title = stringResource(R.string.profile_capabilities),
-                ),
-                selection = ListSelection.Multiple(
-                    showCheckBoxes = true,
-                    options = options
-                ) { indecies, _ ->
-                    // Handle selection
-                    selection.clear()
-                    indecies.forEach { index ->
-                        val group = caps[index]
-                        selection.add(group)
+            YukiDialogTheme {
+                ListDialog(
+                    state = rememberUseCaseState(visible = true, onFinishedRequest = {
+                        closeSelection(selection)
+                    }, onCloseRequest = {
+                        dismiss()
+                    }),
+                    header = Header.Default(
+                        title = stringResource(R.string.profile_capabilities),
+                    ),
+                    selection = ListSelection.Multiple(
+                        showCheckBoxes = true,
+                        options = options
+                    ) { indecies, _ ->
+                        // Handle selection
+                        selection.clear()
+                        indecies.forEach { index ->
+                            val group = caps[index]
+                            selection.add(group)
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 
@@ -453,25 +459,27 @@ private fun SELinuxPanel(
                 surface = MaterialTheme.colorScheme.surfaceContainerHigh
             )
         ) {
-            InputDialog(
-                state = rememberUseCaseState(
-                    visible = true,
-                    onFinishedRequest = {
-                        onSELinuxChange(domain, rules)
-                    },
-                    onCloseRequest = {
-                        dismiss()
-                    }),
-                header = Header.Default(
-                    title = stringResource(R.string.profile_selinux_context),
-                ),
-                selection = InputSelection(
-                    input = inputOptions,
-                    onPositiveClick = { result ->
-                        // Handle selection
-                    },
+            YukiDialogTheme {
+                InputDialog(
+                    state = rememberUseCaseState(
+                        visible = true,
+                        onFinishedRequest = {
+                            onSELinuxChange(domain, rules)
+                        },
+                        onCloseRequest = {
+                            dismiss()
+                        }),
+                    header = Header.Default(
+                        title = stringResource(R.string.profile_selinux_context),
+                    ),
+                    selection = InputSelection(
+                        input = inputOptions,
+                        onPositiveClick = { _ ->
+                            // Handled by the individual field result listeners.
+                        },
+                    )
                 )
-            )
+            }
         }
     }
 

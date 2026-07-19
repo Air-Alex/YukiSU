@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ksu.KsuPaths
 import com.anatdx.yukisu.ui.util.reboot
 import com.topjohnwu.superuser.io.SuFileInputStream
@@ -35,12 +36,11 @@ object ModuleModify {
         val context = LocalContext.current
 
         if (showDialog) {
-            AlertDialog(
+            YukiAlertDialog(
                 onDismissRequest = onDismiss,
                 title = {
                     Text(
-                        text = context.getString(R.string.restore_confirm_title),
-                        style = MaterialTheme.typography.headlineSmall
+                        text = context.getString(R.string.restore_confirm_title)
                     )
                 },
                 text = {
@@ -72,12 +72,11 @@ object ModuleModify {
         val context = LocalContext.current
 
         if (showDialog) {
-            AlertDialog(
+            YukiAlertDialog(
                 onDismissRequest = onDismiss,
                 title = {
                     Text(
-                        text = context.getString(R.string.allowlist_restore_confirm_title),
-                        style = MaterialTheme.typography.headlineSmall
+                        text = context.getString(R.string.allowlist_restore_confirm_title)
                     )
                 },
                 text = {

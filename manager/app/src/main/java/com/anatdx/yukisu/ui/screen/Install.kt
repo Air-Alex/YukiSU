@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,15 +20,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Input
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeveloperMode
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +39,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -58,17 +59,23 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.magica.MagicaHelper
 import com.anatdx.yukisu.ui.component.DialogHandle
 import com.anatdx.yukisu.ui.component.SuperDropdown
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiSwitch
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
+import com.anatdx.yukisu.ui.component.YukiDialogTheme
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.component.rememberCustomDialog
 import com.anatdx.yukisu.ui.component.rememberLoadingDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
+import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.theme.CardConfig.cardElevation
 import com.anatdx.yukisu.ui.theme.ThemeConfig
 import com.anatdx.yukisu.ui.theme.ThemeColors
 import com.anatdx.yukisu.ui.theme.ThemeManager
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -232,7 +239,12 @@ fun InstallScreen(
         })
     }
 
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
 
     Scaffold(
         topBar = {
@@ -245,13 +257,18 @@ fun InstallScreen(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         )
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .padding(top = 12.dp)
+        MaterialTheme(
+            colorScheme = MaterialTheme.colorScheme.copy(
+                surface = if (isExpressiveUi) Color.Transparent else MaterialTheme.colorScheme.surface
+            )
         ) {
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 12.dp)
+            ) {
             SelectInstallMethod(
                 onSelected = { installMethod = it },
                 selectedMethod = installMethod
@@ -268,7 +285,7 @@ fun InstallScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    ElevatedCard(
+                    InstallSurface(
                         colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
                         elevation = getCardElevation(),
                         modifier = Modifier
@@ -305,8 +322,8 @@ fun InstallScreen(
                                 partitionSelectionIndex = index
                             },
                             leftAction = {
-                                Icon(
-                                    Icons.Default.Edit,
+                                YukiIcon(
+                                    Icons.Filled.Build,
                                     tint = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(end = 16.dp),
                                     contentDescription = null
@@ -323,7 +340,7 @@ fun InstallScreen(
                     .padding(16.dp)
             ) {
                 // 使用本地的LKM文件
-                ElevatedCard(
+                InstallSurface(
                     colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
                     elevation = getCardElevation(),
                     modifier = Modifier
@@ -345,8 +362,8 @@ fun InstallScreen(
                             }
                         },
                         leadingContent = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Input,
+                            YukiIcon(
+                                Icons.Filled.Download,
                                 contentDescription = null
                             )
                         },
@@ -364,7 +381,7 @@ fun InstallScreen(
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    ElevatedCard(
+                    InstallSurface(
                         colors = getCardColors(MaterialTheme.colorScheme.tertiaryContainer),
                         elevation = getCardElevation(),
                         modifier = Modifier
@@ -378,7 +395,7 @@ fun InstallScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(bottom = 8.dp)
                             ) {
-                                Icon(
+                                YukiIcon(
                                     Icons.Default.Security,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.tertiary
@@ -440,7 +457,7 @@ fun InstallScreen(
                                         color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
                                     )
                                 }
-                                Switch(
+                                YukiSwitch(
                                     checked = signatureBypass,
                                     onCheckedChange = { signatureBypass = it },
                                     enabled = effectiveSuperKey.isNotBlank()
@@ -455,7 +472,7 @@ fun InstallScreen(
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    ElevatedCard(
+                    InstallSurface(
                         colors = getCardColors(MaterialTheme.colorScheme.secondaryContainer),
                         elevation = getCardElevation(),
                         modifier = Modifier
@@ -468,7 +485,7 @@ fun InstallScreen(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
+                                YukiIcon(
                                     Icons.Default.DeveloperMode,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.secondary
@@ -501,7 +518,7 @@ fun InstallScreen(
                                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
                                         )
                                     }
-                                    Switch(
+                                    YukiSwitch(
                                         checked = forceBackup,
                                         onCheckedChange = { forceBackup = it }
                                     )
@@ -527,7 +544,7 @@ fun InstallScreen(
                                         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
                                     )
                                 }
-                                Switch(
+                                YukiSwitch(
                                     checked = allowShell,
                                     onCheckedChange = { allowShell = it }
                                 )
@@ -552,7 +569,7 @@ fun InstallScreen(
                                         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
                                     )
                                 }
-                                Switch(
+                                YukiSwitch(
                                     checked = enableAdb,
                                     onCheckedChange = { enableAdb = it }
                                 )
@@ -571,12 +588,17 @@ fun InstallScreen(
                         Spacer(Modifier.height(16.dp))
                         Text(
                             text = stringResource(R.string.install_advanced_tools),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = if (isExpressiveUi) {
+                                MaterialTheme.typography.labelLarge
+                            } else {
+                                MaterialTheme.typography.titleMedium
+                            },
+                            fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        ElevatedCard(
+                        InstallSurface(
                             onClick = { navigator.navigate(PartitionManagerScreenDestination) },
                             colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
                             elevation = getCardElevation(),
@@ -590,14 +612,14 @@ fun InstallScreen(
                                     Text(stringResource(R.string.partition_manager_desc))
                                 },
                                 leadingContent = {
-                                    Icon(
-                                        Icons.Default.Storage,
+                                    YukiIcon(
+                                        Icons.Filled.Folder,
                                         contentDescription = null
                                     )
                                 },
                                 trailingContent = {
-                                    Icon(
-                                        Icons.Default.ChevronRight,
+                                    YukiIcon(
+                                        Icons.AutoMirrored.Filled.NavigateNext,
                                         contentDescription = null
                                     )
                                 }
@@ -613,7 +635,7 @@ fun InstallScreen(
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    ElevatedCard(
+                    InstallSurface(
                         colors = getCardColors(MaterialTheme.colorScheme.tertiaryContainer),
                         elevation = getCardElevation(),
                         modifier = Modifier
@@ -626,7 +648,7 @@ fun InstallScreen(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
+                                YukiIcon(
                                     Icons.Filled.DeveloperMode,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.tertiary
@@ -674,10 +696,16 @@ fun InstallScreen(
                 }
 
                 Button(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = if (isExpressiveUi) 56.dp else 0.dp),
                     enabled = installMethod != null,
                     onClick = onClickNext,
-                    shape = MaterialTheme.shapes.medium,
+                    shape = if (isExpressiveUi) {
+                        MaterialTheme.shapes.extraLarge
+                    } else {
+                        MaterialTheme.shapes.medium
+                    },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -692,7 +720,65 @@ fun InstallScreen(
                 }
 
             }
+            }
         }
+    }
+}
+
+@Composable
+private fun InstallMethodSectionSurface(
+    modifier: Modifier = Modifier,
+    colors: CardColors = CardDefaults.elevatedCardColors(),
+    elevation: CardElevation = CardDefaults.elevatedCardElevation(),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (isExpressiveUi) {
+        Column(modifier = modifier, content = content)
+    } else {
+        ElevatedCard(
+            modifier = modifier,
+            colors = colors,
+            elevation = elevation,
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun InstallSurface(
+    modifier: Modifier = Modifier,
+    colors: CardColors = CardDefaults.elevatedCardColors(),
+    elevation: CardElevation = CardDefaults.elevatedCardElevation(),
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (isExpressiveUi) {
+        Column(
+            modifier = modifier
+                .clip(MaterialTheme.shapes.large)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
+                )
+                .then(
+                    if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+                ),
+            content = content,
+        )
+    } else if (onClick != null) {
+        ElevatedCard(
+            onClick = onClick,
+            modifier = modifier,
+            colors = colors,
+            elevation = elevation,
+            content = content,
+        )
+    } else {
+        ElevatedCard(
+            modifier = modifier,
+            colors = colors,
+            elevation = elevation,
+            content = content,
+        )
     }
 }
 
@@ -703,7 +789,7 @@ private fun RebootDialog(
     onConfirm: () -> Unit
 ) {
     if (show) {
-        AlertDialog(
+        YukiAlertDialog(
             onDismissRequest = onDismiss,
             title = { Text(stringResource(id = R.string.reboot_complete_title)) },
             text = { Text(stringResource(id = R.string.reboot_complete_msg)) },
@@ -839,7 +925,7 @@ private fun SelectInstallMethod(
         modifier = Modifier.padding(horizontal = 16.dp)
     ) {
         // LKM 安装/修补
-            ElevatedCard(
+            InstallMethodSectionSurface(
                 colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
                 elevation = getCardElevation(),
                 modifier = Modifier
@@ -848,13 +934,17 @@ private fun SelectInstallMethod(
             ) {
                 MaterialTheme(
                     colorScheme = MaterialTheme.colorScheme.copy(
-                        surface = if (CardConfig.isCustomBackgroundEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant
+                        surface = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
+                            Color.Transparent
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
                     )
                 ) {
                     ListItem(
                         leadingContent = {
-                            Icon(
-                                Icons.Filled.AutoFixHigh,
+                            YukiIcon(
+                                Icons.Filled.AutoAwesome,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary
                             )
@@ -862,31 +952,67 @@ private fun SelectInstallMethod(
                         headlineContent = {
                             Text(
                                 stringResource(R.string.Lkm_install_methods),
-                                style = MaterialTheme.typography.titleMedium
+                                style = if (isExpressiveUi) {
+                                    MaterialTheme.typography.labelLarge
+                                } else {
+                                    MaterialTheme.typography.titleMedium
+                                },
+                                fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+                                color = if (isExpressiveUi) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                             )
                         }
                     )
                 }
 
                 Column(
-                    modifier = Modifier.padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = 16.dp
-                    )
+                    modifier = if (isExpressiveUi) {
+                        Modifier
+                    } else {
+                        Modifier.padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            bottom = 16.dp
+                        )
+                    }
                 ) {
-                    radioOptions.forEach { option ->
+                    radioOptions.forEachIndexed { index, option ->
                             val interactionSource = remember { MutableInteractionSource() }
+                            val optionShape = if (isExpressiveUi) {
+                                if (radioOptions.size == 1) {
+                                    MaterialTheme.shapes.large
+                                } else {
+                                    ListItemDefaults.segmentedShapes(index, radioOptions.size).shape
+                                }
+                            } else {
+                                MaterialTheme.shapes.medium
+                            }
                             Surface(
                                 color = if (option.javaClass == selectedOption?.javaClass)
                                     MaterialTheme.colorScheme.secondaryContainer.copy(alpha = cardAlpha)
+                                else if (isExpressiveUi)
+                                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
                                 else
                                     MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = cardAlpha),
-                                shape = MaterialTheme.shapes.medium,
+                                shape = optionShape,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clip(MaterialTheme.shapes.medium)
+                                    .then(
+                                        if (isExpressiveUi) {
+                                            Modifier
+                                                .padding(
+                                                    horizontal = 6.dp,
+                                                    vertical = ListItemDefaults.SegmentedGap / 2,
+                                                )
+                                                .defaultMinSize(minHeight = ExpressiveListGroupMinHeight)
+                                        } else {
+                                            Modifier.padding(vertical = 4.dp)
+                                        }
+                                    )
+                                    .clip(optionShape)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -955,18 +1081,20 @@ fun rememberSelectKmiDialog(onSelected: (String?) -> Unit): DialogHandle {
                 surface = MaterialTheme.colorScheme.surfaceContainerHigh
             )
         ) {
-            ListDialog(state = rememberUseCaseState(visible = true, onFinishedRequest = {
-                onSelected(selection)
-            }, onCloseRequest = {
-                dismiss()
-            }), header = Header.Default(
-                title = stringResource(R.string.select_kmi),
-            ), selection = ListSelection.Single(
-                showRadioButtons = true,
-                options = options,
-            ) { _, option ->
-                selection = option.titleText
-            })
+            YukiDialogTheme {
+                ListDialog(state = rememberUseCaseState(visible = true, onFinishedRequest = {
+                    onSelected(selection)
+                }, onCloseRequest = {
+                    dismiss()
+                }), header = Header.Default(
+                    title = stringResource(R.string.select_kmi),
+                ), selection = ListSelection.Single(
+                    showRadioButtons = true,
+                    options = options,
+                ) { _, option ->
+                    selection = option.titleText
+                })
+            }
         }
     }
 }
@@ -978,37 +1106,50 @@ private fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val cardColor = if (CardConfig.isCustomBackgroundEnabled) {
+    val cardColor = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
         colorScheme.surfaceContainerLow
     } else {
         colorScheme.background
     }
-    val cardAlpha = cardAlpha
-
-    TopAppBar(
-        title = {
-            Text(
-                stringResource(R.string.install),
-                style = MaterialTheme.typography.titleLarge
+    val title: @Composable () -> Unit = {
+        Text(
+            text = stringResource(R.string.install),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+        )
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.back)
             )
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = cardColor.copy(alpha = cardAlpha),
-            scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
-        ),
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back)
-                )
-            }
-        },
-        windowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-        ),
-        scrollBehavior = scrollBehavior
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = cardColor,
+        scrolledContainerColor = cardColor
     )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            colors = colors,
+            navigationIcon = navigationIcon,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            colors = colors,
+            navigationIcon = navigationIcon,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    }
 }
 
 private fun isKoFile(context: Context, uri: Uri): Boolean {

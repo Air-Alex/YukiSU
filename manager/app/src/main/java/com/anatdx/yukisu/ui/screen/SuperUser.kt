@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -74,6 +73,10 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.FabMenuPresets
 import com.anatdx.yukisu.ui.component.SearchAppBar
 import com.anatdx.yukisu.ui.component.VerticalExpandableFab
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiPullToRefreshBox
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.util.module.ModuleModify
 import com.anatdx.yukisu.ui.viewmodel.AppCategory
 import com.anatdx.yukisu.ui.viewmodel.SortType
@@ -104,7 +107,12 @@ private enum class AppSwipeAction {
 fun SuperUserScreen(navigator: DestinationsNavigator) {
     val viewModel = viewModel<SuperUserViewModel>()
     val scope = rememberCoroutineScope()
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val snackBarHostState = remember { SnackbarHostState() }
@@ -197,7 +205,7 @@ fun SuperUserScreen(navigator: DestinationsNavigator) {
                 onClearClick = { viewModel.search = "" },
                 dropdownContent = {
                     IconButton(onClick = { showBottomSheet = true }) {
-                        Icon(
+                        YukiIcon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = stringResource(id = R.string.settings),
                         )
@@ -246,7 +254,10 @@ private fun TopBarTitle(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(stringResource(R.string.superuser))
+        Text(
+            text = stringResource(R.string.superuser),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null
+        )
 
         if (selectedCategory != AppCategory.ALL) {
             Surface(
@@ -335,7 +346,7 @@ private fun SuperUserContent(
     navigator: DestinationsNavigator,
     scope: CoroutineScope
 ) {
-    PullToRefreshBox(
+    YukiPullToRefreshBox(
         modifier = Modifier.padding(innerPadding),
         onRefresh = { scope.launch { viewModel.fetchAppList() } },
         isRefreshing = viewModel.isRefreshing
@@ -344,9 +355,19 @@ private fun SuperUserContent(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            contentPadding = if (isExpressiveUi) {
+                PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+            } else {
+                PaddingValues(0.dp)
+            },
+            verticalArrangement = if (isExpressiveUi) {
+                Arrangement.spacedBy(ListItemDefaults.SegmentedGap)
+            } else {
+                Arrangement.Top
+            }
         ) {
-            filteredAndSortedAppGroups.forEachIndexed { _, appGroup ->
+            filteredAndSortedAppGroups.forEach { appGroup ->
                 item(key = "${appGroup.uid}-${appGroup.mainApp.packageName}") {
                     AppGroupItem(
                         appGroup = appGroup,
@@ -638,7 +659,7 @@ private fun CategoryChip(
                     enter = scaleIn() + fadeIn(),
                     exit = scaleOut() + fadeOut()
                 ) {
-                    Icon(
+                    YukiIcon(
                         imageVector = Icons.Filled.Check,
                         contentDescription = stringResource(R.string.selected),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -689,7 +710,7 @@ private fun BottomSheetMenuItemView(menuItem: BottomSheetMenuItem) {
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
+                YukiIcon(
                     imageVector = menuItem.icon,
                     contentDescription = stringResource(menuItem.titleRes),
                     modifier = Modifier.size(24.dp)
@@ -756,7 +777,7 @@ private fun EmptyState(
         verticalArrangement = Arrangement.Center,
         modifier = modifier
     ) {
-        Icon(
+        YukiIcon(
             imageVector = if (isSearchEmpty) Icons.Filled.SearchOff else Icons.Filled.Archive,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
@@ -789,6 +810,11 @@ private fun SwipeActionContainer(
     val rootContentColor = Color(0xFF246B35)
     val umountBackgroundColor = Color(0xFFFFE1E1)
     val umountContentColor = Color(0xFF9B1C1C)
+    val containerShape = if (isExpressiveUi) {
+        ListItemDefaults.shapes().shape
+    } else {
+        RoundedCornerShape(0.dp)
+    }
     val scope = rememberCoroutineScope()
     var targetOffsetX by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
@@ -803,9 +829,12 @@ private fun SwipeActionContainer(
         offsetX > 0f -> AppSwipeAction.GrantRoot
         else -> null
     }
+    val actionProgress = (abs(offsetX) / actionThresholdPx).coerceIn(0f, 1f)
+    val remainingProgress = 1f - actionProgress
+    val backgroundAlpha = 1f - remainingProgress * remainingProgress
     val backgroundColor = when (action) {
-        AppSwipeAction.GrantRoot -> rootBackgroundColor
-        AppSwipeAction.UmountModules -> umountBackgroundColor
+        AppSwipeAction.GrantRoot -> rootBackgroundColor.copy(alpha = backgroundAlpha)
+        AppSwipeAction.UmountModules -> umountBackgroundColor.copy(alpha = backgroundAlpha)
         null -> Color.Transparent
     }
     val contentColor = when (action) {
@@ -813,7 +842,6 @@ private fun SwipeActionContainer(
         AppSwipeAction.UmountModules -> umountContentColor
         null -> Color.Transparent
     }
-    val actionProgress = (abs(offsetX) / actionThresholdPx).coerceIn(0f, 1f)
 
     fun boundedSwipeOffset(rawOffset: Float): Float {
         return rawOffset.coerceIn(-maxRevealPx, maxRevealPx)
@@ -822,7 +850,7 @@ private fun SwipeActionContainer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(0.dp))
+            .clip(containerShape)
             .background(backgroundColor)
     ) {
         if (action != null) {
@@ -977,7 +1005,7 @@ private fun SwipeActionHintContent(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(
+        YukiIcon(
             imageVector = icon,
             contentDescription = label,
             tint = contentColor
@@ -1007,6 +1035,11 @@ private fun AppGroupItem(
         appGroup.isPresetManager -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.32f)
         else -> Color.Transparent
     }
+    val expressiveContainerColor = when {
+        appGroup.isDynamicManager -> MaterialTheme.colorScheme.primaryContainer
+        appGroup.isPresetManager -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
+    }
 
     SwipeActionContainer(
         enabled = !viewModel.showBatchActions,
@@ -1024,14 +1057,11 @@ private fun AppGroupItem(
             )
         }
     ) {
-        ListItem(
-            modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { onLongClick() },
-                    onTap = { onClick() }
-                )
-            },
-            colors = ListItemDefaults.colors(containerColor = managerContainerColor),
+        AppGroupListItemLayout(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            classicContainerColor = managerContainerColor,
+            expressiveContainerColor = expressiveContainerColor,
             headlineContent = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1173,6 +1203,49 @@ private fun AppGroupItem(
                     }
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun AppGroupListItemLayout(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    classicContainerColor: Color,
+    expressiveContainerColor: Color,
+    headlineContent: @Composable () -> Unit,
+    supportingContent: @Composable (() -> Unit)?,
+    leadingContent: @Composable (() -> Unit)?,
+    trailingContent: @Composable (() -> Unit)?
+) {
+    if (isExpressiveUi) {
+        SegmentedListItem(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            // App rows form one continuous list, not a bounded settings group. Keep the
+            // first and last rows on the same compact shape as every row in between.
+            shapes = ListItemDefaults.shapes(),
+            colors = ListItemDefaults.segmentedColors(
+                containerColor = expressiveContainerColor.copy(alpha = CardConfig.cardAlpha)
+            ),
+            supportingContent = supportingContent,
+            leadingContent = leadingContent,
+            trailingContent = trailingContent,
+            content = headlineContent
+        )
+    } else {
+        ListItem(
+            modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = { onLongClick() },
+                    onTap = { onClick() }
+                )
+            },
+            colors = ListItemDefaults.colors(containerColor = classicContainerColor),
+            headlineContent = headlineContent,
+            supportingContent = supportingContent,
+            leadingContent = leadingContent,
+            trailingContent = trailingContent
         )
     }
 }

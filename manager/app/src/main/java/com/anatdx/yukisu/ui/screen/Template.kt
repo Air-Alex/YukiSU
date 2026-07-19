@@ -7,22 +7,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ImportExport
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.getSystemService
@@ -35,7 +36,12 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.result.ResultRecipient
 import com.ramcosta.composedestinations.result.getOr
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.component.YukiIcon
+import com.anatdx.yukisu.ui.component.YukiPullToRefreshBox
 import com.anatdx.yukisu.ui.theme.CardConfig
+import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
+import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.viewmodel.TemplateViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,7 +60,12 @@ fun AppProfileTemplateScreen(
 ) {
     val viewModel = viewModel<TemplateViewModel>()
     val scope = rememberCoroutineScope()
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
 
     LaunchedEffect(Unit) {
         if (viewModel.templateList.isEmpty()) {
@@ -124,14 +135,14 @@ fun AppProfileTemplateScreen(
                         )
                     )
                 },
-                icon = { Icon(Icons.Filled.Add, null) },
+                icon = { YukiIcon(Icons.Filled.Add, null) },
                 text = { Text(stringResource(id = R.string.app_profile_template_create)) },
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
             )
         },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     ) { innerPadding ->
-        PullToRefreshBox(
+        YukiPullToRefreshBox(
             modifier = Modifier.padding(innerPadding),
             isRefreshing = viewModel.isRefreshing,
             onRefresh = {
@@ -146,8 +157,16 @@ fun AppProfileTemplateScreen(
                     PaddingValues(bottom = 16.dp + 56.dp + 16.dp /* Scaffold Fab Spacing + Fab container height */)
                 }
             ) {
-                items(viewModel.templateList, key = { it.id }) { app ->
-                    TemplateItem(navigator, app)
+                itemsIndexed(
+                    items = viewModel.templateList,
+                    key = { _, template -> template.id },
+                ) { index, template ->
+                    TemplateItem(
+                        navigator = navigator,
+                        template = template,
+                        index = index,
+                        count = viewModel.templateList.size,
+                    )
                 }
             }
         }
@@ -158,14 +177,45 @@ fun AppProfileTemplateScreen(
 @Composable
 private fun TemplateItem(
     navigator: DestinationsNavigator,
-    template: TemplateViewModel.TemplateInfo
+    template: TemplateViewModel.TemplateInfo,
+    index: Int,
+    count: Int,
 ) {
+    val expressiveShape = if (count == 1) {
+        MaterialTheme.shapes.large
+    } else {
+        ListItemDefaults.segmentedShapes(index, count).shape
+    }
     ListItem(
         modifier = Modifier
+            .then(
+                if (isExpressiveUi) {
+                    Modifier
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = ListItemDefaults.SegmentedGap / 2,
+                        )
+                        .defaultMinSize(minHeight = ExpressiveListGroupMinHeight)
+                        .clip(expressiveShape)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
+                        )
+                } else {
+                    Modifier
+                }
+            )
             .clickable {
                 navigator.navigate(TemplateEditorScreenDestination(template, !template.local))
             },
-        headlineContent = { Text(template.name) },
+        colors = ListItemDefaults.colors(
+            containerColor = if (isExpressiveUi) Color.Transparent else MaterialTheme.colorScheme.surface,
+        ),
+        headlineContent = {
+            Text(
+                text = template.name,
+                fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+            )
+        },
         supportingContent = {
             Column {
                 Text(
@@ -199,64 +249,82 @@ private fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val cardColor = if (CardConfig.isCustomBackgroundEnabled) {
+    val cardColor = if (isExpressiveUi || CardConfig.isCustomBackgroundEnabled) {
         colorScheme.surfaceContainerLow
     } else {
         colorScheme.background
     }
-    val cardAlpha = CardConfig.cardAlpha
+    val title: @Composable () -> Unit = {
+        Text(
+            text = stringResource(R.string.settings_profile_template),
+            fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+        )
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+        }
+    }
+    val actions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = onSync) {
+            YukiIcon(
+                Icons.Filled.Sync,
+                contentDescription = stringResource(id = R.string.app_profile_template_sync)
+            )
+        }
 
-    TopAppBar(
-        title = {
-            Text(stringResource(R.string.settings_profile_template))
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = cardColor.copy(alpha = cardAlpha),
-            scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
-        ),
-        navigationIcon = {
-            IconButton(
-                onClick = onBack
-            ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
-        },
-        actions = {
-            IconButton(onClick = onSync) {
-                Icon(
-                    Icons.Filled.Sync,
-                    contentDescription = stringResource(id = R.string.app_profile_template_sync)
-                )
-            }
+        var showDropdown by remember { mutableStateOf(false) }
+        IconButton(onClick = { showDropdown = true }) {
+            YukiIcon(
+                imageVector = Icons.Filled.Archive,
+                contentDescription = stringResource(id = R.string.app_profile_import_export)
+            )
 
-            var showDropdown by remember { mutableStateOf(false) }
-            IconButton(onClick = {
-                showDropdown = true
+            DropdownMenu(expanded = showDropdown, onDismissRequest = {
+                showDropdown = false
             }) {
-                Icon(
-                    imageVector = Icons.Filled.ImportExport,
-                    contentDescription = stringResource(id = R.string.app_profile_import_export)
-                )
-
-                DropdownMenu(expanded = showDropdown, onDismissRequest = {
+                DropdownMenuItem(text = {
+                    Text(stringResource(id = R.string.app_profile_import_from_clipboard))
+                }, onClick = {
+                    onImport()
                     showDropdown = false
-                }) {
-                    DropdownMenuItem(text = {
-                        Text(stringResource(id = R.string.app_profile_import_from_clipboard))
-                    }, onClick = {
-                        onImport()
-                        showDropdown = false
-                    })
-                    DropdownMenuItem(text = {
-                        Text(stringResource(id = R.string.app_profile_export_to_clipboard))
-                    }, onClick = {
-                        onExport()
-                        showDropdown = false
-                    })
-                }
+                })
+                DropdownMenuItem(text = {
+                    Text(stringResource(id = R.string.app_profile_export_to_clipboard))
+                }, onClick = {
+                    onExport()
+                    showDropdown = false
+                })
             }
-        },
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        scrollBehavior = scrollBehavior
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = cardColor,
+        scrolledContainerColor = cardColor
     )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = title,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    }
 }
 
 @Composable
@@ -265,8 +333,12 @@ fun LabelText(label: String) {
         modifier = Modifier
             .padding(top = 4.dp, end = 4.dp)
             .background(
-                Color.Black,
-                shape = RoundedCornerShape(4.dp)
+                if (isExpressiveUi) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    Color.Black
+                },
+                shape = if (isExpressiveUi) MaterialTheme.shapes.small else RoundedCornerShape(4.dp)
             )
     ) {
         Text(
@@ -274,7 +346,11 @@ fun LabelText(label: String) {
             modifier = Modifier.padding(vertical = 2.dp, horizontal = 5.dp),
             style = TextStyle(
                 fontSize = 8.sp,
-                color = Color.White,
+                color = if (isExpressiveUi) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    Color.White
+                },
             )
         )
     }

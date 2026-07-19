@@ -2,6 +2,7 @@ package com.anatdx.yukisu.ui.screen
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -16,20 +17,27 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.dropUnlessResumed
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.result.ResultBackNavigator
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.profile.RootProfileConfig
+import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.deleteAppProfileTemplate
 import com.anatdx.yukisu.ui.util.getAppProfileTemplate
 import com.anatdx.yukisu.ui.util.setAppProfileTemplate
@@ -56,7 +64,12 @@ fun TemplateEditorScreen(
         mutableStateOf(initialTemplate)
     }
 
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = if (isExpressiveUi) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    } else {
+        TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
+    }
 
     BackHandler {
         navigator.navigateBack(result = !readOnly)
@@ -103,16 +116,36 @@ fun TemplateEditorScreen(
         },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .pointerInteropFilter {
-                    // disable click and ripple if readOnly
-                    readOnly
-                }
+        MaterialTheme(
+            colorScheme = MaterialTheme.colorScheme.copy(
+                surface = if (isExpressiveUi) Color.Transparent else MaterialTheme.colorScheme.surface
+            )
         ) {
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .then(
+                        if (isExpressiveUi) {
+                            Modifier
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .clip(MaterialTheme.shapes.large)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceContainer.copy(
+                                        alpha = cardAlpha
+                                    )
+                                )
+                                .padding(vertical = 8.dp)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .verticalScroll(rememberScrollState())
+                    .pointerInteropFilter {
+                        // disable click and ripple if readOnly
+                        readOnly
+                    }
+            ) {
             if (isCreation) {
                 var errorHint by remember {
                     mutableStateOf("")
@@ -186,6 +219,7 @@ fun TemplateEditorScreen(
                         template = this
                     }
                 })
+            }
         }
     }
 }
@@ -238,41 +272,76 @@ private fun TopBar(
     onSave: () -> Unit = {},
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
-    TopAppBar(
-        title = {
-            Column {
-                Text(title)
-                if (summary.isNotBlank()) {
-                    Text(
-                        text = summary,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+    val titleContent: @Composable () -> Unit = {
+        Column {
+            Text(
+                text = title,
+                fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
+            )
+            if (summary.isNotBlank()) {
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
-        }, navigationIcon = {
-            IconButton(
-                onClick = onBack
-            ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
-        }, actions = {
-            if (readOnly) {
-                return@TopAppBar
-            }
+        }
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        IconButton(onClick = onBack) {
+            YukiIcon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+        }
+    }
+    val actions: @Composable RowScope.() -> Unit = {
+        if (!readOnly) {
             IconButton(onClick = onDelete) {
-                Icon(
+                YukiIcon(
                     Icons.Filled.DeleteForever,
                     contentDescription = stringResource(id = R.string.app_profile_template_delete)
                 )
             }
             IconButton(onClick = onSave) {
-                Icon(
+                YukiIcon(
                     imageVector = Icons.Filled.Save,
                     contentDescription = stringResource(id = R.string.app_profile_template_save)
                 )
             }
+        }
+    }
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = if (isExpressiveUi) {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        } else {
+            MaterialTheme.colorScheme.background
         },
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        scrollBehavior = scrollBehavior
+        scrolledContainerColor = if (isExpressiveUi) {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        } else {
+            MaterialTheme.colorScheme.background
+        },
     )
+    val windowInsets = WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+    )
+
+    if (isExpressiveUi) {
+        LargeFlexibleTopAppBar(
+            title = titleContent,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        TopAppBar(
+            title = titleContent,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            colors = colors,
+            windowInsets = windowInsets,
+            scrollBehavior = scrollBehavior,
+        )
+    }
 }
 
 @Composable
@@ -283,7 +352,11 @@ private fun TextEdit(
     isError: Boolean = false,
     onValueChange: (String) -> Unit = {}
 ) {
-    ListItem(headlineContent = {
+    ListItem(
+        colors = ListItemDefaults.colors(
+            containerColor = if (isExpressiveUi) Color.Transparent else MaterialTheme.colorScheme.surface,
+        ),
+        headlineContent = {
         val keyboardController = LocalSoftwareKeyboardController.current
         OutlinedTextField(
             value = text,

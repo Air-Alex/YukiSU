@@ -38,6 +38,7 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
+import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
@@ -248,9 +249,9 @@ fun PartitionManagerScreen(navigator: DestinationsNavigator) {
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = if (CardConfig.isCustomBackgroundEnabled) {
-                        MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = CardConfig.cardAlpha)
+                        MaterialTheme.colorScheme.surfaceContainerLow
                     } else {
-                        MaterialTheme.colorScheme.background.copy(alpha = CardConfig.cardAlpha)
+                        MaterialTheme.colorScheme.background
                     }
                 )
             )
@@ -816,7 +817,7 @@ fun PartitionActionDialog(
         onConfirm = onFlash
     )
     
-    AlertDialog(
+    YukiAlertDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(

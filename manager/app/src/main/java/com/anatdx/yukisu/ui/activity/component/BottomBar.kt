@@ -2,6 +2,8 @@ package com.anatdx.yukisu.ui.activity.component
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -15,10 +17,11 @@ import com.ramcosta.composedestinations.spec.RouteOrDirection
 import com.ramcosta.composedestinations.utils.isRouteOnBackStackAsState
 import com.ramcosta.composedestinations.utils.rememberDestinationsNavigator
 import com.anatdx.yukisu.ui.MainActivity
+import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.activity.util.*
 import com.anatdx.yukisu.ui.screen.BottomBarDestination
-import com.anatdx.yukisu.ui.theme.CardConfig.cardAlpha
 import com.anatdx.yukisu.ui.theme.CardConfig.cardElevation
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
 
 @SuppressLint("ContextCastToActivity")
@@ -38,132 +41,121 @@ fun BottomBar(navController: NavHostController) {
     val moduleCount by AppData.DataRefreshManager.moduleCount.collectAsState()
 
 
-    NavigationBar(
-        modifier = Modifier.windowInsetsPadding(
-            WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-        ),
-        containerColor = TopAppBarDefaults.topAppBarColors(
-            containerColor = cardColor.copy(alpha = cardAlpha),
-            scrolledContainerColor = cardColor.copy(alpha = cardAlpha)
-        ).containerColor,
-        tonalElevation = cardElevation
-    ) {
-        BottomBarDestination.entries.forEach { destination ->
-            if (destination == BottomBarDestination.SuperUser) {
-                if (!isFullFeatured && destination.rootRequired) return@forEach
-                val isCurrentDestOnBackStack by navController.isRouteOnBackStackAsState(destination.direction)
+    val destinations = BottomBarDestination.entries.filter {
+        isFullFeatured || !it.rootRequired
+    }
+    val containerColor = cardColor
 
-                NavigationBarItem(
-                    selected = isCurrentDestOnBackStack,
-                    onClick = {
-                        if (isCurrentDestOnBackStack) {
-                            navigator.popBackStack(destination.direction, false)
-                        }
-                        navigator.navigate(destination.direction) {
-                            popUpTo(NavGraphs.root) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+    fun navigate(destination: BottomBarDestination, selected: Boolean) {
+        if (selected) navigator.popBackStack(destination.direction, false)
+        navigator.navigate(destination.direction) {
+            popUpTo(NavGraphs.root) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    if (isExpressiveUi) {
+        ShortNavigationBar(
+            containerColor = containerColor,
+            windowInsets = WindowInsets.navigationBars.only(
+                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+            ),
+            arrangement = ShortNavigationBarArrangement.EqualWeight
+        ) {
+            destinations.forEach { destination ->
+                val selected by navController.isRouteOnBackStackAsState(destination.direction)
+                val badgeCount = when (destination) {
+                    BottomBarDestination.SuperUser -> superuserCount
+                    BottomBarDestination.Module -> moduleCount
+                    else -> 0
+                }
+                ShortNavigationBarItem(
+                    selected = selected,
+                    onClick = { navigate(destination, selected) },
                     icon = {
-                        BadgedBox(
-                            badge = {
-                                if (superuserCount > 0 && !isHideOtherInfo) {
-                                    Badge(
-                                        containerColor = MaterialTheme.colorScheme.secondary
-                                    ) {
-                                        Text(
-                                            text = superuserCount.toString(),
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                            }
-                        ) {
-                            if (isCurrentDestOnBackStack) {
-                                Icon(destination.iconSelected, stringResource(destination.label))
-                            } else {
-                                Icon(destination.iconNotSelected, stringResource(destination.label))
-                            }
-                        }
+                        DestinationIcon(destination, selected, badgeCount, !isHideOtherInfo)
                     },
-                    label = { Text(stringResource(destination.label),style = MaterialTheme.typography.labelMedium) },
-                    alwaysShowLabel = false
+                    label = {
+                        Text(
+                            stringResource(destination.label),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
                 )
-            } else if (destination == BottomBarDestination.Module) {
-                if (!isFullFeatured && destination.rootRequired) return@forEach
-                val isCurrentDestOnBackStack by navController.isRouteOnBackStackAsState(destination.direction)
-
+            }
+        }
+    } else {
+        NavigationBar(
+            modifier = Modifier.windowInsetsPadding(
+                WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+            ),
+            containerColor = containerColor,
+            tonalElevation = cardElevation
+        ) {
+            destinations.forEach { destination ->
+                val selected by navController.isRouteOnBackStackAsState(destination.direction)
+                val badgeCount = when (destination) {
+                    BottomBarDestination.SuperUser -> superuserCount
+                    BottomBarDestination.Module -> moduleCount
+                    else -> 0
+                }
                 NavigationBarItem(
-                    selected = isCurrentDestOnBackStack,
-                    onClick = {
-                        if (isCurrentDestOnBackStack) {
-                            navigator.popBackStack(destination.direction, false)
-                        }
-                        navigator.navigate(destination.direction) {
-                            popUpTo(NavGraphs.root) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+                    selected = selected,
+                    onClick = { navigate(destination, selected) },
                     icon = {
-                        BadgedBox(
-                            badge = {
-                                if (moduleCount > 0 && !isHideOtherInfo) {
-                                    Badge(
-                                        containerColor = MaterialTheme.colorScheme.secondary)
-                                    {
-                                        Text(
-                                            text = moduleCount.toString(),
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                            }
-                        ) {
-                            if (isCurrentDestOnBackStack) {
-                                Icon(destination.iconSelected, stringResource(destination.label))
-                            } else {
-                                Icon(destination.iconNotSelected, stringResource(destination.label))
-                            }
-                        }
+                        DestinationIcon(destination, selected, badgeCount, !isHideOtherInfo)
                     },
-                    label = { Text(stringResource(destination.label),style = MaterialTheme.typography.labelMedium) },
-                    alwaysShowLabel = false
-                )
-            } else {
-                if (!isFullFeatured && destination.rootRequired) return@forEach
-                val isCurrentDestOnBackStack by navController.isRouteOnBackStackAsState(destination.direction)
-
-                NavigationBarItem(
-                    selected = isCurrentDestOnBackStack,
-                    onClick = {
-                        if (isCurrentDestOnBackStack) {
-                            navigator.popBackStack(destination.direction, false)
-                        }
-                        navigator.navigate(destination.direction) {
-                            popUpTo(NavGraphs.root) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                    label = {
+                        Text(
+                            stringResource(destination.label),
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     },
-                    icon = {
-                        if (isCurrentDestOnBackStack) {
-                            Icon(destination.iconSelected, stringResource(destination.label))
-                        } else {
-                            Icon(destination.iconNotSelected, stringResource(destination.label))
-                        }
-                    },
-                    label = { Text(stringResource(destination.label),style = MaterialTheme.typography.labelMedium) },
                     alwaysShowLabel = false
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DestinationIcon(
+    destination: BottomBarDestination,
+    selected: Boolean,
+    badgeCount: Int,
+    showBadge: Boolean
+) {
+    val icon: @Composable () -> Unit = {
+        val imageVector = if (isExpressiveUi && destination == BottomBarDestination.Settings) {
+            Icons.Filled.SettingsSuggest
+        } else if (selected) {
+            destination.iconSelected
+        } else {
+            destination.iconNotSelected
+        }
+        YukiIcon(
+            imageVector = imageVector,
+            contentDescription = stringResource(destination.label)
+        )
+    }
+
+    if (destination != BottomBarDestination.SuperUser &&
+        destination != BottomBarDestination.Module
+    ) {
+        icon()
+        return
+    }
+
+    BadgedBox(
+        badge = {
+            if (badgeCount > 0 && showBadge) {
+                Badge(containerColor = MaterialTheme.colorScheme.secondary) {
+                    Text(badgeCount.toString(), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    ) {
+        icon()
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -31,6 +32,7 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.theme.ThemeConfig
 import com.anatdx.yukisu.ui.theme.ThemeColors
 import com.anatdx.yukisu.ui.theme.ThemeManager
+import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -155,11 +157,17 @@ fun SuperKeyDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(28.dp),
+                shape = if (isExpressiveUi) MaterialTheme.shapes.extraLarge else RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = if (isExpressiveUi) {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = if (isExpressiveUi) 0.dp else 6.dp
+                )
             ) {
                 Column(
                     modifier = Modifier
@@ -180,7 +188,11 @@ fun SuperKeyDialog(
                     // Title
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = if (isExpressiveUi) {
+                            MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal)
+                        } else {
+                            MaterialTheme.typography.headlineSmall
+                        },
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
