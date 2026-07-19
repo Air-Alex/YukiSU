@@ -705,7 +705,7 @@ private fun ZygoteMonitorRow(zygote: ZygoteMonitorEntry, onStatusClick: () -> Un
                     .size(28.dp),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 zygote.name,
                 maxLines = 1,
@@ -750,7 +750,7 @@ private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusCli
                     .size(28.dp),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 module.id,
                 maxLines = 1,
@@ -797,7 +797,7 @@ private fun NativeProcessMonitorRow(process: NativeProcessEntry, onStatusClick: 
                     .size(28.dp),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 process.process,
                 maxLines = 1,

@@ -743,7 +743,6 @@ private fun StatusCard(
                                 // matching the manager version's "(code/uapi)" style.
                                 val ksuver = systemStatus.ksuVersion
                                 val versionText = when {
-                                    ksuver == null -> it
                                     systemStatus.kernelUapiVersion > 0 ->
                                         "$it ($ksuver/${systemStatus.kernelUapiVersion})"
                                     else -> "$it ($ksuver)"

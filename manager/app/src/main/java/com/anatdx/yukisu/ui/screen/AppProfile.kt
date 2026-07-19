@@ -288,7 +288,7 @@ private fun AppProfileInner(
             ) {
                 if (uidApps.size > 1) {
                     ListItem(
-                        headlineContent = {
+                        content = {
                             Text(
                                 text = "UID $uid",
                                 style = MaterialTheme.typography.titleMedium
@@ -312,7 +312,7 @@ private fun AppProfileInner(
                 } else {
                     AppMenuBox(packageName) {
                         ListItem(
-                            headlineContent = {
+                            content = {
                                 Text(
                                     text = appLabel,
                                     style = MaterialTheme.typography.titleMedium
@@ -561,7 +561,7 @@ private fun SharedUidAppsCard(
                         MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
                     ),
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = {
+                content = {
                     Text(
                         text = app.label,
                         fontWeight = FontWeight.Normal,
@@ -605,7 +605,7 @@ private fun SharedUidAppsCard(
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 ListItem(
-                    headlineContent = {
+                    content = {
                         Text(
                             text = app.label,
                             maxLines = 1,
@@ -700,7 +700,7 @@ private fun ProfileBox(
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         ListItem(
-            headlineContent = {
+            content = {
                 Text(
                     text = stringResource(R.string.profile),
                     style = MaterialTheme.typography.titleMedium
@@ -725,7 +725,7 @@ private fun ProfileBox(
         )
 
         ListItem(
-            headlineContent = {
+            content = {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -350,7 +350,7 @@ fun InstallScreen(
                         .padding(bottom = 12.dp),
                 ) {
                     ListItem(
-                        headlineContent = {
+                        content = {
                             Text(stringResource(id = R.string.install_upload_lkm_file))
                         },
                         supportingContent = {
@@ -607,7 +607,7 @@ fun InstallScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             ListItem(
-                                headlineContent = {
+                                content = {
                                     Text(stringResource(R.string.partition_manager))
                                 },
                                 supportingContent = {
@@ -951,7 +951,7 @@ private fun SelectInstallMethod(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        headlineContent = {
+                        content = {
                             Text(
                                 stringResource(R.string.Lkm_install_methods),
                                 style = if (isExpressiveUi) {

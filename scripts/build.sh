@@ -254,7 +254,7 @@ cd "$MANAGER_DIR"
 ./gradlew assembleRelease --build-cache --no-daemon -PABI="$ANDROID_ABI"
 echo "    APK built"
 
-APK_DIR="$MANAGER_DIR/app/build/outputs/apk/release"
+APK_DIR="$MANAGER_DIR/app/build/outputs/renamed_apk/release"
 echo ""
 echo "=== Build complete ==="
 echo "APK: $APK_DIR"

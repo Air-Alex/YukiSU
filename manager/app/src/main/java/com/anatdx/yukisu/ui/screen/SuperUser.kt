@@ -118,7 +118,10 @@ fun SuperUserScreen(navigator: DestinationsNavigator) {
     val context = LocalContext.current
     val snackBarHostState = remember { SnackbarHostState() }
 
-    val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val bottomSheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
     var showBottomSheet by remember { mutableStateOf(false) }
 
     val backupLauncher = ModuleModify.rememberAllowlistBackupLauncher(context, snackBarHostState)
@@ -1244,7 +1247,7 @@ private fun AppGroupListItemLayout(
                 )
             },
             colors = ListItemDefaults.colors(containerColor = classicContainerColor),
-            headlineContent = headlineContent,
+            content = headlineContent,
             supportingContent = supportingContent,
             leadingContent = leadingContent,
             trailingContent = trailingContent

@@ -1,17 +1,58 @@
 @file:Suppress("UnstableApiUsage")
 
-import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.BuiltArtifactsLoader
 import com.android.build.gradle.tasks.PackageAndroidArtifact
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import java.io.File
 
 plugins {
     alias(libs.plugins.agp.app)
-    alias(libs.plugins.kotlin)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.lsplugin.apksign)
     id("kotlin-parcelize")
 
 
+}
+
+@CacheableTask
+abstract class CopyRenamedApkTask : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val inputApkFolder: DirectoryProperty
+
+    @get:Internal
+    abstract val builtArtifactsLoader: Property<BuiltArtifactsLoader>
+
+    @get:OutputDirectory
+    abstract val outputApkFolder: DirectoryProperty
+
+    @get:Input
+    abstract val outputFileName: Property<String>
+
+    @TaskAction
+    fun copyApk() {
+        val builtArtifacts = builtArtifactsLoader.get().load(inputApkFolder.get())
+            ?: error("Cannot load APK artifacts")
+        val sourceApk = builtArtifacts.elements.singleOrNull()?.outputFile
+            ?: error("Expected exactly one APK for ${builtArtifacts.variantName}")
+        val destinationFolder = outputApkFolder.get().asFile
+        check(destinationFolder.deleteRecursively()) { "Cannot clean $destinationFolder" }
+        check(destinationFolder.mkdirs()) { "Cannot create $destinationFolder" }
+        val destinationApk = File(destinationFolder, outputFileName.get())
+        File(sourceApk).copyTo(destinationApk, overwrite = true)
+    }
 }
 
 val managerVersionCode: Int by rootProject.extra
@@ -97,19 +138,6 @@ android {
         }
     }
 
-    applicationVariants.all {
-        val abi = "arm64-v8a"
-        outputs.forEach {
-            val output = it as BaseVariantOutputImpl
-            output.outputFileName = "YukiSU_${managerVersionName}_${managerVersionCode}-${abi}-$name.apk"
-        }
-        kotlin.sourceSets {
-            getByName(name) {
-                kotlin.srcDir("build/generated/ksp/$name/kotlin")
-            }
-        }
-    }
-
     // https://stackoverflow.com/a/77745844
     tasks.withType<PackageAndroidArtifact> {
         doFirst { appMetadata.asFile.orNull?.writeText("") }
@@ -122,6 +150,25 @@ android {
 
     androidResources {
         generateLocaleConfig = true
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val outputName =
+            "YukiSU_${managerVersionName}_${managerVersionCode}-arm64-v8a-${variant.name}.apk"
+        val copyTask = tasks.register<CopyRenamedApkTask>(
+            "copyRenamed${variant.name.replaceFirstChar(Char::uppercaseChar)}Apk"
+        ) {
+            builtArtifactsLoader.set(variant.artifacts.getBuiltArtifactsLoader())
+            outputApkFolder.set(
+                layout.buildDirectory.dir("outputs/renamed_apk/${variant.name}")
+            )
+            outputFileName.set(outputName)
+        }
+        variant.artifacts.use(copyTask)
+            .wiredWith(CopyRenamedApkTask::inputApkFolder)
+            .toListenTo(SingleArtifact.APK)
     }
 }
 

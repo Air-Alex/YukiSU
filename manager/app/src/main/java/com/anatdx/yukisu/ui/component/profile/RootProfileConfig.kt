@@ -168,7 +168,7 @@ fun RootProfileConfig(
             profile.flags and Natives.FLAG_KSU_NO_NEW_PRIVS != 0L
         }
         ListItem(
-            headlineContent = { Text(stringResource(R.string.profile_no_new_privs)) },
+            content = { Text(stringResource(R.string.profile_no_new_privs)) },
             supportingContent = {
                 Text(stringResource(R.string.profile_no_new_privs_summary))
             },
@@ -368,7 +368,7 @@ fun CapsPanel(
 @Composable
 private fun UidPanel(uid: Int, label: String, onUidChange: (Int) -> Unit) {
 
-    ListItem(headlineContent = {
+    ListItem(content = {
         var isError by remember {
             mutableStateOf(false)
         }
@@ -493,7 +493,7 @@ private fun SELinuxPanel(
         }
     }
 
-    ListItem(headlineContent = {
+    ListItem(content = {
         OutlinedTextField(
             modifier = Modifier
                 .fillMaxWidth()

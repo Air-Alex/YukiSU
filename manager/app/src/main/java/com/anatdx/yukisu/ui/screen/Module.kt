@@ -46,7 +46,7 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Wysiwyg
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -138,8 +138,9 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
         viewModel.initializeCache(context)
     }
 
-    val bottomSheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
+    val bottomSheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
     )
     var showBottomSheet by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -664,7 +665,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                                 onClick = { shortcutIconUri = defaultShortcutIconUri }
                             ) {
                                 YukiIcon(
-                                    imageVector = Icons.Filled.Undo,
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
                                 )

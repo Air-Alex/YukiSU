@@ -211,7 +211,7 @@ private fun TemplateItem(
         colors = ListItemDefaults.colors(
             containerColor = if (isExpressiveUi) Color.Transparent else MaterialTheme.colorScheme.surface,
         ),
-        headlineContent = {
+        content = {
             Text(
                 text = template.name,
                 fontWeight = if (isExpressiveUi) FontWeight.Normal else null,

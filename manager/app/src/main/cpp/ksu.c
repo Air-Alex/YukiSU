@@ -385,6 +385,7 @@ bool authenticate_superkey(const char *superkey) {
   // Use prctl syscall with SuperKey magic
   // prctl(KSU_PRCTL_SUPERKEY_AUTH, &cmd_struct, 0, 0, 0)
   long ret = prctl(KSU_PRCTL_SUPERKEY_AUTH, &prctl_cmd, 0, 0, 0);
+  (void)ret;
 
   // Give task_work more time to execute
   // task_work runs asynchronously, need to wait for completion
@@ -447,6 +448,7 @@ bool authenticate_superkey(const char *superkey) {
     // reboot(KSU_INSTALL_MAGIC1, KSU_SUPERKEY_MAGIC2, 0, &cmd)
     long ret = syscall(__NR_reboot, KSU_INSTALL_MAGIC1, KSU_SUPERKEY_MAGIC2, 0,
                        &reboot_cmd);
+    (void)ret;
 
     // Give task_work a chance to execute
     usleep(10000); // 10ms

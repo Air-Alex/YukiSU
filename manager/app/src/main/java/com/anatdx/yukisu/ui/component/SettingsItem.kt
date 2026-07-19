@@ -49,7 +49,7 @@ fun SwitchItem(
                     indication = LocalIndication.current,
                     onValueChange = onCheckedChange
                 ),
-            headlineContent = {
+            content = {
                 TextRow(
                     leadingContent = if (beta) {
                         {
@@ -103,7 +103,7 @@ fun RadioItem(
     onClick: () -> Unit,
 ) {
     ListItem(
-        headlineContent = {
+        content = {
             Text(title)
         },
         leadingContent = {

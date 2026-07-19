@@ -356,7 +356,7 @@ private fun TextEdit(
         colors = ListItemDefaults.colors(
             containerColor = if (isExpressiveUi) Color.Transparent else MaterialTheme.colorScheme.surface,
         ),
-        headlineContent = {
+        content = {
         val keyboardController = LocalSoftwareKeyboardController.current
         OutlinedTextField(
             value = text,

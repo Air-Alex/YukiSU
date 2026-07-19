@@ -38,7 +38,7 @@ fun TemplateConfig(
     val profileTemplates = listAppProfileTemplates()
     val noTemplates = profileTemplates.isEmpty()
 
-    ListItem(headlineContent = {
+    ListItem(content = {
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { expanded = it },
