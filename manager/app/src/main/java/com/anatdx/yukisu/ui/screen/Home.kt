@@ -337,6 +337,8 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                     InfoCard(
                         systemInfo = viewModel.systemInfo,
                         isSimpleMode = viewModel.isSimpleMode,
+                        canReadHookType = viewModel.systemStatus.isManager &&
+                            viewModel.systemStatus.ksuVersion != null,
                         isHideZygiskImplement = viewModel.isHideZygiskImplement,
                         isHideMetaModuleImplement = viewModel.isHideMetaModuleImplement,
                         isHideSeccompStatus = viewModel.isHideSeccompStatus,
@@ -1116,6 +1118,7 @@ private data class HomeInfoEntry(
 private fun InfoCard(
     systemInfo: HomeViewModel.SystemInfo,
     isSimpleMode: Boolean,
+    canReadHookType: Boolean,
     isHideZygiskImplement: Boolean,
     isHideMetaModuleImplement: Boolean,
     isHideSeccompStatus: Boolean = false,
@@ -1151,6 +1154,13 @@ private fun InfoCard(
         2 -> stringResource(R.string.seccomp_status_filter)
         else -> stringResource(R.string.seccomp_status_unknown)
     }
+    val hookType = remember(canReadHookType) {
+        if (canReadHookType) {
+            runCatching(Natives::getHookType).getOrNull()?.takeIf(String::isNotBlank)
+        } else {
+            null
+        }
+    }
     val entries = buildList {
         add(HomeInfoEntry(
             label = stringResource(R.string.home_kernel),
@@ -1181,10 +1191,10 @@ private fun InfoCard(
             contentColor = if (hasMismatch) MaterialTheme.colorScheme.error else Color.Unspecified,
             onClick = { showKsudDialog = true },
         ))
-        if (!isSimpleMode) {
+        if (!isSimpleMode && hookType != null) {
             add(HomeInfoEntry(
                 label = stringResource(R.string.home_hook_type),
-                content = Natives.getHookType(),
+                content = hookType,
                 icon = Icons.Default.Link,
             ))
         }
