@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
+import com.anatdx.yukisu.ui.util.KsuCliKt;
+
 public class BootCompletedReceiver extends BroadcastReceiver {
     public static final String ACTION_LAUNCH = "com.anatdx.yukisu.magica.LAUNCH";
 
@@ -17,6 +19,9 @@ public class BootCompletedReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
                 && !Intent.ACTION_BOOT_COMPLETED.equals(action)
                 && !ACTION_LAUNCH.equals(action)) {
+            return;
+        }
+        if (KsuCliKt.rootAvailable()) {
             return;
         }
 

@@ -101,6 +101,9 @@ fun SettingScreen(navigator: DestinationsNavigator) {
     var autoJailbreak by rememberSaveable {
         mutableStateOf(MagicaHelper.isAutoJailbreakEnabled(context))
     }
+    val isLateLoadMode = remember {
+        runCatching { Natives.isLateLoadMode }.getOrDefault(false)
+    }
 
     Scaffold(
         topBar = {
@@ -468,6 +471,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         icon = Icons.Filled.ElectricalServices,
                         title = stringResource(R.string.settings_auto_jailbreak),
                         summary = stringResource(R.string.settings_auto_jailbreak_summary),
+                        enabled = isLateLoadMode,
                         checked = autoJailbreak,
                         onCheckedChange = { enabled ->
                             MagicaHelper.setAutoJailbreakEnabled(context, enabled)
