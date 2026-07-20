@@ -350,3 +350,83 @@ jobs:
             pip3 install telethon
             python3 "$GITHUB_WORKSPACE/scripts/ksubot.py" "${APKS[@]}"
           fi
+
+      - name: Sign CI update metadata with GPG
+        if: steps.gpg_check.outputs.available == 'true' && github.ref_name == 'main'
+        env:
+          CI_BRANCH: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_RUN_ID: ${{ github.run_id }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mapfile -t MANAGER_APKS < <(find dist -maxdepth 1 -type f -name '*.apk')
+          test "${#MANAGER_APKS[@]}" -eq 1
+          MANAGER_APK=${MANAGER_APKS[0]}
+          mkdir -p update-metadata
+          if command -v apkanalyzer >/dev/null 2>&1; then
+            CI_VERSION_CODE=$(apkanalyzer manifest version-code "$MANAGER_APK")
+          else
+            SDK_ROOT=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
+            test -n "$SDK_ROOT"
+            CI_VERSION_CODE=$("$SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer" \
+              manifest version-code "$MANAGER_APK")
+          fi
+          [[ "$CI_VERSION_CODE" =~ ^[0-9]+$ ]]
+          export CI_COMMIT_MESSAGE
+          export CI_VERSION_CODE
+          CI_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata = {
+              "schema_version": 1,
+              "repository": "Anatdx/YukiSU",
+              "workflow": "build-manager.yml",
+              "branch": os.environ["CI_BRANCH"],
+              "run_id": int(os.environ["CI_RUN_ID"]),
+              "version_code": int(os.environ["CI_VERSION_CODE"]),
+              "commit_sha": os.environ["CI_COMMIT_SHA"],
+              "commit_message": os.environ["CI_COMMIT_MESSAGE"],
+          }
+          Path("update-metadata/ci-update.json").write_text(
+              json.dumps(metadata, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gpg --detach-sign --local-user 'C09CE484EEA3F2D88E9CDCC8EBDB0D663D7AB2F6!' \
+            --batch --yes --pinentry-mode loopback \
+            --passphrase "$GPG_PASSPHRASE" \
+            --output update-metadata/ci-update.sig update-metadata/ci-update.json
+          test -s update-metadata/ci-update.json
+          test -s update-metadata/ci-update.sig
+
+      - name: Upload CI update metadata
+        if: steps.gpg_check.outputs.available == 'true' && github.ref_name == 'main'
+        uses: actions/upload-artifact@v6
+        with:
+          name: Manager-update-metadata
+          path: update-metadata/
+
+      - name: Verify Cloudflare Pages metadata payload
+        if: steps.gpg_check.outputs.available == 'true' && github.ref_name == 'main'
+        run: |
+          set -euo pipefail
+          mapfile -t METADATA_FILES < <(
+            find update-metadata -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort
+          )
+          test "${#METADATA_FILES[@]}" -eq 2
+          test "${METADATA_FILES[0]}" = 'ci-update.json'
+          test "${METADATA_FILES[1]}" = 'ci-update.sig'
+          test -s update-metadata/ci-update.json
+          test -s update-metadata/ci-update.sig
+
+      - name: Deploy CI update metadata to Cloudflare Pages
+        if: steps.gpg_check.outputs.available == 'true' && github.ref_name == 'main'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy update-metadata --project-name=yukisuupdates --branch=main

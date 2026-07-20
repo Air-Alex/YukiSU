@@ -76,6 +76,7 @@ import com.anatdx.yukisu.ui.component.rememberSuperKeyDialog
 import com.anatdx.yukisu.ui.component.SuperKeyAuthResult
 import com.anatdx.yukisu.ui.util.KsuCli
 import com.anatdx.yukisu.ui.activity.util.AppData
+import com.anatdx.yukisu.update.CiUpdateCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -287,6 +288,8 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                             }
                         }
                     )
+
+                    CiUpdateCard()
 
                     // 警告信息
                     if (viewModel.systemStatus.requireNewKernel) {

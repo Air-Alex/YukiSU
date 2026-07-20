@@ -129,6 +129,9 @@
     <string name="settings_check_ci_update_summary">打开应用时检测经过签名的 nightly 管理器版本，默认关闭</string>
     <string name="ci_update_title">发现新 CI 版本</string>
     <string name="ci_update_message">发现新 CI 版本 %1$d，当前版本为 %2$d。</string>
+    <string name="ci_update_available_card">发现最新 CI 版本 %1$d，点击下载</string>
+    <string name="ci_update_check_failed_card">CI 更新检测失败，点击重试</string>
+    <string name="ci_update_commit">提交 %1$s</string>
     <string name="ci_update_download">下载并安装</string>
     <string name="ci_update_downloading">正在下载… %1$d%%</string>
     <string name="ci_update_verifying">正在校验 PGP 与 APK 签名…</string>

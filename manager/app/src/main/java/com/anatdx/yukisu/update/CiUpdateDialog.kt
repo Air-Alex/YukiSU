@@ -1,15 +1,20 @@
 package com.anatdx.yukisu.update
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -22,9 +27,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
+import com.anatdx.yukisu.ui.screen.WarningCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,28 +47,101 @@ private enum class CiUpdateStage {
     FAILED,
 }
 
+private sealed interface CiUpdateCheckState {
+    data object Hidden : CiUpdateCheckState
+    data object Checking : CiUpdateCheckState
+    data object Current : CiUpdateCheckState
+    data object Failed : CiUpdateCheckState
+    data class Available(val run: CiRun) : CiUpdateCheckState
+}
+
 @Composable
-fun CiUpdateDialog() {
+fun CiUpdateCard() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    var run by remember { mutableStateOf<CiRun?>(null) }
+    var checkRequest by remember { mutableIntStateOf(0) }
+    var checkState by remember { mutableStateOf<CiUpdateCheckState>(CiUpdateCheckState.Hidden) }
+    var showDialog by remember { mutableStateOf(false) }
     var stage by remember { mutableStateOf(CiUpdateStage.READY) }
     var progress by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    DisposableEffect(lifecycleOwner) {
+        var started = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    if (!started) {
+                        started = true
+                        if (checkState != CiUpdateCheckState.Checking) checkRequest++
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> started = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (started) checkRequest++
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(checkRequest) {
+        if (checkRequest == 0) return@LaunchedEffect
         val settings = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val updateChecksEnabled = settings.getBoolean("check_update", true)
         val ciUpdateChecksEnabled = settings.getBoolean("check_ci_update", false)
-        if (!updateChecksEnabled || !ciUpdateChecksEnabled) return@LaunchedEffect
+        if (!updateChecksEnabled || !ciUpdateChecksEnabled) {
+            checkState = CiUpdateCheckState.Hidden
+            showDialog = false
+            return@LaunchedEffect
+        }
 
-        runCatching { CiUpdateManager.latestSuccessfulMainRun() }
-            .getOrNull()
-            ?.takeIf { it.runId > BuildConfig.CI_RUN_ID }
-            ?.let { run = it }
+        val forceCheck = checkState == CiUpdateCheckState.Failed
+        checkState = CiUpdateCheckState.Checking
+        val latestRun = try {
+            CiUpdateManager.latestSuccessfulMainRun(force = forceCheck)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Exception) {
+            Log.w("CiUpdate", "Failed to check CI update", throwable)
+            checkState = CiUpdateCheckState.Failed
+            return@LaunchedEffect
+        }
+        checkState = if (latestRun != null && latestRun.runId > BuildConfig.CI_RUN_ID) {
+            CiUpdateCheckState.Available(latestRun)
+        } else {
+            CiUpdateCheckState.Current
+        }
     }
 
-    val availableRun = run ?: return
+    val currentCheckState = checkState
+    val availableRun = (currentCheckState as? CiUpdateCheckState.Available)?.run
+    when (currentCheckState) {
+        CiUpdateCheckState.Failed -> WarningCard(
+            message = stringResource(R.string.ci_update_check_failed_card),
+            onClick = { checkRequest++ },
+        )
+        is CiUpdateCheckState.Available -> WarningCard(
+            message = stringResource(
+                R.string.ci_update_available_card,
+                currentCheckState.run.versionCode,
+            ),
+            color = MaterialTheme.colorScheme.outlineVariant,
+            onClick = {
+                error = ""
+                progress = 0
+                stage = CiUpdateStage.READY
+                showDialog = true
+            },
+        )
+        CiUpdateCheckState.Checking,
+        CiUpdateCheckState.Current,
+        CiUpdateCheckState.Hidden -> Unit
+    }
+
+    if (!showDialog || availableRun == null) return
+
     val busy = stage == CiUpdateStage.DOWNLOADING ||
         stage == CiUpdateStage.VERIFYING ||
         stage == CiUpdateStage.INSTALLING
@@ -86,7 +168,8 @@ fun CiUpdateDialog() {
                     ).show()
                     CiInstallResult.SystemInstallerStarted -> Unit
                 }
-                run = null
+                checkState = CiUpdateCheckState.Current
+                showDialog = false
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (throwable: Exception) {
@@ -97,17 +180,35 @@ fun CiUpdateDialog() {
     }
 
     YukiAlertDialog(
-        onDismissRequest = { if (!busy) run = null },
+        onDismissRequest = { if (!busy) showDialog = false },
         title = { Text(stringResource(R.string.ci_update_title)) },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 Text(
                     stringResource(
                         R.string.ci_update_message,
-                        availableRun.runId,
-                        BuildConfig.CI_RUN_ID,
+                        availableRun.versionCode,
+                        BuildConfig.VERSION_CODE,
                     )
                 )
+                if (availableRun.commitSha.isNotBlank()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.ci_update_commit,
+                            availableRun.commitSha.take(8),
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (availableRun.commitMessage.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(availableRun.commitMessage)
+                    }
+                }
                 when (stage) {
                     CiUpdateStage.READY -> Unit
                     CiUpdateStage.DOWNLOADING -> {
@@ -152,7 +253,7 @@ fun CiUpdateDialog() {
             }
         },
         dismissButton = {
-            TextButton(onClick = { run = null }, enabled = !busy) {
+            TextButton(onClick = { showDialog = false }, enabled = !busy) {
                 Text(stringResource(android.R.string.cancel))
             }
         },

@@ -130,7 +130,10 @@
     <string name="settings_check_ci_update" tools:ignore="MissingTranslation">Check for CI updates</string>
     <string name="settings_check_ci_update_summary" tools:ignore="MissingTranslation">Check for signed nightly manager builds when the app opens. Disabled by default.</string>
     <string name="ci_update_title" tools:ignore="MissingTranslation">New CI build found</string>
-    <string name="ci_update_message" tools:ignore="MissingTranslation">CI run %1$d is newer than the installed build (%2$d).</string>
+    <string name="ci_update_message" tools:ignore="MissingTranslation">CI build %1$d is newer than the installed build (%2$d).</string>
+    <string name="ci_update_available_card" tools:ignore="MissingTranslation">New CI build %1$d is available. Tap to download.</string>
+    <string name="ci_update_check_failed_card" tools:ignore="MissingTranslation">Failed to check for CI updates. Tap to retry.</string>
+    <string name="ci_update_commit" tools:ignore="MissingTranslation">Commit %1$s</string>
     <string name="ci_update_download" tools:ignore="MissingTranslation">Download and install</string>
     <string name="ci_update_downloading" tools:ignore="MissingTranslation">Downloading… %1$d%%</string>
     <string name="ci_update_verifying" tools:ignore="MissingTranslation">Verifying PGP and APK signatures…</string>

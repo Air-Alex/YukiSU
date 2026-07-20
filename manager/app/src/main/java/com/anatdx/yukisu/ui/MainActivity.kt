@@ -65,7 +65,6 @@ import com.anatdx.yukisu.ui.viewmodel.HomeViewModel
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import com.anatdx.yukisu.ui.webui.WebUIActivity
 import com.anatdx.yukisu.ui.webui.initPlatform
-import com.anatdx.yukisu.update.CiUpdateDialog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ui.screen.moreSettings.util.LocaleHelper
@@ -151,7 +150,6 @@ class MainActivity : ComponentActivity() {
 
             setContent {
                 KernelSUTheme {
-                    CiUpdateDialog()
                     val navController = rememberNavController()
                     val snackBarHostState = remember { SnackbarHostState() }
                     val currentDestination = navController.currentBackStackEntryAsState().value?.destination
