@@ -41,8 +41,6 @@
 
 # MMRL:webui reflection
 -keep class com.dergoogler.mmrl.webui.interfaces.** { *; }
--keep class com.sukisu.ultra.ui.webui.WebViewInterface { *; }
+-keep class com.anatdx.yukisu.ui.webui.WebViewInterface { *; }
 
 -keep,allowobfuscation class * extends com.dergoogler.mmrl.platform.content.IService { *; }
-
--keep interface com.sukisu.zako.** { *; }
