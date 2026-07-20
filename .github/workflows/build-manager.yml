@@ -164,7 +164,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: Manager-gradle-arm64-v8a
-          path: manager/app/build/outputs/apk/release/
+          path: manager/app/build/outputs/renamed_apk/release/
 
       - name: Upload mappings
         uses: actions/upload-artifact@v6
@@ -304,6 +304,8 @@ jobs:
           cd dist
           mapfile -t APKS < <(find . -maxdepth 1 -type f -name '*.apk')
           test "${#APKS[@]}" -eq 1
+          TG_APK_NAME=$(basename -- "${APKS[0]}")
+          echo "TG_APK_NAME=$TG_APK_NAME" >> "$GITHUB_ENV"
           if [[ "${APKS[0]}" != './app-release.apk' ]]; then
             mv -- "${APKS[0]}" app-release.apk
           fi
@@ -320,6 +322,14 @@ jobs:
         with:
           name: Manager-arm64-v8a
           path: dist/
+
+      - name: Restore APK filename for Telegram
+        if: steps.gpg_check.outputs.available == 'true'
+        run: |
+          test -n "$TG_APK_NAME"
+          if [[ "$TG_APK_NAME" != 'app-release.apk' ]]; then
+            mv -- dist/app-release.apk "dist/$TG_APK_NAME"
+          fi
 
       - name: Upload to telegram
         if: github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'feat/')) && steps.need_upload.outputs.UPLOAD == 'true' && steps.determine.outputs.SKIP != 'true'
