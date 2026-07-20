@@ -472,6 +472,8 @@
     <!-- SuperKey 设置 -->
     <string name="settings_donot_store_superkey">不存储超级密钥</string>
     <string name="settings_donot_store_superkey_summary">启用后管理器不会保存超级密钥，每次重启都需手动输入。</string>
+    <string name="settings_auto_authenticate_superkey">开机自动验证超级密钥</string>
+    <string name="settings_auto_authenticate_superkey_summary">开机后使用已保存的超级密钥向内核验证一次，失败后不会重试。需要授予本应用自启动权限。</string>
     <string name="clear_super_key">清除超级密钥</string>
     <string name="settings_clear_super_key_dialog">确定要清除已存储的超级密钥吗？</string>
     <string name="signature_bypass_title">仅超级密钥模式</string>

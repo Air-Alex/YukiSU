@@ -442,6 +442,8 @@
     <!-- SuperKey settings -->
     <string name="settings_donot_store_superkey">不儲存超級密鑰</string>
     <string name="settings_donot_store_superkey_summary">啟用後管理器不會儲存超級密鑰，每次重新啟動都需手動輸入。</string>
+    <string name="settings_auto_authenticate_superkey">開機自動驗證超級密鑰</string>
+    <string name="settings_auto_authenticate_superkey_summary">開機後使用已儲存嘅超級密鑰向核心驗證一次，失敗後唔會重試。需要授予本應用自動啟動權限。</string>
     <string name="clear_super_key">清除超級密鑰</string>
     <string name="settings_clear_super_key_dialog">確定要清除已儲存的超級密鑰嗎？</string>
     <string name="signature_bypass_title">僅超級密鑰模式</string>

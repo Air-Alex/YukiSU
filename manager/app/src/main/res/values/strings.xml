@@ -474,6 +474,8 @@
     <!-- SuperKey settings -->
     <string name="settings_donot_store_superkey">Do not store SuperKey</string>
     <string name="settings_donot_store_superkey_summary">When enabled, the manager will not save your SuperKey. You will need to enter it manually after every reboot.</string>
+    <string name="settings_auto_authenticate_superkey" tools:ignore="MissingTranslation">Authenticate SuperKey at boot</string>
+    <string name="settings_auto_authenticate_superkey_summary" tools:ignore="MissingTranslation">After boot, authenticate the saved SuperKey with the kernel once. A failed attempt is not retried. Requires granting autostart permission to this app.</string>
     <string name="clear_super_key">Clear SuperKey</string>
     <string name="settings_clear_super_key_dialog">Do you really want to clear the stored SuperKey?</string>
     <string name="signature_bypass_title">SuperKey Only Mode</string>

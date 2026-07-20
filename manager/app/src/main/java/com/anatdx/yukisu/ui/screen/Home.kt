@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
-import androidx.core.content.edit
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -55,6 +54,7 @@ import com.anatdx.yukisu.KernelVersion
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.magica.MagicaHelper
+import com.anatdx.yukisu.superkey.SuperKeyHelper
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.component.rememberLoadingDialog
@@ -172,8 +172,6 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         }
                     }
                 }
-                val superKeyPrefs = context.getSharedPreferences("superkey", Context.MODE_PRIVATE)
-                
                 SuperKeyDialog(
                     state = superKeyDialog,
                     onAuthenticate = { superKey ->
@@ -182,10 +180,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                 val success = Natives.authenticateSuperKey(superKey)
                                 if (success) {
-                                    val skipStore = superKeyPrefs.getBoolean("skip_store_superkey", false)
-                                    if (!skipStore) {
-                                        superKeyPrefs.edit { putString("saved_superkey", superKey) }
-                                    }
+                                    SuperKeyHelper.saveSuperKey(context, superKey)
                                 }
                                 success
                             }
@@ -226,7 +221,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                 // 自动尝试用保存的 SuperKey 认证
                 LaunchedEffect(viewModel.isCoreDataLoaded) {
                     if (viewModel.isCoreDataLoaded && !viewModel.systemStatus.isManager) {
-                        val savedKey = superKeyPrefs.getString("saved_superkey", null)
+                        val savedKey = SuperKeyHelper.getSavedSuperKey(context)
                         if (!savedKey.isNullOrBlank()) {
                             try {
                                 // 在 IO 线程执行 Native 调用和 Shell 刷新

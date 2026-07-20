@@ -47,6 +47,7 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.magica.MagicaHelper
+import com.anatdx.yukisu.superkey.SuperKeyHelper
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.*
 import com.anatdx.yukisu.ui.theme.CardConfig
@@ -156,9 +157,14 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         )
 
                         // 不保存 SuperKey
-                        val superKeyPrefs = context.getSharedPreferences("superkey", Context.MODE_PRIVATE)
                         var skipStoreSuperKey by remember {
-                            mutableStateOf(superKeyPrefs.getBoolean("skip_store_superkey", false))
+                            mutableStateOf(SuperKeyHelper.shouldSkipStorage(context))
+                        }
+                        var autoAuthenticateSuperKey by remember {
+                            mutableStateOf(SuperKeyHelper.isAutoAuthenticationEnabled(context))
+                        }
+                        var hasSavedSuperKey by remember {
+                            mutableStateOf(SuperKeyHelper.hasSavedSuperKey(context))
                         }
                         SwitchItem(
                             icon = Icons.Filled.Key,
@@ -167,17 +173,32 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             checked = skipStoreSuperKey,
                             onCheckedChange = {
                                 skipStoreSuperKey = it
-                                superKeyPrefs.edit { putBoolean("skip_store_superkey", it) }
-                                if (it) {
-                                    // 如果开启了不保存，立即清除已保存的密钥
-                                    superKeyPrefs.edit { remove("saved_superkey") }
-                                }
+                                SuperKeyHelper.setSkipStorage(context, it)
+                                hasSavedSuperKey = SuperKeyHelper.hasSavedSuperKey(context)
+                                autoAuthenticateSuperKey =
+                                    SuperKeyHelper.isAutoAuthenticationEnabled(context)
+                            }
+                        )
+
+                        SwitchItem(
+                            icon = Icons.Filled.Key,
+                            title = stringResource(R.string.settings_auto_authenticate_superkey),
+                            summary = stringResource(
+                                R.string.settings_auto_authenticate_superkey_summary
+                            ),
+                            checked = autoAuthenticateSuperKey,
+                            enabled = hasSavedSuperKey && !skipStoreSuperKey,
+                            onCheckedChange = {
+                                autoAuthenticateSuperKey = it
+                                SuperKeyHelper.setAutoAuthenticationEnabled(context, it)
                             }
                         )
 
                         // 清除 SuperKey
                         val clearKeyDialog = rememberConfirmDialog(onConfirm = {
-                            superKeyPrefs.edit { remove("saved_superkey") }
+                            SuperKeyHelper.clearSavedSuperKey(context)
+                            hasSavedSuperKey = false
+                            autoAuthenticateSuperKey = false
                             scope.launch {
                                 snackBarHost.showSnackbar(resources.getString(R.string.clear_super_key) + " ✓")
                             }

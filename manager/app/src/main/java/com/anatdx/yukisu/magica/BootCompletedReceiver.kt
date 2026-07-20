@@ -1,20 +1,16 @@
 package com.anatdx.yukisu.magica
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.anatdx.yukisu.boot.BootCompletedReceiver as BaseBootCompletedReceiver
 import com.anatdx.yukisu.ui.util.rootAvailable
 
-open class BootCompletedReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) {
-        val action = intent?.action ?: return
-        if (
-            action != Intent.ACTION_LOCKED_BOOT_COMPLETED &&
-            action != Intent.ACTION_BOOT_COMPLETED &&
-            action != ACTION_LAUNCH
-        ) {
-            return
-        }
+open class BootCompletedReceiver : BaseBootCompletedReceiver() {
+    override fun acceptsAction(action: String): Boolean {
+        return super.acceptsAction(action) || action == ACTION_LAUNCH
+    }
+
+    override fun onBootCompleted(context: Context, action: String) {
         if (rootAvailable()) {
             return
         }

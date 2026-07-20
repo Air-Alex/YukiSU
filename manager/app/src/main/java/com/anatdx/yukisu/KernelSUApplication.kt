@@ -32,8 +32,8 @@ class KernelSUApplication : Application(), ViewModelStoreOwner {
         super.onCreate()
         ksuApp = this
 
-        // Isolated Magica processes only need TMPDIR for the bundled ksud bootstrap.
-        if (isIsolatedProcess()) {
+        // Boot and isolated Magica processes only need the native/bootstrap environment.
+        if (isBootstrapProcess()) {
             Os.setenv("TMPDIR", cacheDir.absolutePath, true)
             return
         }
@@ -78,12 +78,17 @@ class KernelSUApplication : Application(), ViewModelStoreOwner {
     override val viewModelStore: ViewModelStore
         get() = appViewModelStore
 
-    private fun isIsolatedProcess(): Boolean {
+    private fun isBootstrapProcess(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            return Process.isIsolated()
+            return Process.isIsolated() || Application.getProcessName() == "$packageName:boot"
         }
         // FIRST_ISOLATED_UID..LAST_ISOLATED_UID on Android 8.x.
         val appId = Process.myUid() % 100_000
-        return appId in 99_000..99_999
+        if (appId in 99_000..99_999) {
+            return true
+        }
+        return runCatching {
+            File("/proc/self/cmdline").readText().trimEnd('\u0000') == "$packageName:boot"
+        }.getOrDefault(false)
     }
 }

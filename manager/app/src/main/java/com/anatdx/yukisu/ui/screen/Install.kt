@@ -59,6 +59,7 @@ import com.ramcosta.composedestinations.navigation.EmptyDestinationsNavigator
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.magica.MagicaHelper
+import com.anatdx.yukisu.superkey.SuperKeyHelper
 import com.anatdx.yukisu.ui.component.DialogHandle
 import com.anatdx.yukisu.ui.component.SuperDropdown
 import com.anatdx.yukisu.ui.component.YukiIcon
@@ -165,9 +166,7 @@ fun InstallScreen(
     // placeholder so the user can re-patch with the same key by just hitting
     // next; any keystroke clears it and falls back to manual input.
     val savedSuperKey = remember {
-        context.getSharedPreferences("superkey", Context.MODE_PRIVATE)
-            .getString("saved_superkey", null)
-            ?.takeIf { it.isNotBlank() }
+        SuperKeyHelper.getSavedSuperKey(context)
     }
     var usingSavedKey by remember { mutableStateOf(savedSuperKey != null) }
     var superKey by remember { mutableStateOf("") }
