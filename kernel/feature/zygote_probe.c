@@ -101,6 +101,7 @@ static unsigned long zp_early_native_retry_deadline;
 static bool zp_early_native_missing_logged;
 
 #define ZP_NATIVE_POLICY_TIMEOUT (10 * HZ)
+#define ZP_MODULE_POLICY_TIMEOUT (10 * HZ)
 #define ZP_EARLY_NATIVE_RETRY_WINDOW (15 * HZ)
 
 struct zp_native_policy_pending {
@@ -114,11 +115,31 @@ struct zp_native_policy_pending {
 static DEFINE_MUTEX(zp_native_policy_lock);
 static LIST_HEAD(zp_native_policy_pending);
 
+struct zp_module_policy_group {
+	struct list_head list;
+	struct ksu_file_load_policy state;
+	u32 users;
+};
+
+struct zp_module_policy_holder {
+	struct list_head list;
+	struct zp_module_policy_group *group;
+	struct delayed_work timeout;
+	pid_t tgid;
+	bool pending;
+};
+
+static DEFINE_MUTEX(zp_module_policy_lock);
+static LIST_HEAD(zp_module_policy_groups);
+static LIST_HEAD(zp_module_policy_holders);
+
+static int ksu_zygote_probe_restore_module_policy(pid_t tgid);
+
 static bool
 zp_native_policy_has_additions(const struct ksu_file_load_policy *state)
 {
 	return state && (state->added_av || state->tmpfs_added_av ||
-			 state->process_added_av);
+			 state->process_added_av || state->dir_added_av);
 }
 
 void ksu_zygote_probe_set_yukilinker(bool enabled)
@@ -272,7 +293,213 @@ int ksu_zygote_probe_restore_native_policy(pid_t tgid)
 	}
 	pr_info("zygote_probe: load policy restore pid=%d entries=%d\n", tgid,
 		n);
+	return ksu_zygote_probe_restore_module_policy(tgid);
+}
+
+static struct zp_module_policy_group *
+zp_find_module_policy_group(const struct ksu_file_load_policy *state)
+{
+	struct zp_module_policy_group *group;
+
+	list_for_each_entry (group, &zp_module_policy_groups, list) {
+		if (group->state.src_type == state->src_type &&
+		    group->state.tgt_type == state->tgt_type)
+			return group;
+	}
+	return NULL;
+}
+
+static struct zp_module_policy_holder *
+zp_find_module_policy_holder(pid_t tgid,
+			     const struct zp_module_policy_group *group)
+{
+	struct zp_module_policy_holder *holder;
+
+	list_for_each_entry (holder, &zp_module_policy_holders, list) {
+		if (holder->pending && holder->tgid == tgid &&
+		    holder->group == group)
+			return holder;
+	}
+	return NULL;
+}
+
+static void zp_merge_module_policy_state(struct ksu_file_load_policy *dst,
+					 const struct ksu_file_load_policy *src)
+{
+	if (!dst->src_type)
+		*dst = *src;
+	else {
+		dst->added_av |= src->added_av;
+		dst->dir_added_av |= src->dir_added_av;
+		dst->tmpfs_added_av |= src->tmpfs_added_av;
+		dst->process_added_av |= src->process_added_av;
+	}
+}
+
+static void
+zp_put_module_policy_group_locked(struct zp_module_policy_group *group)
+{
+	int ret;
+
+	if (!group || !group->users)
+		return;
+	if (--group->users)
+		return;
+
+	list_del(&group->list);
+	ret = ksu_file_load_policy_restore(&group->state);
+	pr_info("zygote_probe: module policy released src=%u tgt=%u ret=%d\n",
+		group->state.src_type, group->state.tgt_type, ret);
+	kfree(group);
+}
+
+static void zp_module_policy_timeout(struct work_struct *work)
+{
+	struct zp_module_policy_holder *holder = container_of(
+	    to_delayed_work(work), struct zp_module_policy_holder, timeout);
+	bool release = false;
+
+	mutex_lock(&zp_module_policy_lock);
+	if (holder->pending) {
+		holder->pending = false;
+		list_del_init(&holder->list);
+		pr_info("zygote_probe: module policy timeout pid=%d\n",
+			holder->tgid);
+		zp_put_module_policy_group_locked(holder->group);
+		release = true;
+	}
+	mutex_unlock(&zp_module_policy_lock);
+
+	if (release)
+		kfree(holder);
+}
+
+int ksu_zygote_probe_allow_module_policy(pid_t tgid, struct file *dir,
+					 const struct cred *cred)
+{
+	struct zp_module_policy_group *group;
+	struct zp_module_policy_holder *holder;
+	struct zp_module_policy_group *new_group;
+	struct zp_module_policy_holder *new_holder;
+	struct ksu_file_load_policy state;
+	int ret;
+
+	if (tgid <= 0 || !dir || !cred)
+		return -EINVAL;
+
+	new_group = kzalloc(sizeof(*new_group), GFP_KERNEL);
+	new_holder = kzalloc(sizeof(*new_holder), GFP_KERNEL);
+	if (!new_group || !new_holder) {
+		kfree(new_group);
+		kfree(new_holder);
+		return -ENOMEM;
+	}
+
+	mutex_lock(&zp_module_policy_lock);
+	ret = ksu_file_load_policy_allow_cred(dir, cred, &state);
+	if (ret)
+		goto out_unlock;
+
+	group = zp_find_module_policy_group(&state);
+	if (!group && !zp_native_policy_has_additions(&state))
+		goto out_unlock;
+	if (!group) {
+		group = new_group;
+		new_group = NULL;
+		INIT_LIST_HEAD(&group->list);
+		group->state = state;
+		list_add_tail(&group->list, &zp_module_policy_groups);
+	} else {
+		zp_merge_module_policy_state(&group->state, &state);
+	}
+
+	holder = zp_find_module_policy_holder(tgid, group);
+	if (holder)
+		goto out_unlock;
+
+	holder = new_holder;
+	new_holder = NULL;
+	INIT_LIST_HEAD(&holder->list);
+	holder->group = group;
+	holder->tgid = tgid;
+	holder->pending = true;
+	INIT_DELAYED_WORK(&holder->timeout, zp_module_policy_timeout);
+	list_add_tail(&holder->list, &zp_module_policy_holders);
+	group->users++;
+	schedule_delayed_work(&holder->timeout, ZP_MODULE_POLICY_TIMEOUT);
+	pr_info("zygote_probe: module policy armed pid=%d src=%u tgt=%u "
+		"file=0x%x dir=0x%x tmpfs=0x%x\n",
+		tgid, group->state.src_type, group->state.tgt_type,
+		group->state.added_av, group->state.dir_added_av,
+		group->state.tmpfs_added_av);
+
+out_unlock:
+	mutex_unlock(&zp_module_policy_lock);
+	kfree(new_group);
+	kfree(new_holder);
+	return ret;
+}
+
+static int ksu_zygote_probe_restore_module_policy(pid_t tgid)
+{
+	struct zp_module_policy_holder *holder;
+	struct zp_module_policy_holder *tmp;
+	LIST_HEAD(todo);
+	int n = 0;
+
+	mutex_lock(&zp_module_policy_lock);
+	list_for_each_entry_safe (holder, tmp, &zp_module_policy_holders,
+				  list) {
+		if (!holder->pending || holder->tgid != tgid)
+			continue;
+		holder->pending = false;
+		list_move_tail(&holder->list, &todo);
+	}
+	mutex_unlock(&zp_module_policy_lock);
+
+	list_for_each_entry (holder, &todo, list)
+		cancel_delayed_work_sync(&holder->timeout);
+
+	mutex_lock(&zp_module_policy_lock);
+	list_for_each_entry_safe (holder, tmp, &todo, list) {
+		list_del(&holder->list);
+		zp_put_module_policy_group_locked(holder->group);
+		kfree(holder);
+		n++;
+	}
+	mutex_unlock(&zp_module_policy_lock);
+
+	if (n)
+		pr_info(
+		    "zygote_probe: module policy restore pid=%d entries=%d\n",
+		    tgid, n);
 	return 0;
+}
+
+static void zp_cleanup_module_policies(void)
+{
+	struct zp_module_policy_holder *holder;
+	struct zp_module_policy_holder *tmp;
+	LIST_HEAD(todo);
+
+	mutex_lock(&zp_module_policy_lock);
+	list_for_each_entry_safe (holder, tmp, &zp_module_policy_holders,
+				  list) {
+		holder->pending = false;
+		list_move_tail(&holder->list, &todo);
+	}
+	mutex_unlock(&zp_module_policy_lock);
+
+	list_for_each_entry (holder, &todo, list)
+		cancel_delayed_work_sync(&holder->timeout);
+
+	mutex_lock(&zp_module_policy_lock);
+	list_for_each_entry_safe (holder, tmp, &todo, list) {
+		list_del(&holder->list);
+		zp_put_module_policy_group_locked(holder->group);
+		kfree(holder);
+	}
+	mutex_unlock(&zp_module_policy_lock);
 }
 
 /* Patch a movz/movk x<d> sequence. */
@@ -1628,6 +1855,7 @@ void ksu_zygote_probe_init(void)
 
 void ksu_zygote_probe_exit(void)
 {
+	zp_cleanup_module_policies();
 	ksu_unregister_feature_handler(KSU_FEATURE_YUKIZYGISK);
 	WRITE_ONCE(yukizygisk_enabled, false);
 #if ZP_ENABLE_LSM_INJECTOR

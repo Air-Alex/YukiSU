@@ -172,6 +172,13 @@ struct yz_safemode_status_cmd {
   char zygote[YZ_ZYGOTE_NAME_MAX];
 };
 
+#define KSU_IOCTL_YZ_ALLOW_MODULE_LOAD_POLICY _IOC(_IOC_WRITE, 'K', 61, 0)
+
+struct yz_module_load_policy_cmd {
+  __u32 pid;
+  __s32 dirfd;
+};
+
 struct yz_config {
   __u8 yukilinker;
   __u8 denylist_mode;

@@ -51,6 +51,10 @@
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 #include "hook/syscall_hook_manager.h"
 
+#ifndef fd_file
+#define fd_file(fd) ((fd).file)
+#endif // #ifndef fd_file
+
 #ifdef CONFIG_KSU_SUPERKEY
 #include "manager/superkey.h"
 #endif // #ifdef CONFIG_KSU_SUPERKEY
@@ -1083,6 +1087,56 @@ static int do_yz_get_safemode(void __user *arg)
 	return 0;
 }
 
+static int do_yz_allow_module_load_policy(void __user *arg)
+{
+	struct yz_module_load_policy_cmd cmd;
+	struct task_struct *task;
+	const struct cred *cred;
+	struct fd dir;
+	int ret;
+
+	if (copy_from_user(&cmd, arg, sizeof(cmd)))
+		return -EFAULT;
+	if (!cmd.pid || cmd.dirfd < 0)
+		return -EINVAL;
+
+	rcu_read_lock();
+	task = get_pid_task(find_vpid(cmd.pid), PIDTYPE_PID);
+	rcu_read_unlock();
+	if (!task)
+		return -ESRCH;
+
+	cred = get_task_cred(task);
+	if (!is_zygote(cred)) {
+		pr_info(
+		    "yz_module_policy: reject pid=%u outside zygote domain\n",
+		    cmd.pid);
+		put_cred(cred);
+		put_task_struct(task);
+		return -EPERM;
+	}
+	put_task_struct(task);
+
+	dir = fdget(cmd.dirfd);
+	if (!fd_file(dir)) {
+		put_cred(cred);
+		return -EBADF;
+	}
+	if (!S_ISDIR(file_inode(fd_file(dir))->i_mode)) {
+		fdput(dir);
+		put_cred(cred);
+		return -ENOTDIR;
+	}
+
+	ret = ksu_zygote_probe_allow_module_policy((pid_t)cmd.pid, fd_file(dir),
+						   cred);
+	fdput(dir);
+	put_cred(cred);
+	pr_info("yz_module_policy: allow pid=%u fd=%d ret=%d\n", cmd.pid,
+		cmd.dirfd, ret);
+	return ret;
+}
+
 /* Schedule app mount revert. */
 static int do_yz_umount_pid(void __user *arg)
 {
@@ -1443,6 +1497,10 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_YZ_GET_SAFEMODE,
      .name = "YZ_GET_SAFEMODE",
      .handler = do_yz_get_safemode,
+     .perm_check = only_root},
+    {.cmd = KSU_IOCTL_YZ_ALLOW_MODULE_LOAD_POLICY,
+     .name = "YZ_ALLOW_MODULE_LOAD_POLICY",
+     .handler = do_yz_allow_module_load_policy,
      .perm_check = only_root},
     {.cmd = KSU_IOCTL_YZ_UMOUNT_PID,
      .name = "YZ_UMOUNT_PID",

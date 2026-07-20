@@ -77,6 +77,13 @@ static const char *ksu_file_load_perms[] = {
     "read", "open", "getattr", "map", "execute",
 };
 
+static const char *ksu_dir_load_perms[] = {
+    "read",
+    "open",
+    "getattr",
+    "search",
+};
+
 static const char *ksu_tmpfs_hook_perms[] = {
     "read", "write", "open", "getattr", "map", "execute",
 };
@@ -169,6 +176,34 @@ static bool ksu_apply_file_av(struct policydb *db, const char *src,
 	return ok;
 }
 
+static bool ksu_apply_dir_av(struct policydb *db, const char *src,
+			     const char *tgt, u32 av, bool allow)
+{
+	struct class_datum *cls;
+	bool ok = true;
+	int i;
+
+	cls = symtab_search(&db->p_classes, "dir");
+	if (!cls)
+		return false;
+
+	for (i = 0; i < ARRAY_SIZE(ksu_dir_load_perms); i++) {
+		u32 mask = ksu_file_perm_mask(cls, ksu_dir_load_perms[i]);
+
+		if (!(av & mask))
+			continue;
+		if (allow)
+			ok = ksu_allow(db, src, tgt, "dir",
+				       ksu_dir_load_perms[i]) &&
+			     ok;
+		else
+			ok = ksu_deny(db, src, tgt, "dir",
+				      ksu_dir_load_perms[i]) &&
+			     ok;
+	}
+	return ok;
+}
+
 static bool ksu_apply_process_av(struct policydb *db, const char *src, u32 av,
 				 bool allow)
 {
@@ -194,8 +229,9 @@ static bool ksu_apply_process_av(struct policydb *db, const char *src, u32 av,
 	return ok;
 }
 
-int ksu_file_load_policy_allow_current(struct file *file,
-				       struct ksu_file_load_policy *state)
+static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
+					  bool include_dir, bool include_tmpfs,
+					  struct ksu_file_load_policy *state)
 {
 	struct selinux_policy *pol, *old_pol;
 	struct policydb *db;
@@ -203,9 +239,9 @@ int ksu_file_load_policy_allow_current(struct file *file,
 	struct context *scontext;
 	struct context *tcontext;
 	struct class_datum *cls;
+	struct class_datum *dir_cls = NULL;
 	const char *src_name;
 	const char *tgt_name;
-	u32 ssid;
 	u32 tsid;
 	u32 required_av;
 	u32 direct_av;
@@ -214,6 +250,9 @@ int ksu_file_load_policy_allow_current(struct file *file,
 	u32 tmpfs_required_av;
 	u32 tmpfs_direct_av;
 	u32 tmpfs_add_av = 0;
+	u32 dir_required_av = 0;
+	u32 dir_direct_av = 0;
+	u32 dir_add_av = 0;
 	int ret = 0;
 
 	if (!file || !state)
@@ -223,7 +262,6 @@ int ksu_file_load_policy_allow_current(struct file *file,
 	isec = selinux_inode(file_inode(file));
 	if (!isec)
 		return -EINVAL;
-	ssid = current_sid();
 	tsid = isec->sid;
 	if (!ssid || !tsid)
 		return -EINVAL;
@@ -243,6 +281,13 @@ int ksu_file_load_policy_allow_current(struct file *file,
 		ret = -ENOENT;
 		goto out_unlock;
 	}
+	if (include_dir) {
+		dir_cls = symtab_search(&db->p_classes, "dir");
+		if (!dir_cls) {
+			ret = -ENOENT;
+			goto out_unlock;
+		}
+	}
 	src_name = ksu_type_name_by_value(db, scontext->type);
 	tgt_name = ksu_type_name_by_value(db, tcontext->type);
 	if (!src_name || !tgt_name) {
@@ -255,8 +300,16 @@ int ksu_file_load_policy_allow_current(struct file *file,
 	direct_av = ksu_direct_allowed_av(db, scontext->type, tcontext->type,
 					  cls->value);
 	add_av = required_av & ~direct_av;
+	if (dir_cls) {
+		dir_required_av =
+		    ksu_required_av(dir_cls, ksu_dir_load_perms,
+				    ARRAY_SIZE(ksu_dir_load_perms));
+		dir_direct_av = ksu_direct_allowed_av(
+		    db, scontext->type, tcontext->type, dir_cls->value);
+		dir_add_av = dir_required_av & ~dir_direct_av;
+	}
 
-	tmpfs_type = ksu_type_value_by_name(db, "tmpfs");
+	tmpfs_type = include_tmpfs ? ksu_type_value_by_name(db, "tmpfs") : 0;
 	if (tmpfs_type) {
 		tmpfs_required_av =
 		    ksu_required_av(cls, ksu_tmpfs_hook_perms,
@@ -266,7 +319,13 @@ int ksu_file_load_policy_allow_current(struct file *file,
 		tmpfs_add_av = tmpfs_required_av & ~tmpfs_direct_av;
 	}
 
-	if (!add_av && !tmpfs_add_av)
+	state->src_type = scontext->type;
+	state->tgt_type = tcontext->type;
+	state->tmpfs_type = tmpfs_type;
+	state->target_class = cls->value;
+	state->dir_class = dir_cls ? dir_cls->value : 0;
+
+	if (!add_av && !tmpfs_add_av && !dir_add_av)
 		goto out_unlock;
 
 	pol = ksu_dup_sepolicy(rcu_dereference_protected(
@@ -292,17 +351,20 @@ int ksu_file_load_policy_allow_current(struct file *file,
 		ret = -EINVAL;
 		goto out_unlock;
 	}
+	if (dir_add_av &&
+	    !ksu_apply_dir_av(db, src_name, tgt_name, dir_add_av, true)) {
+		ksu_destroy_sepolicy(pol);
+		ret = -EINVAL;
+		goto out_unlock;
+	}
 
-	state->src_type = scontext->type;
-	state->tgt_type = tcontext->type;
-	state->tmpfs_type = tmpfs_type;
-	state->target_class = cls->value;
 	state->added_av = add_av;
 	state->tmpfs_added_av = tmpfs_add_av;
+	state->dir_added_av = dir_add_av;
 
 	pr_info("file_load_policy: allow src=%s tgt=%s file added=0x%x "
-		"tmpfs=0x%x\n",
-		src_name, tgt_name, add_av, tmpfs_add_av);
+		"dir=0x%x tmpfs=0x%x\n",
+		src_name, tgt_name, add_av, dir_add_av, tmpfs_add_av);
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
@@ -311,6 +373,35 @@ int ksu_file_load_policy_allow_current(struct file *file,
 out_unlock:
 	mutex_unlock(&selinux_state.policy_mutex);
 	return ret;
+}
+
+int ksu_file_load_policy_allow_current(struct file *file,
+				       struct ksu_file_load_policy *state)
+{
+	return ksu_file_load_policy_allow_sid(file, current_sid(), false, true,
+					      state);
+}
+
+int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred,
+				    struct ksu_file_load_policy *state)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
+	const struct task_security_struct *tsec;
+#else
+	const struct cred_security_struct *tsec;
+#endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
+
+	if (!cred)
+		return -EINVAL;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
+	tsec = cred->security;
+#else
+	tsec = selinux_cred(cred);
+#endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
+	if (!tsec || !tsec->sid)
+		return -EINVAL;
+	return ksu_file_load_policy_allow_sid(file, tsec->sid, true, false,
+					      state);
 }
 
 int ksu_file_load_policy_allow_execmem_current(
@@ -405,7 +496,7 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 	int ret = 0;
 
 	if (!state || (!state->added_av && !state->tmpfs_added_av &&
-		       !state->process_added_av))
+		       !state->process_added_av && !state->dir_added_av))
 		return 0;
 
 	mutex_lock(&selinux_state.policy_mutex);
@@ -414,14 +505,16 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 	db = &old_pol->policydb;
 	src_name = state->src_type ? ksu_type_name_by_value(db, state->src_type)
 				   : NULL;
-	if (state->added_av)
+	if (state->added_av || state->dir_added_av)
 		tgt_name = ksu_type_name_by_value(db, state->tgt_type);
 	if (state->tmpfs_added_av)
 		tmpfs_name = ksu_type_name_by_value(db, state->tmpfs_type);
 	if (state->process_added_av)
 		process_name = ksu_type_name_by_value(db, state->process_type);
-	if (((state->added_av || state->tmpfs_added_av) && !src_name) ||
-	    (state->added_av && !tgt_name) ||
+	if (((state->added_av || state->dir_added_av ||
+	      state->tmpfs_added_av) &&
+	     !src_name) ||
+	    ((state->added_av || state->dir_added_av) && !tgt_name) ||
 	    (state->tmpfs_added_av && !tmpfs_name) ||
 	    (state->process_added_av && !process_name)) {
 		ret = -ENOENT;
@@ -452,6 +545,13 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 		ret = -EINVAL;
 		goto out_unlock;
 	}
+	if (state->dir_added_av &&
+	    !ksu_apply_dir_av(db, src_name, tgt_name, state->dir_added_av,
+			      false)) {
+		ksu_destroy_sepolicy(pol);
+		ret = -EINVAL;
+		goto out_unlock;
+	}
 	if (state->process_added_av &&
 	    !ksu_apply_process_av(db, process_name, state->process_added_av,
 				  false)) {
@@ -461,9 +561,9 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 	}
 
 	pr_info("file_load_policy: restore src=%s tgt=%s file cleared=0x%x "
-		"tmpfs=0x%x process=0x%x\n",
+		"dir=0x%x tmpfs=0x%x process=0x%x\n",
 		src_name ? src_name : process_name, tgt_name ? tgt_name : "-",
-		state->added_av, state->tmpfs_added_av,
+		state->added_av, state->dir_added_av, state->tmpfs_added_av,
 		state->process_added_av);
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
