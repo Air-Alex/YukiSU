@@ -81,7 +81,9 @@ object CiUpdateManager {
     private const val NIGHTLY_METADATA_URL =
         "https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main/" +
             "Manager-update-metadata.zip"
-    private const val NIGHTLY_URL =
+    private const val PAGES_ARCHIVE_URL =
+        "https://ci.yukisu.anatdx.com/Manager-arm64-v8a.zip"
+    private const val NIGHTLY_ARCHIVE_URL =
         "https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main/Manager-arm64-v8a.zip"
     private const val APK_NAME = "app-release.apk"
     private const val SIGNATURE_NAME = "app-release.sig"
@@ -397,17 +399,58 @@ object CiUpdateManager {
         val archive = File(updateDir, "Manager-arm64-v8a.zip")
         val apk = File(updateDir, APK_NAME)
         val signature = File(updateDir, SIGNATURE_NAME)
-        archive.delete()
+        val sources = listOf(
+            "Cloudflare Pages" to PAGES_ARCHIVE_URL,
+            "nightly.link" to NIGHTLY_ARCHIVE_URL,
+        )
+        val failures = mutableListOf<Throwable>()
+
+        for ((name, url) in sources) {
+            archive.delete()
+            apk.delete()
+            signature.delete()
+            withContext(Dispatchers.Main) { onProgress(0) }
+            try {
+                downloadUpdateArchive(name, url, archive, onProgress)
+                extractExpectedFiles(
+                    archive = archive,
+                    expected = mapOf(
+                        APK_NAME to (apk to MAX_APK_BYTES),
+                        SIGNATURE_NAME to (signature to MAX_SIGNATURE_BYTES),
+                    ),
+                )
+                return@withContext PreparedCiUpdate(apk, signature)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val failure = IOException("$name CI artifact source failed", error)
+                Log.w(TAG, failure.message, failure)
+                failures += failure
+            } finally {
+                archive.delete()
+            }
+        }
+
         apk.delete()
         signature.delete()
+        throw IOException("All CI artifact sources failed").apply {
+            failures.forEach(::addSuppressed)
+        }
+    }
 
-        val request = Request.Builder().url(NIGHTLY_URL).cacheControl(CacheControl.FORCE_NETWORK).build()
+    private suspend fun downloadUpdateArchive(
+        sourceName: String,
+        url: String,
+        archive: File,
+        onProgress: (Int) -> Unit,
+    ) {
+        val request = Request.Builder().url(url).cacheControl(CacheControl.FORCE_NETWORK).build()
         ksuApp.okhttpClient.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "nightly.link returned HTTP ${response.code}" }
-            val body = response.body ?: error("nightly.link returned an empty response")
+            check(response.isSuccessful) { "$sourceName returned HTTP ${response.code}" }
+            val body = response.body ?: error("$sourceName returned an empty response")
             val contentLength = body.contentLength()
             check(contentLength < 0 || contentLength <= MAX_ARCHIVE_BYTES) {
-                "CI artifact is too large"
+                "$sourceName CI artifact is too large"
             }
             body.byteStream().use { input ->
                 archive.outputStream().buffered().use { output ->
@@ -420,19 +463,6 @@ object CiUpdateManager {
                 }
             }
         }
-
-        try {
-            extractExpectedFiles(
-                archive = archive,
-                expected = mapOf(
-                    APK_NAME to (apk to MAX_APK_BYTES),
-                    SIGNATURE_NAME to (signature to MAX_SIGNATURE_BYTES),
-                ),
-            )
-        } finally {
-            archive.delete()
-        }
-        PreparedCiUpdate(apk, signature)
     }
 
     fun verify(context: Context, run: CiRun, update: PreparedCiUpdate) {

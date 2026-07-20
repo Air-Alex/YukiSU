@@ -410,23 +410,58 @@ jobs:
           name: Manager-update-metadata
           path: update-metadata/
 
-      - name: Verify Cloudflare Pages metadata payload
+      - name: Prepare Cloudflare Pages update payload
         if: steps.gpg_check.outputs.available == 'true' && github.ref_name == 'main'
         run: |
           set -euo pipefail
-          mapfile -t METADATA_FILES < <(
-            find update-metadata -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort
-          )
-          test "${#METADATA_FILES[@]}" -eq 2
-          test "${METADATA_FILES[0]}" = 'ci-update.json'
-          test "${METADATA_FILES[1]}" = 'ci-update.sig'
-          test -s update-metadata/ci-update.json
-          test -s update-metadata/ci-update.sig
+          python3 - <<'PY'
+          import shutil
+          import zipfile
+          from pathlib import Path
 
-      - name: Deploy CI update metadata to Cloudflare Pages
+          manager_apks = list(Path("dist").glob("*.apk"))
+          if len(manager_apks) != 1:
+              raise SystemExit(f"Expected one Manager APK, found {len(manager_apks)}")
+
+          apk_signature = Path("dist/app-release.sig")
+          if not apk_signature.is_file():
+              raise SystemExit("Missing app-release.sig")
+
+          payload = Path("pages-payload")
+          payload.mkdir(exist_ok=True)
+          shutil.copy2("update-metadata/ci-update.json", payload / "ci-update.json")
+          shutil.copy2("update-metadata/ci-update.sig", payload / "ci-update.sig")
+          with zipfile.ZipFile(
+              payload / "Manager-arm64-v8a.zip",
+              mode="w",
+              compression=zipfile.ZIP_DEFLATED,
+              compresslevel=9,
+          ) as archive:
+              archive.write(manager_apks[0], arcname="app-release.apk")
+              archive.write(apk_signature, arcname="app-release.sig")
+          PY
+          mapfile -t PAGES_FILES < <(
+            find pages-payload -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort
+          )
+          test "${#PAGES_FILES[@]}" -eq 3
+          test "${PAGES_FILES[0]}" = 'Manager-arm64-v8a.zip'
+          test "${PAGES_FILES[1]}" = 'ci-update.json'
+          test "${PAGES_FILES[2]}" = 'ci-update.sig'
+          mapfile -t ARCHIVE_FILES < <(
+            unzip -Z1 pages-payload/Manager-arm64-v8a.zip | LC_ALL=C sort
+          )
+          test "${#ARCHIVE_FILES[@]}" -eq 2
+          test "${ARCHIVE_FILES[0]}" = 'app-release.apk'
+          test "${ARCHIVE_FILES[1]}" = 'app-release.sig'
+          test -s pages-payload/ci-update.json
+          test -s pages-payload/ci-update.sig
+          test "$(stat -c '%s' pages-payload/Manager-arm64-v8a.zip)" \
+            -le $((25 * 1024 * 1024))
+
+      - name: Deploy CI update payload to Cloudflare Pages
         if: steps.gpg_check.outputs.available == 'true' && github.ref_name == 'main'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy update-metadata --project-name=yukisuupdates --branch=main
+          command: pages deploy pages-payload --project-name=yukisuupdates --branch=main
