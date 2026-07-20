@@ -42,6 +42,7 @@ import com.ramcosta.composedestinations.generated.destinations.ModuleScreenDesti
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.navigation.EmptyDestinationsNavigator
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.superkey.SuperKeyHelper
 import com.anatdx.yukisu.ui.component.KeyEventBlocker
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
@@ -325,6 +326,11 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
                         )
                     }
                 } else {
+                    if (flashIt is FlashIt.FlashBoot) {
+                        flashIt.superKey?.takeIf(String::isNotBlank)?.let { superKey ->
+                            SuperKeyHelper.saveSuperKey(context, superKey)
+                        }
+                    }
                     setFlashingStatus(FlashingStatus.SUCCESS)
                     viewModel.markNeedRefresh()
                 }
