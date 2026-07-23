@@ -8,6 +8,7 @@ import sys
 import zlib
 from pathlib import Path
 
+
 def to_c_identifier(name: str) -> str:
     """Convert filename to valid C identifier."""
     result = name.replace('.', '_').replace('-', '_')
@@ -15,21 +16,33 @@ def to_c_identifier(name: str) -> str:
         result = '_' + result
     return result
 
+
+def normalize_asset_data(filepath: Path, data: bytes) -> bytes:
+    """Keep executable text assets usable regardless of host checkout settings."""
+    is_shell_script = filepath.suffix in {'.sh', '.bash'} or (
+        data.startswith(b'#!') and b'\0' not in data
+    )
+    if is_shell_script:
+        return data.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    return data
+
+
 def generate_asset_array(filepath: Path) -> tuple[str, str, int, int]:
     """Generate C array for a single file."""
     name = to_c_identifier(filepath.name)
-    
+
     with open(filepath, 'rb') as f:
-        data = f.read()
-    
+        data = normalize_asset_data(filepath, f.read())
+
     original_size = len(data)
     compressed_data = zlib.compress(data, level=9)
     compressed_size = len(compressed_data)
-    
+
     # Generate hex array
     hex_data = ', '.join(f'0x{b:02x}' for b in compressed_data)
-    
+
     return name, hex_data, compressed_size, original_size
+
 
 def main():
     if len(sys.argv) < 3:
@@ -245,7 +258,7 @@ int ensure_binaries(bool ignore_if_exist) {
     
     # Write output
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_file, 'w') as f:
+    with open(output_file, 'w', newline='\n') as f:
         f.write(output)
     
     print(f"Generated {output_file} with {len(assets)} assets")

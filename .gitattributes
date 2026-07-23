@@ -1,1 +1,4 @@
-*.bat eol=crlf
+*.sh text eol=lf
+*.bash text eol=lf
+*.py text eol=lf
+*.bat text eol=crlf
