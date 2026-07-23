@@ -21,6 +21,7 @@ constexpr const char* EXCLUDED_FROM_BATCH[] = {"userdata", "data"};
 struct PartitionInfo {
     std::string name;
     std::string block_device;
+    std::string slot_suffix;
     bool is_logical;
     uint64_t size;
     bool exists;

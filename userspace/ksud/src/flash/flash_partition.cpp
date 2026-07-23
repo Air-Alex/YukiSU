@@ -84,6 +84,15 @@ bool is_block_device_path(const std::string& path) {
     return S_ISBLK(st.st_mode);
 }
 
+std::string get_block_device_slot_suffix(const std::string& block_device) {
+    const std::string device_name = fs::path(block_device).filename().string();
+    if (device_name.length() < 3) {
+        return "";
+    }
+    const std::string suffix = device_name.substr(device_name.length() - 2);
+    return suffix == "_a" || suffix == "_b" ? suffix : "";
+}
+
 std::string shell_quote(const std::string& value) {
     std::string quoted = "'";
     for (const char c : value) {
@@ -189,6 +198,7 @@ PartitionInfo get_partition_info(const std::string& partition_name,
     PartitionInfo info;
     info.name = partition_name;
     info.block_device = find_partition_block_device(partition_name, slot_suffix);
+    info.slot_suffix = get_block_device_slot_suffix(info.block_device);
     info.exists = !info.block_device.empty() && is_block_device_path(info.block_device);
 
     // 基于实际的块设备路径判断是否为逻辑分区
@@ -344,20 +354,18 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
     const uint64_t image_size = get_file_size(image_path);
     const uint64_t partition_size = get_file_size(block_device);
 
+    if (image_size == 0 || partition_size == 0) {
+        LOGE("Image or partition has an invalid zero size");
+        return "";
+    }
+
     if (image_size > partition_size) {
         LOGE("Image size (%lu) exceeds partition size (%lu)", image_size, partition_size);
         return "";
     }
 
-    // Zero out partition if image is smaller
-    if (image_size < partition_size) {
-        LOGD("Zeroing partition before flash");
-        auto cmd =
-            "dd bs=4096 if=/dev/zero of=" + shell_quote(block_device) + " 2>/dev/null && sync";
-        exec_cmd(cmd);
-    }
-
-    // Flash with dd and compute SHA256
+    // Open both ends before modifying the target. This avoids clearing a
+    // partition only to discover that the source cannot be read.
     std::ifstream input(image_path, std::ios::binary);
     if (!input) {
         LOGE("Failed to open image file");
@@ -370,42 +378,157 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
         return "";
     }
 
-    std::vector<unsigned char> hash_data;
     std::array<char, 4096> buffer{};
-    std::string hash;
     bool success = true;
+    mbedtls_sha256_context source_hash_context{};
+    std::array<unsigned char, 32> source_digest{};
+    mbedtls_sha256_init(&source_hash_context);
+    if (verify_hash && mbedtls_sha256_starts(&source_hash_context, 0) != 0) {
+        LOGE("Failed to initialize source SHA256");
+        mbedtls_sha256_free(&source_hash_context);
+        close(fd);
+        return "";
+    }
 
     while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
-        const size_t bytes_read = input.gcount();
+        const auto bytes_read = static_cast<size_t>(input.gcount());
 
-        // Accumulate for hash
-        if (verify_hash) {
-            hash_data.insert(hash_data.end(), buffer.data(), buffer.data() + bytes_read);
-        }
-
-        // Write to partition
-        const ssize_t bytes_written = write(fd, buffer.data(), bytes_read);
-        if (bytes_written != static_cast<ssize_t>(bytes_read)) {
-            LOGE("Write failed: %s", strerror(errno));
+        if (verify_hash &&
+            mbedtls_sha256_update(
+                &source_hash_context,
+                reinterpret_cast<const unsigned char*>(buffer.data()),
+                bytes_read) != 0) {
+            LOGE("Failed to update source SHA256");
             success = false;
             break;
         }
+
+        size_t written = 0;
+        while (written < bytes_read) {
+            const ssize_t result = write(fd, buffer.data() + written, bytes_read - written);
+            if (result <= 0) {
+                LOGE("Write failed: %s", strerror(errno));
+                success = false;
+                break;
+            }
+            written += static_cast<size_t>(result);
+        }
+        if (!success) {
+            break;
+        }
+    }
+    if (input.bad()) {
+        LOGE("Failed while reading image file");
+        success = false;
     }
 
-    fsync(fd);
+    // Clear only the unwritten tail after the image has been copied. This keeps
+    // stale bytes out without destructively zeroing the target before preflight.
+    if (success && image_size < partition_size) {
+        LOGD("Zeroing unwritten partition tail");
+        std::array<char, 4096> zero_buffer{};
+        uint64_t remaining = partition_size - image_size;
+        while (remaining > 0) {
+            const size_t requested =
+                static_cast<size_t>(std::min<uint64_t>(zero_buffer.size(), remaining));
+            size_t written = 0;
+            while (written < requested) {
+                const ssize_t result =
+                    write(fd, zero_buffer.data() + written, requested - written);
+                if (result <= 0) {
+                    LOGE("Failed to zero partition tail: %s", strerror(errno));
+                    success = false;
+                    break;
+                }
+                written += static_cast<size_t>(result);
+            }
+            if (!success) {
+                break;
+            }
+            remaining -= requested;
+        }
+    }
+
+    if (fsync(fd) != 0) {
+        LOGE("Failed to sync block device: %s", strerror(errno));
+        success = false;
+    }
     close(fd);
     input.close();
 
-    if (success && verify_hash) {
-        unsigned char digest[32];
-        mbedtls_sha256(hash_data.data(), hash_data.size(), digest, 0);
-        hash = bytes_to_hex(digest, 32);
-        LOGI("Flash complete, SHA256: %s", hash.c_str());
-    } else if (success) {
-        hash = "success";
-        LOGI("Flash complete (no verification)");
+    if (verify_hash &&
+        mbedtls_sha256_finish(&source_hash_context, source_digest.data()) != 0) {
+        LOGE("Failed to finish source SHA256");
+        success = false;
+    }
+    mbedtls_sha256_free(&source_hash_context);
+
+    if (!success) {
+        return "";
     }
 
+    if (!verify_hash) {
+        LOGI("Flash complete (no verification)");
+        sync();
+        return "success";
+    }
+
+    // Read back exactly the bytes written and compare hashes. The previous
+    // implementation only hashed the source and retained the entire image in
+    // memory, which could OOM on large dynamic partitions without verifying
+    // what reached the block device.
+    const int verify_fd = open(block_device.c_str(), O_RDONLY);
+    if (verify_fd < 0) {
+        LOGE("Failed to open block device for verification: %s", strerror(errno));
+        return "";
+    }
+
+    mbedtls_sha256_context target_hash_context{};
+    std::array<unsigned char, 32> target_digest{};
+    mbedtls_sha256_init(&target_hash_context);
+    if (mbedtls_sha256_starts(&target_hash_context, 0) != 0) {
+        LOGE("Failed to initialize target SHA256");
+        mbedtls_sha256_free(&target_hash_context);
+        close(verify_fd);
+        return "";
+    }
+
+    uint64_t remaining = image_size;
+    while (remaining > 0) {
+        const size_t requested =
+            static_cast<size_t>(std::min<uint64_t>(buffer.size(), remaining));
+        const ssize_t bytes_read = read(verify_fd, buffer.data(), requested);
+        if (bytes_read <= 0) {
+            LOGE("Failed to read flashed data for verification: %s", strerror(errno));
+            success = false;
+            break;
+        }
+        if (mbedtls_sha256_update(
+                &target_hash_context,
+                reinterpret_cast<const unsigned char*>(buffer.data()),
+                static_cast<size_t>(bytes_read)) != 0) {
+            LOGE("Failed to update target SHA256");
+            success = false;
+            break;
+        }
+        remaining -= static_cast<uint64_t>(bytes_read);
+    }
+    close(verify_fd);
+
+    if (success &&
+        mbedtls_sha256_finish(&target_hash_context, target_digest.data()) != 0) {
+        LOGE("Failed to finish target SHA256");
+        success = false;
+    }
+    mbedtls_sha256_free(&target_hash_context);
+
+    if (!success || source_digest != target_digest) {
+        LOGE("Flash verification failed: source and target SHA256 differ");
+        return "";
+    }
+
+    const std::string hash = bytes_to_hex(source_digest.data(), source_digest.size());
+    LOGI("Flash verified, SHA256: %s", hash.c_str());
     sync();
     return hash;
 }
@@ -525,17 +648,22 @@ bool backup_partition(const std::string& partition_name, const std::string& outp
         }
     }
 
-    // Use dd for backup
+    // Use dd for backup and require both a successful command and an exact-size
+    // output. A truncated non-empty file must never be reported as a valid backup.
     const std::string cmd = "dd if=" + shell_quote(info.block_device) +
                             " of=" + shell_quote(output_path) + " bs=4096 2>/dev/null && sync";
-    (void)exec_cmd(cmd);
+    const auto result = exec_command_sync({"/system/bin/sh", "-c", cmd});
+    const uint64_t output_size = get_file_size(output_path);
 
-    if (fs::exists(output_path) && get_file_size(output_path) > 0) {
+    if (result.exit_code == 0 && info.size > 0 && output_size == info.size) {
         LOGI("Backup complete: %s", output_path.c_str());
         return true;
     }
 
-    LOGE("Backup failed");
+    LOGE("Backup failed: exit=%d, expected=%lu, actual=%lu", result.exit_code,
+         static_cast<unsigned long>(info.size), static_cast<unsigned long>(output_size));
+    std::error_code remove_error;
+    fs::remove(output_path, remove_error);
     return false;
 }
 

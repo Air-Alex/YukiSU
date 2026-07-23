@@ -699,7 +699,7 @@ int cmd_flash_new(const std::vector<std::string>& args) {
                info.size / 1024.0 / 1024.0);
 
         if (ksud::flash::is_ab_device()) {
-            printf("Slot: %s\n", slot.c_str());
+            printf("Slot: %s\n", info.slot_suffix.empty() ? "/" : info.slot_suffix.c_str());
         }
         return 0;
 
