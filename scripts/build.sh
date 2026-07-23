@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # YukiSU local build: DDK LKM -> ksuinit -> ksud -> Manager App
 # Signing env: YUKISU_KEYSTORE, YUKISU_KEYSTORE_PASSWORD, YUKISU_KEY_ALIAS, YUKISU_KEY_PASSWORD
-# Usage: ./scripts/build.sh [-k KMI] [--yukizygisk|--yukizygisk-off] [--yukizygisk-parts PARTS] [--skip-lkm] [-i] [-h]
+# Usage: ./scripts/build.sh [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--yukizygisk-parts PARTS] [--skip-lkm] [-i] [-h]
+# --clean deletes Native CMake build directories before building.
 
 set -euo pipefail
 
@@ -10,6 +11,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="$REPO_ROOT/out"
 KMI="android16-6.12"
 ANDROID_ABI="arm64-v8a"
+CLEAN_BUILD=false
 SKIP_LKM=false
 DDK_RELEASE="20260313"
 DO_INSTALL=false
@@ -21,6 +23,10 @@ while [[ $# -gt 0 ]]; do
 	-k | --kmi)
 		KMI="$2"
 		shift 2
+		;;
+	--clean)
+		CLEAN_BUILD=true
+		shift
 		;;
 	--skip-lkm)
 		SKIP_LKM=true
@@ -87,12 +93,33 @@ detect_jobs() {
 	fi
 }
 
+prepare_build_dir() {
+	local build_dir="$1"
+
+	if [[ "$CLEAN_BUILD" == "true" ]]; then
+		case "$build_dir" in
+		"$REPO_ROOT"/*/build) ;;
+		*)
+			echo "Refusing to clean unsafe build directory: $build_dir"
+			exit 1
+			;;
+		esac
+		rm -rf -- "$build_dir"
+	fi
+	mkdir -p "$build_dir"
+}
+
 NDK_HOST=$(detect_ndk_host)
 TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_HOST"
 MAKE_JOBS=$(detect_jobs)
 
 echo "=== YukiSU local build ==="
 echo "KMI: $KMI | ABI: $ANDROID_ABI | NDK: $ANDROID_NDK_HOME"
+if [[ "$CLEAN_BUILD" == "true" ]]; then
+	echo "Native cache: clean rebuild"
+else
+	echo "Native cache: reuse build directories"
+fi
 echo ""
 
 KSU_YUKIZYGISK_MAKE=""
@@ -139,8 +166,7 @@ fi
 
 echo ">>> [2/5] Build ksuinit ..."
 KSUINIT_DIR="$REPO_ROOT/userspace/ksuinit"
-rm -rf "$KSUINIT_DIR/build"
-mkdir -p "$KSUINIT_DIR/build"
+prepare_build_dir "$KSUINIT_DIR/build"
 cd "$KSUINIT_DIR/build"
 
 export CC="$TOOLCHAIN/bin/${ANDROID_TARGET}-clang"
@@ -179,8 +205,7 @@ cp "$KSUINIT_DIR/build/ksuinit" "$KSUD_ASSETS/"
 # prebuilt asset -- ksud no longer compiles su itself.
 echo ">>> Build su (magisk-compat) ..."
 SU_DIR="$REPO_ROOT/userspace/su"
-rm -rf "$SU_DIR/build"
-mkdir -p "$SU_DIR/build"
+prepare_build_dir "$SU_DIR/build"
 cd "$SU_DIR/build"
 cmake .. \
 	-G Ninja \
@@ -197,7 +222,8 @@ echo "    su staged"
 # YukiZygisk payload.
 echo ">>> Build YukiZygisk payload ..."
 ZCORE_DIR="$REPO_ROOT/userspace/zygisk/core"
-rm -rf "$ZCORE_DIR/build"; mkdir -p "$ZCORE_DIR/build"; cd "$ZCORE_DIR/build"
+prepare_build_dir "$ZCORE_DIR/build"
+cd "$ZCORE_DIR/build"
 if cmake .. -G Ninja \
 	-DCMAKE_SYSTEM_NAME=Android \
 	-DCMAKE_ANDROID_ARCH_ABI="$ANDROID_ABI" \
@@ -214,8 +240,7 @@ else
 fi
 
 KSUD_DIR="$REPO_ROOT/userspace/ksud"
-rm -rf "$KSUD_DIR/build"
-mkdir -p "$KSUD_DIR/build"
+prepare_build_dir "$KSUD_DIR/build"
 cd "$KSUD_DIR/build"
 
 cmake .. \
