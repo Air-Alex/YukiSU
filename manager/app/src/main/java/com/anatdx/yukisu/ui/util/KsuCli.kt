@@ -286,7 +286,6 @@ object KsuCli {
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/magiskboot",
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/bootctl",
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/resetprop",
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/mkbootfs",
             // Fix SELinux contexts (ignore errors on non-SEAndroid systems)
             "restorecon ${KsuPaths.KSUD_BIN} || true",
             "restorecon -R ${KsuPaths.KSU_ROOT} || true",
