@@ -17,6 +17,7 @@
 #include <sys/mman.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
+#include <string_view>
 #include <vector>
 
 #include "art_method.hpp"
@@ -29,6 +30,11 @@ namespace {
 constexpr char kZygoteInit[] = "com.android.internal.os.ZygoteInit";
 constexpr char kZygote[] = "com/android/internal/os/Zygote";
 constexpr char kAndroidRuntime[] = "/libandroid_runtime.so";
+
+bool ends_with(std::string_view value, std::string_view suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
 
 template <class F> struct Hook {
   F *original = nullptr;
@@ -51,7 +57,7 @@ char *new_strdup(const char *str) {
 
 bool find_libandroid_runtime(dev_t &dev, ino_t &inode) {
   for (const auto &m : lsplt::MapInfo::Scan()) {
-    if (m.path.ends_with(kAndroidRuntime)) {
+    if (ends_with(m.path, kAndroidRuntime)) {
       dev = m.dev;
       inode = m.inode;
       return true;
@@ -578,7 +584,7 @@ void hook_zygote_jni() {
 void yz_drop_runtime_header_pages() {
   for (const auto &m : lsplt::MapInfo::Scan()) {
     if (m.offset == 0 && m.perms == PROT_READ &&
-        m.path.ends_with(kAndroidRuntime)) {
+        ends_with(m.path, kAndroidRuntime)) {
       madvise(reinterpret_cast<void *>(m.start),
               static_cast<size_t>(m.end - m.start), MADV_DONTNEED);
     }

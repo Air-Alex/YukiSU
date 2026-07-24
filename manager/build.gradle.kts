@@ -17,6 +17,8 @@ val buildAbiList = provider { listOf(arm64Abi) }
 
 cmaker {
     default {
+        cppFlags.removeAll { it.startsWith("-std=c++") }
+        cppFlags += "-std=c++17"
         arguments.addAll(
             arrayOf(
                 "-DANDROID_STL=none",

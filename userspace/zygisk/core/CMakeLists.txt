@@ -8,7 +8,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     message(FATAL_ERROR "YukiZygisk supports Android targets only")
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_program(CCACHE_PROGRAM ccache)

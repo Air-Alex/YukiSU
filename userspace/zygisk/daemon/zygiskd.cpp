@@ -39,7 +39,6 @@
 #include <cstring>
 #include <deque>
 #include <fstream>
-#include <ranges>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -644,14 +643,15 @@ static void yz_umount_root_in_ns() {
     std::string root, target, source;
     if (!yz_mi_parse(line, root, target, source))
       continue;
-    bool should = source == "KSU" || source == "magisk" || source == "APatch" ||
-                  target.starts_with("/data/adb/") ||
-                  root.starts_with("/adb/modules");
+    bool should =
+        source == "KSU" || source == "magisk" || source == "APatch" ||
+        target.compare(0, sizeof("/data/adb/") - 1, "/data/adb/") == 0 ||
+        root.compare(0, sizeof("/adb/modules") - 1, "/adb/modules") == 0;
     if (should)
       targets.push_back(target);
   }
-  for (const auto &target : std::ranges::reverse_view(targets))
-    umount2(target.c_str(), MNT_DETACH);
+  for (auto it = targets.rbegin(); it != targets.rend(); ++it)
+    umount2(it->c_str(), MNT_DETACH);
 }
 
 static bool yz_revert_app_mounts(pid_t app_pid) {
@@ -926,7 +926,8 @@ void record_zygote(pid_t pid) {
     name = "zygote";
 
   for (auto it = g_zygotes.begin(); it != g_zygotes.end(); ++it) {
-    if (std::cmp_equal(it->pid, pid) || (it->name == name && it->abi == kAbi)) {
+    if ((pid >= 0 && it->pid == static_cast<uint32_t>(pid)) ||
+        (it->name == name && it->abi == kAbi)) {
       g_zygotes.erase(it);
       break;
     }
@@ -1032,7 +1033,8 @@ void record_native_injection(pid_t pid, uint32_t idx) {
 
   for (auto it = g_native_injections.begin(); it != g_native_injections.end();
        ++it) {
-    if (std::cmp_equal(it->pid, pid) && it->module_id == m.module_id) {
+    if (pid >= 0 && it->pid == static_cast<uint32_t>(pid) &&
+        it->module_id == m.module_id) {
       g_native_injections.erase(it);
       break;
     }
@@ -1313,7 +1315,7 @@ void handle_client(int client) {
     int mgr = ksud::get_manager_uid();
     if (mgr > 0 &&
         getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
-        std::cmp_equal(cr.uid, mgr)) {
+        cr.uid == static_cast<uid_t>(mgr)) {
       js = build_status_json();
     } else {
       DLOGI("GetStatus denied: peer uid=%d manager uid=%d",

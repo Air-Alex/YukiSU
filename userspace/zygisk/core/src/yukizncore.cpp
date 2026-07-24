@@ -365,7 +365,8 @@ bool path_matches_map(const std::string &want, const std::string &map_path) {
     return true;
   if (want[0] == '/')
     return false;
-  return clean.size() > want.size() && clean.ends_with(want) &&
+  return clean.size() > want.size() &&
+         clean.compare(clean.size() - want.size(), want.size(), want) == 0 &&
          clean[clean.size() - want.size() - 1] == '/';
 }
 

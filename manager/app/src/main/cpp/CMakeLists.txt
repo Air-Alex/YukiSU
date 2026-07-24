@@ -12,6 +12,9 @@ include_directories(${REPO_ROOT})
 
 project("kernelsu")
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Supplied by the cmaker plugin for release symbol collection. Referencing the
 # value here keeps CMake's command-line variable validation accurate.
 if(DEFINED DEBUG_SYMBOLS_PATH)
