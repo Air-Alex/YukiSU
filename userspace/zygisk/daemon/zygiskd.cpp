@@ -286,8 +286,8 @@ int copy_file_to_memfd(const std::string &path) {
     return -1;
   }
 
-  int mfd = static_cast<int>(syscall(__NR_memfd_create, "data-code-cache",
-                                     MFD_CLOEXEC | MFD_ALLOW_SEALING));
+  int mfd = static_cast<int>(
+      syscall(__NR_memfd_create, "", MFD_CLOEXEC | MFD_ALLOW_SEALING));
   if (mfd < 0) {
     DLOGE("module memfd: memfd_create failed path=%s err=%s", path.c_str(),
           strerror(errno));

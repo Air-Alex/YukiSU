@@ -23,6 +23,9 @@ int drop_lib_containing(uintptr_t addr, bool keep_mapped = false);
 /* Anonymize matching VMAs. */
 int spoof_virtual_maps(const char *path_substr, bool private_only);
 
+/* Anonymize VMAs backed by one exact open fd. */
+int spoof_fd_maps(int fd, bool private_only);
+
 /* Name bare executable anonymous VMAs. */
 int name_anonymous_exec();
 

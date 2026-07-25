@@ -323,17 +323,36 @@ zp_find_module_policy_holder(pid_t tgid,
 	return NULL;
 }
 
-static void zp_merge_module_policy_state(struct ksu_file_load_policy *dst,
-					 const struct ksu_file_load_policy *src)
+static int zp_merge_module_policy_state(struct ksu_file_load_policy *dst,
+					const struct ksu_file_load_policy *src)
 {
-	if (!dst->src_type)
+	if (!dst->src_type) {
 		*dst = *src;
-	else {
-		dst->added_av |= src->added_av;
-		dst->dir_added_av |= src->dir_added_av;
-		dst->tmpfs_added_av |= src->tmpfs_added_av;
-		dst->process_added_av |= src->process_added_av;
+		return 0;
 	}
+	if (dst->src_type != src->src_type || dst->tgt_type != src->tgt_type)
+		return -EINVAL;
+	if (src->process_added_av) {
+		if (!src->process_lease_refs)
+			return -EINVAL;
+		if (dst->process_added_av &&
+		    (dst->process_type != src->process_type ||
+		     dst->process_class != src->process_class ||
+		     dst->process_added_av != src->process_added_av))
+			return -EINVAL;
+		if (!dst->process_added_av) {
+			dst->process_type = src->process_type;
+			dst->process_class = src->process_class;
+		}
+		if (U32_MAX - dst->process_lease_refs < src->process_lease_refs)
+			return -EOVERFLOW;
+	}
+	dst->added_av |= src->added_av;
+	dst->dir_added_av |= src->dir_added_av;
+	dst->tmpfs_added_av |= src->tmpfs_added_av;
+	dst->process_added_av |= src->process_added_av;
+	dst->process_lease_refs += src->process_lease_refs;
+	return 0;
 }
 
 static void
@@ -381,7 +400,8 @@ int ksu_zygote_probe_allow_module_policy(pid_t tgid, struct file *dir,
 	struct zp_module_policy_holder *holder;
 	struct zp_module_policy_group *new_group;
 	struct zp_module_policy_holder *new_holder;
-	struct ksu_file_load_policy state;
+	struct ksu_file_load_policy state = {0};
+	int restore_ret;
 	int ret;
 
 	if (tgid <= 0 || !dir || !cred)
@@ -399,6 +419,9 @@ int ksu_zygote_probe_allow_module_policy(pid_t tgid, struct file *dir,
 	ret = ksu_file_load_policy_allow_cred(dir, cred, &state);
 	if (ret)
 		goto out_unlock;
+	ret = ksu_file_load_policy_allow_execmem_cred(cred, &state);
+	if (ret)
+		goto out_restore;
 
 	group = zp_find_module_policy_group(&state);
 	if (!group && !zp_native_policy_has_additions(&state))
@@ -410,8 +433,11 @@ int ksu_zygote_probe_allow_module_policy(pid_t tgid, struct file *dir,
 		group->state = state;
 		list_add_tail(&group->list, &zp_module_policy_groups);
 	} else {
-		zp_merge_module_policy_state(&group->state, &state);
+		ret = zp_merge_module_policy_state(&group->state, &state);
+		if (ret)
+			goto out_restore;
 	}
+	memset(&state, 0, sizeof(state));
 
 	holder = zp_find_module_policy_holder(tgid, group);
 	if (holder)
@@ -428,10 +454,18 @@ int ksu_zygote_probe_allow_module_policy(pid_t tgid, struct file *dir,
 	group->users++;
 	schedule_delayed_work(&holder->timeout, ZP_MODULE_POLICY_TIMEOUT);
 	pr_info("zygote_probe: module policy armed pid=%d src=%u tgt=%u "
-		"file=0x%x dir=0x%x tmpfs=0x%x\n",
+		"file=0x%x dir=0x%x tmpfs=0x%x process=0x%x\n",
 		tgid, group->state.src_type, group->state.tgt_type,
 		group->state.added_av, group->state.dir_added_av,
-		group->state.tmpfs_added_av);
+		group->state.tmpfs_added_av, group->state.process_added_av);
+
+	goto out_unlock;
+
+out_restore:
+	restore_ret = ksu_file_load_policy_restore(&state);
+	if (restore_ret)
+		pr_err("zygote_probe: module policy rollback pid=%d ret=%d\n",
+		       tgid, restore_ret);
 
 out_unlock:
 	mutex_unlock(&zp_module_policy_lock);
@@ -824,7 +858,7 @@ static bool zp_parse_zygote_args(struct mm_struct *mm, char *socket_name,
 #define ZP_EARLY_NATIVE_CORE_WATCHDOG                                          \
 	"/metadata/watchdog/ksu/yukizygisk/libyukizncore.so"
 #define ZP_EARLY_NATIVE_CORE_DEFAULT "/metadata/ksu/yukizygisk/libyukizncore.so"
-#define ZP_VMA_NAME "memfd:data-code-cache"
+#define ZP_VMA_NAME "memfd:"
 #define ZP_VMA_NAME_LEN sizeof(ZP_VMA_NAME)
 #define ZP_LOADER_MAX_SZ (8u << 20) /* sanity cap on a payload image */
 #define ZP_DLEXT_USE_LIBRARY_FD 0x10 /* android_dlextinfo.flags bit */

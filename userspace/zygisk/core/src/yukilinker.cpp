@@ -112,7 +112,6 @@ namespace yukilinker {
 namespace {
 
 constexpr size_t kMetadataPageSize = size_t{64} * 1024;
-constexpr char kDisplayName[] = "libdata-code-cache.so";
 size_t g_page_size = 0;
 
 bool is_power_of_two(size_t value);
@@ -336,7 +335,7 @@ struct ImageState {
   Lifecycle lifecycle;
   Dependency *dependencies = nullptr;
   TlsTemplate tls;
-  const char *display_name = kDisplayName;
+  const char *display_name = "";
   ImageState *previous = nullptr;
   ImageState *next = nullptr;
 #if YUKILINKER_FULL
@@ -471,6 +470,8 @@ bool inspect_source(const void *source, size_t file_size,
       static_cast<const uint8_t *>(source) + header->e_phoff);
   uintptr_t low = UINTPTR_MAX;
   uintptr_t high = 0;
+  uintptr_t previous_load_end = 0;
+  bool saw_load = false;
   size_t dynamic_index = SIZE_MAX;
 
   for (size_t i = 0; i < header->e_phnum; ++i) {
@@ -490,11 +491,19 @@ bool inspect_source(const void *source, size_t file_size,
                                 (ph.p_offset & (ph.p_align - 1)))) ||
         (ph.p_offset & (page_size - 1)) != (ph.p_vaddr & (page_size - 1)))
       return false;
+    if (ph.p_memsz == 0)
+      continue;
     uintptr_t segment_end;
     if (ph.p_vaddr > UINTPTR_MAX - ph.p_memsz ||
         !page_ceil(ph.p_vaddr + ph.p_memsz, &segment_end))
       return false;
     uintptr_t segment_begin = page_floor(ph.p_vaddr);
+    // map_one_segment() replaces complete pages. Reject LOAD layouts whose
+    // page-rounded ranges overlap so one segment cannot erase another.
+    if (saw_load && segment_begin < previous_load_end)
+      return false;
+    previous_load_end = segment_end;
+    saw_load = true;
     low = std::min(segment_begin, low);
     high = std::max(segment_end, high);
   }
@@ -524,7 +533,12 @@ bool map_one_segment(int fd, const uint8_t *source, size_t file_size,
   void *destination = reinterpret_cast<void *>(destination_value);
 
   if (!memory->file_backed) {
-    if (mmap(destination, mapped_bytes, PROT_READ | PROT_WRITE,
+    // Request executable permission before replacing the reservation. This
+    // makes an execmem denial fail the custom load cleanly instead of failing
+    // only after relocation, when final protections are restored.
+    int loading_protection =
+        protection_for(ph.p_flags) | PROT_READ | PROT_WRITE;
+    if (mmap(destination, mapped_bytes, loading_protection,
              MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) == MAP_FAILED)
       return false;
     if (ph.p_filesz != 0) {
@@ -617,7 +631,7 @@ bool restore_anonymous_protections(ImageState *image) {
     return true;
   for (size_t i = 0; i < image->memory.program_header_count; ++i) {
     const ElfW(Phdr) &ph = image->memory.program_headers[i];
-    if (ph.p_type != PT_LOAD)
+    if (ph.p_type != PT_LOAD || ph.p_memsz == 0)
       continue;
     uintptr_t segment_page = page_floor(ph.p_vaddr);
     size_t prefix = static_cast<size_t>(ph.p_vaddr - segment_page);
@@ -1958,6 +1972,7 @@ SoHandle *dlopen_memfd(int memfd, const char *vma_name, bool file_backed) {
   }
   handle->private_state = image;
   image->public_handle = handle;
+  image->display_name = "";
 
   if (!create_address_space(memfd, static_cast<const uint8_t *>(source),
                             file_size, layout, file_backed, &image->memory)) {
@@ -2203,7 +2218,7 @@ extern "C" {
 // the core; the bootstrap-only exports below remain the stage-one ABI.
 [[gnu::visibility("hidden")]] void *
 yuki_core_dlopen_memfd(int memfd, const char *vma_name) {
-  return yukilinker::dlopen_memfd(memfd, vma_name, true);
+  return yukilinker::dlopen_memfd(memfd, vma_name, false);
 }
 
 [[gnu::visibility("hidden")]] void *yuki_core_dlsym(void *handle,
@@ -2218,7 +2233,7 @@ yuki_core_dlopen_memfd(int memfd, const char *vma_name) {
 
 [[gnu::visibility("default")]] void *yuki_dlopen_memfd(int memfd,
                                                        const char *vma_name) {
-  return yukilinker::dlopen_memfd(memfd, vma_name, true);
+  return yukilinker::dlopen_memfd(memfd, vma_name, false);
 }
 
 [[gnu::visibility("default")]] void *yuki_dlsym(void *handle,
@@ -2238,8 +2253,7 @@ yuki_core_dlopen_memfd(int memfd, const char *vma_name) {
     return;
   }
 
-  yukilinker::SoHandle *core =
-      yukilinker::dlopen_memfd(core_fd, "data-code-cache", true);
+  yukilinker::SoHandle *core = yukilinker::dlopen_memfd(core_fd, "", false);
   raw_close_descriptor(core_fd);
   if (core == nullptr) {
     close_early_packet(packet_fd);

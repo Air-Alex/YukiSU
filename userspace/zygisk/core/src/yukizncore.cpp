@@ -781,8 +781,9 @@ bool load_native_module_from_fd(const zygiskd::NativeModuleInfo &info,
 
   std::string lib_name = basename_of(lib_path);
   bool yuki_loaded = false;
+  int fallback_anonymized = 0;
   void *so = yukilinker::dlopen_memfd(lib_fd, lib_path.c_str(),
-                                      /*file_backed=*/true);
+                                      /*file_backed=*/false);
   if (so != nullptr) {
     yuki_loaded = true;
     LOGI("native core: yukilinker loaded id=%s idx=%u path=%s early=%u",
@@ -810,6 +811,9 @@ bool load_native_module_from_fd(const zygiskd::NativeModuleInfo &info,
       LOGE("native core: dlopen path err=%s",
            path_error.empty() ? "(null)" : path_error.c_str());
     }
+    if (so != nullptr)
+      fallback_anonymized =
+          yuki::solist::spoof_fd_maps(lib_fd, /*private_only=*/true);
   }
   close(lib_fd);
   if (so == nullptr)
@@ -849,6 +853,13 @@ bool load_native_module_from_fd(const zygiskd::NativeModuleInfo &info,
   LOGI("native module onModuleLoaded: %s early=%u", module_id.c_str(),
        early ? 1U : 0U);
   mod->onModuleLoaded(handle, &g_api);
+  if (!yuki_loaded) {
+    int hidden = yuki::solist::drop_lib_containing(
+        reinterpret_cast<uintptr_t>(mod->onModuleLoaded),
+        /*keep_mapped=*/true);
+    LOGI("native module fallback sanitized: %s maps=%d soinfo=%d",
+         module_id.c_str(), fallback_anonymized, hidden);
+  }
   LOGI("native module loaded: %s early=%u", module_id.c_str(), early ? 1U : 0U);
   if (!early)
     handle->reported = report_native_injection(idx);

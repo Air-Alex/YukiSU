@@ -61,6 +61,7 @@ struct Module {
   int id = -1; // zygiskd module index
   long version = 0;
   void *handle = nullptr;
+  uintptr_t linker_anchor = 0;
   bool yuki_loaded = false;
   uint32_t option = 0; // zygisk::Option bits set via setOption
   CoreApiTable api{};  // per-module, filled by RegisterModuleImpl
@@ -291,7 +292,26 @@ uint32_t zd_get_flags(int uid) {
 }
 
 using module_entry_fn = void (*)(api_table *, JNIEnv *);
-constexpr char kExecMemfdName[] = "data-code-cache";
+constexpr char kSystemModuleName[] = "libzygiskmodule.so";
+
+bool image_has_tls(int fd) {
+  ElfW(Ehdr) ehdr{};
+  if (fd < 0 || pread(fd, &ehdr, sizeof(ehdr), 0) != sizeof(ehdr) ||
+      memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0 ||
+      ehdr.e_phentsize != sizeof(ElfW(Phdr)) || ehdr.e_phnum == PN_XNUM ||
+      ehdr.e_phnum == 0 || ehdr.e_phnum > 256)
+    return false;
+
+  std::vector<ElfW(Phdr)> phdrs(ehdr.e_phnum);
+  const size_t size = phdrs.size() * sizeof(phdrs[0]);
+  if (pread(fd, phdrs.data(), size, static_cast<off_t>(ehdr.e_phoff)) !=
+      static_cast<ssize_t>(size))
+    return false;
+  for (const auto &phdr : phdrs)
+    if (phdr.p_type == PT_TLS)
+      return true;
+  return false;
+}
 
 /* Copy a daemon-staged image into a zygote-owned executable memfd. */
 int make_app_memfd(int src_fd) {
@@ -302,8 +322,7 @@ int make_app_memfd(int src_fd) {
   void *src = mmap(nullptr, sz, PROT_READ, MAP_PRIVATE, src_fd, 0);
   if (src == MAP_FAILED)
     return -1;
-  int mfd =
-      static_cast<int>(syscall(__NR_memfd_create, kExecMemfdName, MFD_CLOEXEC));
+  int mfd = static_cast<int>(syscall(__NR_memfd_create, "", MFD_CLOEXEC));
   bool ok = mfd >= 0 && ftruncate(mfd, static_cast<off_t>(sz)) == 0;
   if (ok) {
     void *dst = mmap(nullptr, sz, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
@@ -367,6 +386,19 @@ void zd_restore_module_load_policy() {
     return;
   zd_restore_load_policy();
   g_module_policy_armed = false;
+}
+
+bool arm_module_load_policy(int id) {
+  if (g_module_policy_armed)
+    return true;
+  int dir_fd = zd_module_dir(id);
+  if (dir_fd < 0) {
+    LOGE("module %d load policy unavailable", id);
+    return false;
+  }
+  close(dir_fd);
+  g_module_policy_armed = true;
+  return true;
 }
 
 /* dmesg logging via zygiskd. */
@@ -453,9 +485,14 @@ void load_modules_impl(JNIEnv *env) {
     int mfd = make_app_memfd(lib_fd);
     close(lib_fd);
     if (mfd >= 0) {
-      if (g_yuki_dlopen != nullptr && g_yuki_dlsym != nullptr &&
-          g_yuki_dlclose != nullptr) {
-        handle = g_yuki_dlopen(mfd, kExecMemfdName);
+      const bool use_system_tls = image_has_tls(mfd);
+      // Anonymous executable PT_LOAD mappings need execmem while this forked
+      // child is still in the zygote domain. The same lease is restored after
+      // all module pre-specialize callbacks.
+      (void)arm_module_load_policy(static_cast<int>(i));
+      if (!use_system_tls && g_yuki_dlopen != nullptr &&
+          g_yuki_dlsym != nullptr && g_yuki_dlclose != nullptr) {
+        handle = g_yuki_dlopen(mfd, "");
         if (handle != nullptr) {
           yuki_loaded = true;
           entry = reinterpret_cast<module_entry_fn>(
@@ -463,15 +500,20 @@ void load_modules_impl(JNIEnv *env) {
         }
       }
       if (handle == nullptr) {
+        if (use_system_tls)
+          LOGI("module %u has PT_TLS; using system linker", i);
         android_dlextinfo ext{};
         ext.flags = ANDROID_DLEXT_USE_LIBRARY_FD | ANDROID_DLEXT_FORCE_LOAD;
         ext.library_fd = mfd;
-        handle = android_dlopen_ext("libzygiskmodule.so", RTLD_NOW | RTLD_LOCAL,
-                                    &ext);
+        handle =
+            android_dlopen_ext(kSystemModuleName, RTLD_NOW | RTLD_LOCAL, &ext);
         if (handle != nullptr) {
           LOGI("module %u using system linker fallback", i);
           entry = reinterpret_cast<module_entry_fn>(
               dlsym(handle, "zygisk_module_entry"));
+          int anonymized = yuki::solist::spoof_fd_maps(mfd, true);
+          LOGI("module %u system fallback anonymized %d segment(s)", i,
+               anonymized);
         }
       }
       close(mfd);
@@ -491,14 +533,21 @@ void load_modules_impl(JNIEnv *env) {
     Module &m = g_modules.emplace_back();
     m.id = static_cast<int>(i);
     m.handle = handle;
+    m.linker_anchor = yuki_loaded ? 0 : reinterpret_cast<uintptr_t>(entry);
     m.yuki_loaded = yuki_loaded;
     m.api.impl = nullptr; // api callbacks resolve the module via g_cur
     m.api.registerModule = RegisterModuleImpl;
     g_loading = &m;
     g_loading_id = static_cast<int>(i);
     entry(reinterpret_cast<api_table *>(&m.api), env);
-    if (m.version == 0)
+    if (m.version == 0) {
+      if (yuki_loaded)
+        g_yuki_dlclose(handle);
+      else
+        dlclose(handle);
       g_modules.pop_back();
+      continue;
+    }
   }
   g_loading = nullptr;
   g_cur = nullptr;
@@ -574,7 +623,13 @@ void run_app_pre_impl(zygisk::AppSpecializeArgs *args) {
 void hide_injection() {
   yuki::solist::hide_from_solist("libzygisk");
   yuki::solist::hide_from_solist("libyukilinker"); // split-out loader .so
-  yuki::solist::drop_module_from_solist(kExecMemfdName, false);
+  for (auto &m : g_modules) {
+    if (m.handle != nullptr && !m.yuki_loaded && m.linker_anchor != 0) {
+      yuki::solist::drop_lib_containing(m.linker_anchor,
+                                        /*keep_mapped=*/true);
+      m.linker_anchor = 0;
+    }
+  }
 }
 
 /* denylist_mode=2 mount cleanup. */
@@ -604,7 +659,6 @@ void run_app_post_impl(const zygisk::AppSpecializeArgs *args) {
   g_cur = nullptr;
   unload_requested_modules();
   hide_injection();
-  yuki::solist::spoof_virtual_maps("/dev/zero (deleted)", false);
   yz_drop_runtime_header_pages();
 }
 
@@ -678,9 +732,9 @@ static void core_start(const char *self_path) {
   g_yuki_dlsym = yuki_core_dlsym;
   g_yuki_dlclose = yuki_core_dlclose;
   zd_report_zygote();
-  zd_restore_load_policy();
   LOGI("core start, self=%s", self_path ? self_path : "(null)");
   zygisk_hook_bootstrap(self_path);
+  zd_restore_load_policy();
 }
 
 /* Address inside the first-stage loader mapping. */
@@ -1035,10 +1089,6 @@ static bool yz_report_self_unmap() {
     size[n] = csize;
     n++;
   }
-  int got = zygisk_collect_path_segs(kExecMemfdName, addr + n, size + n,
-                                     YZ_MAX_UNMAP_SEGS - n);
-  if (got > 0)
-    n += got;
   if (n == 0)
     return false;
   int sock = connect_zygiskd();
@@ -1068,7 +1118,7 @@ static inline void yz_finalize_self_dso() {
   __cxa_finalize(static_cast<void *>(&__dso_handle));
 }
 
-void zygisk_self_destruct(JNIEnv *env, bool isolated) {
+void zygisk_self_destruct(JNIEnv *env, bool isolated, bool mounts_reverted) {
   bool can_unmap = zygisk_specialize_fully_inline_hooked();
   zygisk_self_unhook(env);
   yz_drop_runtime_header_pages();
@@ -1077,14 +1127,20 @@ void zygisk_self_destruct(JNIEnv *env, bool isolated) {
   bool have_range =
       yz_find_self_range(&cbase, &csize) && cbase != 0 && csize != 0;
   if (!isolated) {
-    bool reverted = yz_report_self_unmap();
     yuki::solist::hide_from_solist("libzygisk");
     yuki::solist::hide_from_solist("libyukilinker");
-    if (!reverted)
-      yz_revert_self_mounts();
+    if (!mounts_reverted) {
+      bool reverted = yz_report_self_unmap();
+      if (!reverted)
+        yz_revert_self_mounts();
+    }
   }
+  if (!can_unmap)
+    LOGE("self-unmap unavailable: specialize used RegisterNatives fallback");
+  if (!have_range)
+    LOGE("self-unmap unavailable: core image bounds are missing");
   if (can_unmap && yukilinker::has_active_tls()) {
-    LOGI("self-unmap disabled: a yukilinker TLS resolver is still active");
+    LOGE("self-unmap unavailable: a yukilinker TLS resolver is still active");
     can_unmap = false;
   }
   if (have_range && can_unmap) {
@@ -1092,7 +1148,8 @@ void zygisk_self_destruct(JNIEnv *env, bool isolated) {
     yz_finalize_self_dso();
     yz_self_unmap_tail(reinterpret_cast<void *>(cbase), csize); // [[noreturn]]
   }
-  yuki::solist::spoof_virtual_maps(kExecMemfdName, true);
+  LOGE("self-unmap failed: core remains mapped at %p size=%zu",
+       reinterpret_cast<void *>(cbase), csize);
   (void)env;
 }
 

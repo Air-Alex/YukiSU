@@ -94,8 +94,7 @@ void finish_restore_only_child(JNIEnv *env, bool is_child_zygote) {
   zygisk_revert_mounts();
   if (is_child_zygote)
     return;
-  zygisk_self_unhook(env);
-  yz_drop_runtime_header_pages();
+  zygisk_self_destruct(env, false, true);
 }
 
 /* The native specialize fork becomes a no-op after ctx_fork_pre. */

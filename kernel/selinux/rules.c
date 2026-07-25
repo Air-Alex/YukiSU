@@ -3,6 +3,7 @@
 #include <linux/version.h>
 #include <linux/err.h>
 #include <linux/fs.h>
+#include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
@@ -91,6 +92,29 @@ static const char *ksu_tmpfs_hook_perms[] = {
 static const char *ksu_process_execmem_perms[] = {
     "execmem",
 };
+
+struct ksu_process_policy_lease {
+	struct list_head list;
+	u32 process_type;
+	u16 process_class;
+	u32 added_av;
+	u32 users;
+};
+
+static LIST_HEAD(ksu_process_policy_leases);
+
+static struct ksu_process_policy_lease *
+ksu_find_process_policy_lease(u32 process_type, u16 process_class)
+{
+	struct ksu_process_policy_lease *lease;
+
+	list_for_each_entry (lease, &ksu_process_policy_leases, list) {
+		if (lease->process_type == process_type &&
+		    lease->process_class == process_class)
+			return lease;
+	}
+	return NULL;
+}
 
 static u32 ksu_file_perm_mask(struct class_datum *cls, const char *perm_name)
 {
@@ -382,8 +406,7 @@ int ksu_file_load_policy_allow_current(struct file *file,
 					      state);
 }
 
-int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred,
-				    struct ksu_file_load_policy *state)
+static u32 ksu_file_load_policy_cred_sid(const struct cred *cred)
 {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
 	const struct task_security_struct *tsec;
@@ -392,39 +415,42 @@ int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred,
 #endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
 
 	if (!cred)
-		return -EINVAL;
+		return 0;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
 	tsec = cred->security;
 #else
 	tsec = selinux_cred(cred);
 #endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
-	if (!tsec || !tsec->sid)
-		return -EINVAL;
-	return ksu_file_load_policy_allow_sid(file, tsec->sid, true, false,
-					      state);
+	return tsec ? tsec->sid : 0;
 }
 
-int ksu_file_load_policy_allow_execmem_current(
-    struct ksu_file_load_policy *state)
+int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred,
+				    struct ksu_file_load_policy *state)
+{
+	u32 sid = ksu_file_load_policy_cred_sid(cred);
+
+	if (!sid)
+		return -EINVAL;
+	return ksu_file_load_policy_allow_sid(file, sid, true, false, state);
+}
+
+static int
+ksu_file_load_policy_allow_execmem_sid(u32 ssid,
+				       struct ksu_file_load_policy *state)
 {
 	struct selinux_policy *pol, *old_pol;
+	struct ksu_process_policy_lease *lease;
+	struct ksu_process_policy_lease *new_lease = NULL;
 	struct policydb *db;
 	struct context *scontext;
 	struct class_datum *cls;
 	const char *src_name;
-	u32 ssid;
 	u32 required_av;
 	u32 direct_av;
 	u32 add_av;
 	int ret = 0;
 
-	if (!state)
-		return -EINVAL;
-	if (state->process_added_av)
-		return 0;
-
-	ssid = current_sid();
-	if (!ssid)
+	if (!state || !ssid)
 		return -EINVAL;
 
 	mutex_lock(&selinux_state.policy_mutex);
@@ -441,6 +467,19 @@ int ksu_file_load_policy_allow_execmem_current(
 		ret = -ENOENT;
 		goto out_unlock;
 	}
+	if ((state->src_type && state->src_type != scontext->type) ||
+	    (state->process_lease_refs &&
+	     (state->process_type != scontext->type ||
+	      state->process_class != cls->value))) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
+	if (!!state->process_added_av != !!state->process_lease_refs) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
+	if (state->process_lease_refs)
+		goto out_unlock;
 	src_name = ksu_type_name_by_value(db, scontext->type);
 	if (!src_name) {
 		ret = -ENOENT;
@@ -449,12 +488,31 @@ int ksu_file_load_policy_allow_execmem_current(
 
 	required_av = ksu_required_av(cls, ksu_process_execmem_perms,
 				      ARRAY_SIZE(ksu_process_execmem_perms));
+	lease = ksu_find_process_policy_lease(scontext->type, cls->value);
+	if (lease) {
+		if (lease->added_av != required_av || lease->users == U32_MAX) {
+			ret = -EOVERFLOW;
+			goto out_unlock;
+		}
+		lease->users++;
+		state->process_type = lease->process_type;
+		state->process_class = lease->process_class;
+		state->process_added_av = lease->added_av;
+		state->process_lease_refs = 1;
+		goto out_unlock;
+	}
+
 	direct_av = ksu_direct_allowed_av(db, scontext->type, scontext->type,
 					  cls->value);
 	add_av = required_av & ~direct_av;
 	if (!add_av)
 		goto out_unlock;
 
+	new_lease = kzalloc(sizeof(*new_lease), GFP_KERNEL);
+	if (!new_lease) {
+		ret = -ENOMEM;
+		goto out_unlock;
+	}
 	pol = ksu_dup_sepolicy(rcu_dereference_protected(
 	    old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
 	if (IS_ERR(pol)) {
@@ -472,6 +530,15 @@ int ksu_file_load_policy_allow_execmem_current(
 	state->process_type = scontext->type;
 	state->process_class = cls->value;
 	state->process_added_av = add_av;
+	state->process_lease_refs = 1;
+
+	INIT_LIST_HEAD(&new_lease->list);
+	new_lease->process_type = scontext->type;
+	new_lease->process_class = cls->value;
+	new_lease->added_av = add_av;
+	new_lease->users = 1;
+	list_add_tail(&new_lease->list, &ksu_process_policy_leases);
+	new_lease = NULL;
 
 	pr_info("file_load_policy: allow src=%s process added=0x%x\n", src_name,
 		add_av);
@@ -481,42 +548,87 @@ int ksu_file_load_policy_allow_execmem_current(
 	reset_avc_cache();
 
 out_unlock:
+	kfree(new_lease);
 	mutex_unlock(&selinux_state.policy_mutex);
 	return ret;
+}
+
+int ksu_file_load_policy_allow_execmem_current(
+    struct ksu_file_load_policy *state)
+{
+	return ksu_file_load_policy_allow_execmem_sid(current_sid(), state);
+}
+
+int ksu_file_load_policy_allow_execmem_cred(const struct cred *cred,
+					    struct ksu_file_load_policy *state)
+{
+	u32 sid = ksu_file_load_policy_cred_sid(cred);
+
+	if (!sid)
+		return -EINVAL;
+	return ksu_file_load_policy_allow_execmem_sid(sid, state);
 }
 
 int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 {
 	struct selinux_policy *pol, *old_pol;
+	struct ksu_process_policy_lease *lease = NULL;
 	struct policydb *db;
 	const char *src_name;
 	const char *tgt_name = NULL;
 	const char *tmpfs_name = NULL;
 	const char *process_name = NULL;
+	bool release_process = false;
+	bool restore_non_process;
 	int ret = 0;
 
-	if (!state || (!state->added_av && !state->tmpfs_added_av &&
-		       !state->process_added_av && !state->dir_added_av))
+	if (!state)
+		return 0;
+	if (!!state->process_added_av != !!state->process_lease_refs)
+		return -EINVAL;
+	if (!state->added_av && !state->tmpfs_added_av &&
+	    !state->process_added_av && !state->dir_added_av)
 		return 0;
 
 	mutex_lock(&selinux_state.policy_mutex);
 
 	old_pol = selinux_state.policy;
 	db = &old_pol->policydb;
+	restore_non_process =
+	    state->added_av || state->tmpfs_added_av || state->dir_added_av;
+	if (state->process_lease_refs) {
+		lease = ksu_find_process_policy_lease(state->process_type,
+						      state->process_class);
+		if (!lease || lease->added_av != state->process_added_av ||
+		    state->process_lease_refs > lease->users) {
+			ret = -EINVAL;
+			goto out_unlock;
+		}
+		release_process = state->process_lease_refs == lease->users;
+		if (!restore_non_process && !release_process) {
+			lease->users -= state->process_lease_refs;
+			pr_info(
+			    "file_load_policy: process lease retained type=%u "
+			    "users=%u\n",
+			    lease->process_type, lease->users);
+			goto out_unlock;
+		}
+	}
+
 	src_name = state->src_type ? ksu_type_name_by_value(db, state->src_type)
 				   : NULL;
 	if (state->added_av || state->dir_added_av)
 		tgt_name = ksu_type_name_by_value(db, state->tgt_type);
 	if (state->tmpfs_added_av)
 		tmpfs_name = ksu_type_name_by_value(db, state->tmpfs_type);
-	if (state->process_added_av)
+	if (release_process)
 		process_name = ksu_type_name_by_value(db, state->process_type);
 	if (((state->added_av || state->dir_added_av ||
 	      state->tmpfs_added_av) &&
 	     !src_name) ||
 	    ((state->added_av || state->dir_added_av) && !tgt_name) ||
 	    (state->tmpfs_added_av && !tmpfs_name) ||
-	    (state->process_added_av && !process_name)) {
+	    (release_process && !process_name)) {
 		ret = -ENOENT;
 		goto out_unlock;
 	}
@@ -552,7 +664,7 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 		ret = -EINVAL;
 		goto out_unlock;
 	}
-	if (state->process_added_av &&
+	if (release_process &&
 	    !ksu_apply_process_av(db, process_name, state->process_added_av,
 				  false)) {
 		ksu_destroy_sepolicy(pol);
@@ -561,14 +673,22 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 	}
 
 	pr_info("file_load_policy: restore src=%s tgt=%s file cleared=0x%x "
-		"dir=0x%x tmpfs=0x%x process=0x%x\n",
+		"dir=0x%x tmpfs=0x%x process=0x%x refs=%u\n",
 		src_name ? src_name : process_name, tgt_name ? tgt_name : "-",
 		state->added_av, state->dir_added_av, state->tmpfs_added_av,
-		state->process_added_av);
+		release_process ? state->process_added_av : 0,
+		state->process_lease_refs);
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 	reset_avc_cache();
+	if (lease) {
+		lease->users -= state->process_lease_refs;
+		if (!lease->users) {
+			list_del(&lease->list);
+			kfree(lease);
+		}
+	}
 
 out_unlock:
 	mutex_unlock(&selinux_state.policy_mutex);

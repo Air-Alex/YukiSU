@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 
 #include <cstdint>
@@ -572,13 +573,59 @@ bool sync_cfi_shadow(uintptr_t old_start, uintptr_t new_start, size_t size) {
   return true;
 }
 
+struct MapRange {
+  uintptr_t start, end;
+  int prot;
+};
+
+static int anonymize_ranges(const MapRange *ranges, int nr) {
+  int done = 0;
+  for (int i = 0; i < nr; ++i) {
+    size_t size = ranges[i].end - ranges[i].start;
+    void *addr = reinterpret_cast<void *>(ranges[i].start);
+    // Preflight every permission the replacement will need. In particular,
+    // executable mappings fail here on an execmem denial, before the original
+    // file-backed VMA is displaced.
+    int copy_prot = ranges[i].prot | PROT_READ | PROT_WRITE;
+    void *copy =
+        mmap(nullptr, size, copy_prot, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    if (copy == MAP_FAILED)
+      continue;
+    bool added_read = (ranges[i].prot & PROT_READ) == 0;
+    if (added_read && mprotect(addr, size, ranges[i].prot | PROT_READ) != 0) {
+      munmap(copy, size);
+      continue;
+    }
+    memcpy(copy, addr, size);
+    if (added_read && mprotect(addr, size, ranges[i].prot) != 0) {
+      SLOGE("maps-spoof: failed to restore source protection");
+      munmap(copy, size);
+      continue;
+    }
+    if (mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr) ==
+        MAP_FAILED) {
+      munmap(copy, size);
+      continue;
+    }
+    if (mprotect(addr, size, ranges[i].prot) != 0) {
+      SLOGE("maps-spoof: failed to restore anonymous protection");
+      continue;
+    }
+    if (ranges[i].prot & PROT_EXEC) {
+      sync_cfi_shadow(ranges[i].start, ranges[i].start, size);
+      __builtin___clear_cache(reinterpret_cast<char *>(addr),
+                              reinterpret_cast<char *>(ranges[i].start + size));
+    }
+    ++done;
+  }
+  return done;
+}
+
 /* Maps anonymization. */
 int spoof_virtual_maps(const char *path_substr, bool private_only) {
-  struct Range {
-    uintptr_t start, end;
-    int prot;
-  };
-  Range ranges[64];
+  if (path_substr == nullptr || path_substr[0] == '\0')
+    return 0;
+  MapRange ranges[64];
   int nr = 0;
 
   FILE *fp = fopen("/proc/self/maps", "re");
@@ -601,32 +648,45 @@ int spoof_virtual_maps(const char *path_substr, bool private_only) {
   }
   (void)fclose(fp);
 
-  int done = 0;
-  for (int i = 0; i < nr; ++i) {
-    size_t size = ranges[i].end - ranges[i].start;
-    void *addr = reinterpret_cast<void *>(ranges[i].start);
-    void *copy = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                      MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-    if (copy == MAP_FAILED)
-      continue;
-    if ((ranges[i].prot & PROT_READ) == 0)
-      mprotect(addr, size, PROT_READ);
-    memcpy(copy, addr, size);
-    if (mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr) ==
-        MAP_FAILED) {
-      munmap(copy, size);
-      continue;
-    }
-    mprotect(addr, size, ranges[i].prot);
-    if (ranges[i].prot & PROT_EXEC) {
-      sync_cfi_shadow(ranges[i].start, ranges[i].start, size);
-      __builtin___clear_cache(reinterpret_cast<char *>(addr),
-                              reinterpret_cast<char *>(ranges[i].start + size));
-    }
-    ++done;
-  }
+  int done = anonymize_ranges(ranges, nr);
   SLOGI("maps-spoof: anonymized %d/%d segment(s) matching '%s'", done, nr,
         path_substr);
+  return done;
+}
+
+int spoof_fd_maps(int fd, bool private_only) {
+  struct stat st{};
+  if (fd < 0 || fstat(fd, &st) != 0)
+    return 0;
+
+  MapRange ranges[64];
+  int nr = 0;
+  FILE *fp = fopen("/proc/self/maps", "re");
+  if (fp == nullptr)
+    return 0;
+  char line[512];
+  while (nr < 64 && fgets(line, sizeof(line), fp) != nullptr) {
+    uintptr_t start = 0, end = 0;
+    unsigned int dev_major = 0, dev_minor = 0;
+    unsigned long inode = 0;
+    char perms[5] = {};
+    if (sscanf(line, "%lx-%lx %4s %*s %x:%x %lu", &start, &end, perms,
+               &dev_major, &dev_minor, &inode) != 6)
+      continue;
+    if (makedev(dev_major, dev_minor) != st.st_dev ||
+        static_cast<ino_t>(inode) != st.st_ino)
+      continue;
+    if (private_only && perms[3] != 'p')
+      continue;
+    int prot = (perms[0] == 'r' ? PROT_READ : 0) |
+               (perms[1] == 'w' ? PROT_WRITE : 0) |
+               (perms[2] == 'x' ? PROT_EXEC : 0);
+    ranges[nr++] = {start, end, prot};
+  }
+  (void)fclose(fp);
+
+  int done = anonymize_ranges(ranges, nr);
+  SLOGI("maps-spoof: anonymized %d/%d segment(s) for fd=%d", done, nr, fd);
   return done;
 }
 

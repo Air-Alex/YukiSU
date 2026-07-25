@@ -50,6 +50,7 @@ struct ksu_file_load_policy {
 	u32 tmpfs_added_av;
 	u32 process_added_av;
 	u32 dir_added_av;
+	u32 process_lease_refs;
 };
 
 int ksu_file_load_policy_allow_current(struct file *file,
@@ -58,6 +59,8 @@ int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred,
 				    struct ksu_file_load_policy *state);
 int ksu_file_load_policy_allow_execmem_current(
     struct ksu_file_load_policy *state);
+int ksu_file_load_policy_allow_execmem_cred(const struct cred *cred,
+					    struct ksu_file_load_policy *state);
 int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state);
 
 int handle_sepolicy(void __user *user_data, u64 data_len);
