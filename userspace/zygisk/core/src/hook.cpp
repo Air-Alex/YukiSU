@@ -90,11 +90,24 @@ int forked_decision(bool is_child, int uid) {
   return zygisk_inject_decision(uid);
 }
 
-void finish_restore_only_child(JNIEnv *env, bool is_child_zygote) {
-  zygisk_revert_mounts();
+void finish_app_child(JNIEnv *env, bool is_child_zygote, bool isolated,
+                      int decision) {
+  // Every fully specialized app child drops the inherited core. Child zygotes
+  // retain it because they must inject their own future descendants.
+  //
+  // Restore mode reverts mounts after module post-specialize callbacks. Force
+  // mode lets self-destruct request the same cleanup. The normal inject path
+  // must preserve module mounts while still dropping the inherited core.
+  bool revert_mounts = decision == 2;
+  if (decision == 1) {
+    zygisk_revert_mounts();
+    revert_mounts = false;
+  }
   if (is_child_zygote)
     return;
-  zygisk_self_destruct(env, false, true);
+  if (!zygisk_app_core_unload_safe())
+    return;
+  zygisk_self_destruct(env, isolated, revert_mounts);
 }
 
 /* The native specialize fork becomes a no-op after ctx_fork_pre. */
@@ -256,10 +269,8 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                     allowlisted_data_info, mount_data_dirs, mount_storage_dirs);
            if (run_modules)
              zygisk_run_app_post(&args);
-           if (decision == 2 && !is_child_zygote)
-             zygisk_self_destruct(env, is_isolated(uid)); // mode 1 / isolated
-           else if (decision == 1)
-             finish_restore_only_child(env, is_child_zygote); // mode 2
+           if (ctx.pid == 0)
+             finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
            if (is_child_zygote && ctx.pid == 0)
              close_inherited_module_fds();
            g_ctx = nullptr;
@@ -318,10 +329,8 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                            mount_storage_dirs, mount_sysprop_overrides);
            if (run_modules)
              zygisk_run_app_post(&args);
-           if (decision == 2 && !is_child_zygote)
-             zygisk_self_destruct(env, is_isolated(uid)); // mode 1 / isolated
-           else if (decision == 1)
-             finish_restore_only_child(env, is_child_zygote); // mode 2
+           if (ctx.pid == 0)
+             finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
            if (is_child_zygote && ctx.pid == 0)
              close_inherited_module_fds();
            g_ctx = nullptr;
@@ -367,10 +376,7 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                allowlisted_data_info, mount_data_dirs, mount_storage_dirs);
            if (run_modules)
              zygisk_run_app_post(&args);
-           if (decision == 2 && !is_child_zygote)
-             zygisk_self_destruct(env, is_isolated(uid)); // mode 1 / isolated
-           else if (decision == 1)
-             finish_restore_only_child(env, is_child_zygote); // mode 2
+           finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
          })},
     {"nativeSpecializeAppProcess",
      "(II[II[[IILjava/lang/String;Ljava/lang/String;ZLjava/lang/String;"
@@ -414,10 +420,7 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                mount_sysprop_overrides);
            if (run_modules)
              zygisk_run_app_post(&args);
-           if (decision == 2 && !is_child_zygote)
-             zygisk_self_destruct(env, is_isolated(uid)); // mode 1 / isolated
-           else if (decision == 1)
-             finish_restore_only_child(env, is_child_zygote); // mode 2
+           finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
          })},
     /* system_server fork. */
     {"nativeForkSystemServer", "(II[II[[IJJ)I",
