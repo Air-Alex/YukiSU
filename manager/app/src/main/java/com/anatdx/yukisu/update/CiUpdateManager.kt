@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -86,6 +85,8 @@ object CiUpdateManager {
         "https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main/Manager-arm64-v8a.zip"
     private const val APK_NAME = "app-release.apk"
     private const val SIGNATURE_NAME = "app-release.sig"
+    private const val UPDATE_CACHE_DIR = "ci-update"
+    private const val LEGACY_UPDATE_GLOB = "/data/local/tmp/yukisu-ci-update-*.apk"
     private const val METADATA_NAME = "ci-update.json"
     private const val METADATA_SIGNATURE_NAME = "ci-update.sig"
     private const val CI_RUN_ID_META_DATA = "com.anatdx.yukisu.CI_RUN_ID"
@@ -392,7 +393,7 @@ object CiUpdateManager {
         context: Context,
         onProgress: (Int) -> Unit,
     ): PreparedCiUpdate = withContext(Dispatchers.IO) {
-        val updateDir = File(context.cacheDir, "ci-update").apply {
+        val updateDir = File(context.cacheDir, UPDATE_CACHE_DIR).apply {
             check(isDirectory || mkdirs()) { "Cannot create the CI update cache" }
         }
         val archive = File(updateDir, "Manager-arm64-v8a.zip")
@@ -471,19 +472,27 @@ object CiUpdateManager {
 
     suspend fun install(context: Context, apk: File): CiInstallResult = withContext(Dispatchers.IO) {
         if (KsuCli.SHELL.isRoot) {
-            val temporaryApk = File("/data/local/tmp", "yukisu-ci-update-${Process.myPid()}.apk")
+            val apkSize = apk.length()
+            check(apkSize in 1..MAX_APK_BYTES) { "CI update APK has an invalid size" }
             val source = shellQuote(apk.absolutePath)
-            val target = shellQuote(temporaryApk.absolutePath)
-            val command =
-                "cp $source $target && chmod 0644 $target && pm install -r $target; " +
-                    "result=\$?; rm -f $target; exit \$result"
-            val result = KsuCli.SHELL.newJob().add(command).exec()
-            check(result.isSuccess) {
-                (result.err + result.out).joinToString("\n").ifBlank { "Root package install failed" }
+            val signature = shellQuote(File(apk.parentFile, SIGNATURE_NAME).absolutePath)
+            // Feed PackageInstaller through stdin so it never needs access to the
+            // app-private path. The producer removes the source before pm can
+            // commit and terminate this app during package replacement.
+            val streamAndRemove =
+                "(cat $source; result=\$?; rm -f $source $signature; exit \$result)"
+            try {
+                val result = KsuCli.SHELL.newJob()
+                    .add("$streamAndRemove | pm install -r -S $apkSize -")
+                    .exec()
+                check(result.isSuccess) {
+                    (result.err + result.out).joinToString("\n")
+                        .ifBlank { "Root package install failed" }
+                }
+                CiInstallResult.RootInstalled
+            } finally {
+                cleanupCachedUpdate(context)
             }
-            apk.delete()
-            updateSignatureSibling(apk).delete()
-            CiInstallResult.RootInstalled
         } else {
             withContext(Dispatchers.Main) {
                 val uri = FileProvider.getUriForFile(
@@ -497,6 +506,29 @@ object CiUpdateManager {
                 context.startActivity(intent)
             }
             CiInstallResult.SystemInstallerStarted
+        }
+    }
+
+    /**
+     * Removes an update left behind when installing this package terminated the
+     * old app process before [install] could run its normal cleanup.
+     */
+    fun cleanupCachedUpdate(context: Context) {
+        val updateDir = File(context.cacheDir, UPDATE_CACHE_DIR)
+        if (updateDir.exists() && !updateDir.deleteRecursively()) {
+            Log.w(TAG, "Failed to remove stale CI update cache at $updateDir")
+        }
+    }
+
+    /**
+     * Removes APKs left by manager versions that staged root installs in the
+     * globally accessible shell temporary directory.
+     */
+    fun cleanupLegacyTemporaryUpdates() {
+        if (!KsuCli.SHELL.isRoot) return
+        val result = KsuCli.SHELL.newJob().add("rm -f $LEGACY_UPDATE_GLOB").exec()
+        if (!result.isSuccess) {
+            Log.w(TAG, "Failed to remove legacy CI update APKs")
         }
     }
 
@@ -715,5 +747,4 @@ object CiUpdateManager {
 
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
-    private fun updateSignatureSibling(apk: File): File = File(apk.parentFile, SIGNATURE_NAME)
 }

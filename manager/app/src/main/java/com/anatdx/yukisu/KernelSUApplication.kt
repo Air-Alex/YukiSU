@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
+import com.anatdx.yukisu.update.CiUpdateManager
 import coil.Coil
 import coil.ImageLoader
 import com.dergoogler.mmrl.platform.Platform
@@ -36,6 +37,11 @@ class KernelSUApplication : Application(), ViewModelStoreOwner {
         if (isBootstrapProcess()) {
             Os.setenv("TMPDIR", cacheDir.absolutePath, true)
             return
+        }
+
+        CiUpdateManager.cleanupCachedUpdate(this)
+        CoroutineScope(Dispatchers.IO).launch {
+            CiUpdateManager.cleanupLegacyTemporaryUpdates()
         }
 
         // For faster response when first entering superuser or webui activity
