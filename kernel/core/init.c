@@ -46,6 +46,7 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 #include "policy/feature.h"
 #include "feature/adb_root.h"
 #include "feature/selinux_hide.h"
+#include "extension/uts_view.h"
 #ifdef CONFIG_KSU_YUKIZYGISK
 #include "feature/zygote_probe.h"
 #include "feature/zygote_orch.h"
@@ -124,6 +125,9 @@ static void ksu_hook_exit(void)
 
 int __init kernelsu_init(void)
 {
+	bool uts_boot_requested;
+	int ret;
+
 	pr_info("KernelSU LKM initializing, version: %u\n", KSU_VERSION);
 	ksu_late_loaded = (current->pid != 1);
 #ifdef CONFIG_KSU_DEBUG
@@ -151,6 +155,22 @@ int __init kernelsu_init(void)
 		pr_err("prepare cred failed!\n");
 	}
 
+	uts_boot_requested = ksu_uts_view_boot_requested();
+	ret = ksu_uts_view_init();
+	if (ret) {
+		if (uts_boot_requested) {
+			pr_err(
+			    "uts_view: boot-global initialization failed: %d\n",
+			    ret);
+			ksu_uts_view_exit();
+			if (ksu_cred) {
+				put_cred(ksu_cred);
+				ksu_cred = NULL;
+			}
+			return ret;
+		}
+		pr_warn("uts_view: unavailable: %d\n", ret);
+	}
 	ksu_feature_init();
 	ksu_lsm_hook_init();
 	ksu_adb_root_init();
@@ -270,6 +290,7 @@ void kernelsu_exit(void)
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 	ksu_adb_root_exit();
 	ksu_lsm_hook_exit();
+	ksu_uts_view_exit();
 	ksu_feature_exit();
 
 	if (ksu_cred) {

@@ -19,6 +19,9 @@ int boot_info_slot_suffix(bool ota);
 
 // Internal functions
 std::string get_current_kmi();
+// Use only while bootstrapping late-load before a KernelSU module exists.
+// This deliberately avoids all KernelSU/UTS ioctls.
+std::string get_bootstrap_kmi();
 std::string choose_boot_partition(const std::string& kmi, bool ota,
                                   const std::string* override_partition,
                                   bool is_replace_kernel = false);

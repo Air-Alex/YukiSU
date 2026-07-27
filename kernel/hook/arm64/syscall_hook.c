@@ -7,6 +7,7 @@
 #include "hook/syscall_hook.h"
 
 #include <linux/mutex.h>
+#include <linux/rwsem.h>
 #include <linux/string.h>
 #include "arch.h"
 #include "infra/symbol_resolver.h"
@@ -17,6 +18,7 @@ syscall_fn_t *ksu_syscall_table = NULL;
 int ksu_dispatcher_nr = -1;
 
 static ksu_syscall_hook_fn syscall_hooks[KSU_NR_SYSCALLS];
+static DECLARE_RWSEM(syscall_hooks_lock);
 
 struct syscall_hook_entry {
 	int nr;
@@ -150,13 +152,15 @@ static long __nocfi ksu_syscall_dispatcher(const struct pt_regs *regs)
 {
 	int orig_nr;
 	ksu_syscall_hook_fn fn;
+	long ret = -ENOSYS;
 
+	down_read(&syscall_hooks_lock);
 	if (regs->syscallno != ksu_dispatcher_nr)
-		return -ENOSYS;
+		goto out;
 
 	orig_nr = (int)PT_REGS_ORIG_SYSCALL(regs);
 	if (regs->syscallno == orig_nr)
-		return -ENOSYS;
+		goto out;
 
 	((struct pt_regs *)regs)->syscallno = orig_nr;
 	PT_REGS_ORIG_SYSCALL((struct pt_regs *)regs) = orig_nr;
@@ -164,23 +168,31 @@ static long __nocfi ksu_syscall_dispatcher(const struct pt_regs *regs)
 	if (likely(orig_nr >= 0 && orig_nr < KSU_NR_SYSCALLS)) {
 		fn = READ_ONCE(syscall_hooks[orig_nr]);
 		if (likely(fn))
-			return fn(orig_nr, regs);
+			ret = fn(orig_nr, regs);
+		else
+			ret = ksu_syscall_table[orig_nr](regs);
 	}
 
-	return -ENOSYS;
+out:
+	up_read(&syscall_hooks_lock);
+	return ret;
 }
 
 int ksu_register_syscall_hook(int nr, ksu_syscall_hook_fn fn)
 {
 	if (nr < 0 || nr >= KSU_NR_SYSCALLS)
 		return -EINVAL;
+
+	down_write(&syscall_hooks_lock);
 	if (READ_ONCE(syscall_hooks[nr])) {
+		up_write(&syscall_hooks_lock);
 		pr_warn("syscall hook for nr=%d already registered, skip\n",
 			nr);
 		return -EEXIST;
 	}
 
 	WRITE_ONCE(syscall_hooks[nr], fn);
+	up_write(&syscall_hooks_lock);
 	pr_info("registered syscall hook for nr=%d\n", nr);
 	return 0;
 }
@@ -190,7 +202,9 @@ void ksu_unregister_syscall_hook(int nr)
 	if (nr < 0 || nr >= KSU_NR_SYSCALLS)
 		return;
 
+	down_write(&syscall_hooks_lock);
 	WRITE_ONCE(syscall_hooks[nr], NULL);
+	up_write(&syscall_hooks_lock);
 	pr_info("unregistered syscall hook for nr=%d\n", nr);
 }
 
@@ -255,8 +269,10 @@ void ksu_syscall_hook_exit(void)
 	mutex_unlock(&hooked_entries_lock);
 
 clear_state:
+	down_write(&syscall_hooks_lock);
 	memset(syscall_hooks, 0, sizeof(syscall_hooks));
 	ksu_dispatcher_nr = -1;
+	up_write(&syscall_hooks_lock);
 
 	pr_info("all syscall hooks restored\n");
 }

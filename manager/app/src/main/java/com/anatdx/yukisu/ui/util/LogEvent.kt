@@ -84,7 +84,10 @@ fun getBugreportFile(context: Context): File {
         pw.println("SELinux: $selinux")
 
         val uname = Os.uname()
-        pw.println("KernelRelease: ${uname.release}")
+        pw.println("EffectiveKernelRelease: ${uname.release}")
+        getUtsViewOriginalReleaseForLog()?.takeIf { it.isNotBlank() }?.let {
+            pw.println("OriginalKernelRelease: $it")
+        }
         pw.println("KernelVersion: ${uname.version}")
         pw.println("Machine: ${uname.machine}")
         pw.println("Nodename: ${uname.nodename}")

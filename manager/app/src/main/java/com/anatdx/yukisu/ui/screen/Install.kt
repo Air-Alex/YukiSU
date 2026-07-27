@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
@@ -95,7 +96,8 @@ import kotlinx.coroutines.withContext
 @Destination<RootGraph>
 @Composable
 fun InstallScreen(
-    navigator: DestinationsNavigator
+    navigator: DestinationsNavigator,
+    utsBootRepatch: Boolean = false,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -177,18 +179,64 @@ fun InstallScreen(
     var allowShell by remember { mutableStateOf(false) }
     var enableAdb by remember { mutableStateOf(false) }
     var forceBackup by remember { mutableStateOf(false) }
+
+    LaunchedEffect(utsBootRepatch) {
+        if (utsBootRepatch) {
+            if (
+                installMethod !is InstallMethod.DirectInstall &&
+                installMethod !is InstallMethod.DirectInstallToInactiveSlot
+            ) {
+                installMethod = null
+            }
+            if (lkmSelection is LkmSelection.LkmUri) {
+                lkmSelection = LkmSelection.KmiNone
+            }
+            hasCustomSelected = false
+            partitionSelectionIndex = 0
+            forceBackup = false
+        }
+    }
+
     val onInstall = {
         installMethod?.let { method ->
+            if (
+                utsBootRepatch &&
+                method !is InstallMethod.DirectInstall &&
+                method !is InstallMethod.DirectInstallToInactiveSlot
+            ) {
+                return@let
+            }
             val isOta = method is InstallMethod.DirectInstallToInactiveSlot
-            val partitionSelection = partitionsState.getOrNull(partitionSelectionIndex)
+            // An untouched dropdown is only a presentation of ksud's current
+            // recommendation. Keep the argument absent so ksud can make the
+            // trusted KMI decision itself (especially for the inactive slot).
+            val partitionSelection = if (utsBootRepatch) {
+                if (hasCustomSelected) {
+                    partitionsState.getOrNull(partitionSelectionIndex)
+                } else {
+                    null
+                }
+            } else {
+                partitionsState.getOrNull(partitionSelectionIndex)
+            }
             val flashIt = FlashIt.FlashBoot(
-                boot = if (method is InstallMethod.SelectFile) method.uri else null,
-                lkm = lkmSelection,
+                boot = if (!utsBootRepatch && method is InstallMethod.SelectFile) {
+                    method.uri
+                } else {
+                    null
+                },
+                lkm = if (utsBootRepatch && lkmSelection is LkmSelection.LkmUri) {
+                    LkmSelection.KmiNone
+                } else {
+                    lkmSelection
+                },
                 ota = isOta,
                 partition = partitionSelection,
                 allowShell = allowShell,
                 enableAdb = enableAdb,
-                backup = method is InstallMethod.SelectFile && forceBackup,
+                backup = !utsBootRepatch &&
+                    method is InstallMethod.SelectFile &&
+                    forceBackup,
                 superKey = effectiveSuperKey.ifBlank { null },
                 signatureBypass = signatureBypass
             )
@@ -249,6 +297,10 @@ fun InstallScreen(
         TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
     }
 
+    BackHandler(enabled = utsBootRepatch) {
+        navigator.popBackStack()
+    }
+
     Scaffold(
         topBar = {
             TopBar(
@@ -273,8 +325,12 @@ fun InstallScreen(
                     .padding(top = 12.dp)
             ) {
             SelectInstallMethod(
-                onSelected = { installMethod = it },
-                selectedMethod = installMethod
+                onSelected = {
+                    installMethod = it
+                    hasCustomSelected = false
+                },
+                selectedMethod = installMethod,
+                directInstallOnly = utsBootRepatch,
             )
 
             // 选择LKM直接安装分区
@@ -304,8 +360,19 @@ fun InstallScreen(
                             value = getAvailablePartitions()
                         }.value
 
-                        val defaultPartition = produceState(initialValue = "") {
-                            value = getDefaultPartition()
+                        val defaultPartition = produceState(
+                            initialValue = "",
+                            isOta,
+                            utsBootRepatch,
+                        ) {
+                            // The current-slot default is not evidence for an
+                            // inactive-slot OTA. ksud will inspect target boot
+                            // when the user has not explicitly overridden it.
+                            value = if (utsBootRepatch && isOta) {
+                                ""
+                            } else {
+                                getDefaultPartition()
+                            }
                         }.value
 
                         partitionsState = partitions
@@ -343,37 +410,39 @@ fun InstallScreen(
                     .padding(16.dp)
             ) {
                 // 使用本地的LKM文件
-                InstallSurface(
-                    colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
-                    elevation = getCardElevation(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                ) {
-                    ListItem(
-                        content = {
-                            Text(stringResource(id = R.string.install_upload_lkm_file))
-                        },
-                        supportingContent = {
-                            (lkmSelection as? LkmSelection.LkmUri)?.let {
-                                Text(
-                                    stringResource(
-                                        id = R.string.selected_lkm,
-                                        it.uri.lastPathSegment ?: "(file)"
-                                    )
-                                )
-                            }
-                        },
-                        leadingContent = {
-                            YukiIcon(
-                                Icons.Filled.Download,
-                                contentDescription = null
-                            )
-                        },
+                if (!utsBootRepatch) {
+                    InstallSurface(
+                        colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
+                        elevation = getCardElevation(),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onLkmUpload() }
-                    )
+                            .padding(bottom = 12.dp),
+                    ) {
+                        ListItem(
+                            content = {
+                                Text(stringResource(id = R.string.install_upload_lkm_file))
+                            },
+                            supportingContent = {
+                                (lkmSelection as? LkmSelection.LkmUri)?.let {
+                                    Text(
+                                        stringResource(
+                                            id = R.string.selected_lkm,
+                                            it.uri.lastPathSegment ?: "(file)"
+                                        )
+                                    )
+                                }
+                            },
+                            leadingContent = {
+                                YukiIcon(
+                                    Icons.Filled.Download,
+                                    contentDescription = null
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onLkmUpload() }
+                        )
+                    }
                 }
 
                 // SuperKey 输入卡片 (仅在 LKM 安装模式下显示)
@@ -577,13 +646,43 @@ fun InstallScreen(
                                     onCheckedChange = { enableAdb = it }
                                 )
                             }
+
+                            if (utsBootRepatch) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        .copy(alpha = 0.12f)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.uts_boot_repatch_option
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = stringResource(
+                                            R.string.uts_boot_repatch_changed
+                                        ),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
                 // 高级功能入口：未选择安装方式时显示，选择后隐藏
                 AnimatedVisibility(
-                    visible = installMethod == null,
+                    visible = !utsBootRepatch && installMethod == null,
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -634,7 +733,7 @@ fun InstallScreen(
                 }
 
                 AnimatedVisibility(
-                    visible = !isManager,
+                    visible = !utsBootRepatch && !isManager,
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -834,7 +933,8 @@ sealed class InstallMethod {
 @Composable
 private fun SelectInstallMethod(
     onSelected: (InstallMethod) -> Unit = {},
-    selectedMethod: InstallMethod? = null
+    selectedMethod: InstallMethod? = null,
+    directInstallOnly: Boolean = false,
 ) {
     val rootAvailable by produceState(initialValue = false) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -845,15 +945,16 @@ private fun SelectInstallMethod(
         value = isAbDevice()
     }.value
     val defaultPartitionName = produceState(initialValue = "boot") {
-        value = getDefaultPartition()
+        getDefaultPartition().takeIf { it.isNotBlank() }?.let { value = it }
     }.value
     val selectFileTip = stringResource(
         id = R.string.select_file_tip, defaultPartitionName
     )
 
-    val radioOptions = mutableListOf<InstallMethod>(
-        InstallMethod.SelectFile(summary = selectFileTip)
-    )
+    val radioOptions = mutableListOf<InstallMethod>()
+    if (!directInstallOnly) {
+        radioOptions.add(InstallMethod.SelectFile(summary = selectFileTip))
+    }
 
     if (rootAvailable) {
         radioOptions.add(InstallMethod.DirectInstall)
@@ -865,8 +966,12 @@ private fun SelectInstallMethod(
     var selectedOption by remember { mutableStateOf<InstallMethod?>(null) }
     var currentSelectingMethod by remember { mutableStateOf<InstallMethod?>(null) }
 
-    LaunchedEffect(selectedMethod) {
-        selectedOption = selectedMethod
+    LaunchedEffect(selectedMethod, directInstallOnly) {
+        selectedOption = selectedMethod.takeIf {
+            !directInstallOnly ||
+                it is InstallMethod.DirectInstall ||
+                it is InstallMethod.DirectInstallToInactiveSlot
+        }
     }
 
     val selectImageLauncher = rememberLauncherForActivityResult(

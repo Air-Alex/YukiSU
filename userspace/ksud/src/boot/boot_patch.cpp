@@ -1,5 +1,6 @@
 #include "boot_patch.hpp"
 #include "../assets.hpp"
+#include "../core/uts_view.hpp"
 #include "../defs.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
@@ -18,6 +19,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <optional>
 #include <regex>
 #include <vector>
 
@@ -70,6 +73,18 @@ bool fill_random(uint8_t* buf, size_t len) {
         return false;
     urandom.read(reinterpret_cast<char*>(buf), static_cast<std::streamsize>(len));
     return static_cast<size_t>(urandom.gcount()) == len;
+}
+
+std::optional<bool> lkm_supports_uts_boot_params(const std::string& lkm_path) {
+    std::ifstream file(lkm_path, std::ios::binary);
+    if (!file)
+        return std::nullopt;
+
+    const std::string content((std::istreambuf_iterator<char>(file)),
+                              std::istreambuf_iterator<char>());
+    if (file.bad())
+        return std::nullopt;
+    return content.find("parmtype=uts_boot_global:bool") != std::string::npos;
 }
 
 // Inject superkey salt+hash and verification mode into LKM file.
@@ -404,6 +419,9 @@ struct BootPatchArgs {
     bool no_custom_rc = false;      // --no-custom-rc
     bool enable_adbd = false;       // --enable-adbd
     std::string adb_debug_prop;     // --adb-debug-prop
+    std::string uts_config;         // --uts-config
+    bool uts_config_seen = false;
+    bool valid = true;
 };
 
 namespace {
@@ -461,6 +479,15 @@ BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
         } else if (arg == "--adb-debug-prop") {
             if (i + 1 < args.size())
                 result.adb_debug_prop = args[++i];
+        } else if (arg == "--uts-config") {
+            if (i + 1 < args.size() && !result.uts_config_seen) {
+                result.uts_config_seen = true;
+                result.uts_config = args[++i];
+                if (result.uts_config.empty())
+                    result.valid = false;
+            } else {
+                result.valid = false;
+            }
         }
     }
 
@@ -469,6 +496,17 @@ BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
 
 int boot_patch_impl(const std::vector<std::string>& args) {
     auto parsed = parse_boot_patch_args(args);
+    if (!parsed.valid) {
+        LOGE("--uts-config requires exactly one path argument");
+        return 1;
+    }
+    const std::string ota_slot = parsed.ota ? get_slot_suffix(true) : "";
+    if (parsed.ota && ota_slot.empty()) {
+        LOGE("Inactive-slot install requires a valid current slot suffix (_a or _b)");
+        return 1;
+    }
+    ksu_uts_template boot_uts_config{};
+    const bool have_boot_uts_config = !parsed.uts_config.empty();
 
     (void)setvbuf(stdout, nullptr, _IONBF, 0);
     (void)setvbuf(stderr, nullptr, _IONBF, 0);
@@ -479,6 +517,16 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     printf("  | |  | |_| || . \\  | |  ___) || |_| |\n");
     printf("  |_|   \\___/ |_|\\_\\|___||____/  \\___/ \n");
     printf("\n");
+
+    if (have_boot_uts_config) {
+        std::string error;
+        if (!load_uts_boot_config(parsed.uts_config, &boot_uts_config, &error)) {
+            LOGE("Invalid UTS boot config: %s", error.c_str());
+            return 1;
+        }
+        printf("- UTS boot-global config validated (mask=0x%02x)\n", boot_uts_config.field_mask);
+        printf("- This identity takes effect after flashing the patched image and rebooting\n");
+    }
 
     // Create temp working directory
     // Try multiple locations in order of preference:
@@ -553,8 +601,12 @@ int boot_patch_impl(const std::vector<std::string>& args) {
 
     // Get or detect KMI
     std::string kmi = parsed.kmi;
-    if (kmi.empty() && parsed.ota && parsed.module.empty()) {
-        const std::string target_boot = "/dev/block/by-name/boot" + get_slot_suffix(true);
+    const bool needs_automatic_lkm = parsed.module.empty();
+    const bool needs_automatic_partition =
+        parsed.boot_image.empty() && parsed.partition.empty();
+    if (kmi.empty() && parsed.ota &&
+        (needs_automatic_lkm || needs_automatic_partition)) {
+        const std::string target_boot = "/dev/block/by-name/boot" + ota_slot;
         printf("- Trying to auto detect KMI version from %s\n", target_boot.c_str());
         kmi = parse_kmi_from_boot(magiskboot, workdir, target_boot);
         if (kmi.empty()) {
@@ -566,8 +618,9 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     }
     if (kmi.empty()) {
         kmi = get_current_kmi();
-        if (kmi.empty() && parsed.boot_image.empty()) {
-            printf("- Failed to detect KMI and no boot image specified\n");
+        if (kmi.empty() && (needs_automatic_lkm || needs_automatic_partition)) {
+            printf("- Failed to obtain trusted KMI for automatic LKM/partition selection\n");
+            printf("- Select both the LKM and boot image/partition manually\n");
             cleanup();
             return 1;
         }
@@ -604,6 +657,11 @@ int boot_patch_impl(const std::vector<std::string>& args) {
             partition_name = choose_boot_partition(kmi, parsed.ota, nullptr, is_replace_kernel);
         }
 
+        if (partition_name.empty()) {
+            LOGE("Failed to resolve a safe boot partition");
+            cleanup();
+            return 1;
+        }
         printf("- Bootdevice: %s\n", partition_name.c_str());
 
         bootimage = workdir + "/boot.img";
@@ -682,6 +740,23 @@ int boot_patch_impl(const std::vector<std::string>& args) {
                 return 1;
             }
         }
+    }
+
+    if (have_boot_uts_config) {
+        const auto supports_uts_boot = lkm_supports_uts_boot_params(kmod_file);
+        if (!supports_uts_boot.has_value()) {
+            LOGE("Failed to inspect selected LKM for UTS boot parameter support");
+            cleanup();
+            return 1;
+        }
+        if (!*supports_uts_boot) {
+            LOGE("Selected LKM does not support boot-global UTS configuration");
+            LOGE("Missing required module parameter marker: parmtype=uts_boot_global:bool");
+            LOGE("Select a UTS-capable YukiSU LKM or remove --uts-config");
+            cleanup();
+            return 1;
+        }
+        printf("- Selected LKM supports UTS boot-global parameters\n");
     }
 
     // Always inject verification mode (and SuperKey hash if set).
@@ -865,6 +940,11 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         printf("- Adding no custom rc config\n");
         ksu_config.emplace_back("norc=1");
     }
+    if (have_boot_uts_config) {
+        auto uts_params = encode_uts_boot_module_params(boot_uts_config);
+        ksu_config.insert(ksu_config.end(), uts_params.begin(), uts_params.end());
+        printf("- Adding encoded UTS boot-global config\n");
+    }
 
     if (!ksu_config.empty()) {
         std::ofstream config_file(workdir + "/ksu_config", std::ios::binary | std::ios::trunc);
@@ -880,6 +960,11 @@ int boot_patch_impl(const std::vector<std::string>& args) {
             config_file << ksu_config[i];
         }
         config_file.close();
+        if (config_file.fail()) {
+            LOGE("Failed to flush ksu_config");
+            cleanup();
+            return 1;
+        }
         if (!do_cpio_cmd(magiskboot, workdir, ramdisk, "add 0644 ksu_config ksu_config")) {
             cleanup();
             return 1;
@@ -1113,6 +1198,11 @@ int boot_restore(const std::vector<std::string>& args) {
 
     // Get KMI for partition detection
     const std::string kmi = get_current_kmi();
+    if (kmi.empty() && parsed.boot_image.empty()) {
+        LOGE("Trusted KMI is unavailable; refusing automatic restore partition selection");
+        cleanup();
+        return 1;
+    }
 
     // Determine boot image path
     std::string bootimage;
@@ -1324,7 +1414,8 @@ int boot_restore(const std::vector<std::string>& args) {
 
 namespace {
 
-// Prefer the sysctl value for KMI selection and fall back to uname when unavailable.
+// Old kernels without UTS View may use the effective release. New kernels must
+// use the immutable original identity and fail closed if it is unavailable.
 std::string read_kernel_release_from_sysfs() {
     std::ifstream f("/proc/sys/kernel/osrelease");
     std::string line;
@@ -1333,19 +1424,7 @@ std::string read_kernel_release_from_sysfs() {
     return "";
 }
 
-}  // namespace
-
-std::string get_current_kmi() {
-    std::string full_version = read_kernel_release_from_sysfs();
-    if (full_version.empty()) {
-        struct utsname uts{};
-        if (uname(&uts) != 0) {
-            LOGE("Failed to get uname");
-            return "";
-        }
-        full_version = uts.release;  // e.g. "6.6.66-android15-8-g29d86c5fc9dd"
-    }
-
+std::string parse_kmi_from_release(const std::string& full_version) {
     // Extract major.minor (e.g. "6.6")
     const size_t dot1 = full_version.find('.');
     if (dot1 == std::string::npos)
@@ -1369,6 +1448,37 @@ std::string get_current_kmi() {
     }
 
     return major_minor;
+}
+
+std::string read_effective_kernel_release() {
+    std::string full_version = read_kernel_release_from_sysfs();
+    if (!full_version.empty())
+        return full_version;
+
+    struct utsname uts{};
+    if (uname(&uts) != 0) {
+        LOGE("Failed to get uname");
+        return "";
+    }
+    return uts.release;
+}
+
+}  // namespace
+
+std::string get_bootstrap_kmi() {
+    return parse_kmi_from_release(read_effective_kernel_release());
+}
+
+std::string get_current_kmi() {
+    std::string full_version;
+    bool uts_view_supported = false;
+    if (!get_uts_view_original_release(&full_version, &uts_view_supported)) {
+        LOGE("UTS View original kernel identity is unavailable; refusing KMI auto-detection");
+        return "";
+    }
+    if (!uts_view_supported)
+        full_version = read_effective_kernel_release();
+    return parse_kmi_from_release(full_version);
 }
 
 int boot_info_current_kmi() {
@@ -1395,16 +1505,20 @@ int boot_info_supported_kmis() {
 
 int boot_info_is_ab_device() {
     auto ab_update = getprop("ro.build.ab_update");
-    const bool is_ab = ab_update && trim(*ab_update) == "true";
+    const bool is_ab = ab_update && trim(*ab_update) == "true" &&
+                       !get_slot_suffix(false).empty();
     printf("%s\n", is_ab ? "true" : "false");
     return 0;
 }
 
 std::string get_slot_suffix(bool ota) {
     auto suffix = getprop("ro.boot.slot_suffix");
-    if (!suffix || suffix->empty()) {
+    if (!suffix) {
         return "";
     }
+    *suffix = trim(*suffix);
+    if (*suffix != "_a" && *suffix != "_b")
+        return "";
 
     if (ota) {
         // Toggle to other slot
@@ -1419,24 +1533,29 @@ std::string get_slot_suffix(bool ota) {
 
 int boot_info_slot_suffix(bool ota) {
     const std::string suffix = get_slot_suffix(ota);
+    if (ota && suffix.empty()) {
+        printf("Failed to obtain a valid inactive slot suffix\n");
+        return 1;
+    }
     printf("%s\n", suffix.c_str());
     return 0;
 }
 
 std::string choose_boot_partition(const std::string& kmi, bool ota,
                                   const std::string* override_partition, bool is_replace_kernel) {
+    const std::string slot = get_slot_suffix(ota);
+    if (ota && slot.empty())
+        return "";
+
     // If specific partition is specified, use it
     if (override_partition && !override_partition->empty()) {
         // Validate partition name
         if (*override_partition == "boot" || *override_partition == "init_boot" ||
             *override_partition == "vendor_boot") {
-            const std::string slot = get_slot_suffix(ota);
             return "/dev/block/by-name/" + *override_partition + slot;
         }
         // Invalid partition name, fallback to auto-detect
     }
-
-    const std::string slot = get_slot_suffix(ota);
 
     // Android 12 GKI doesn't have init_boot
     const bool skip_init_boot = kmi.find("android12-") == 0;
@@ -1484,6 +1603,10 @@ std::string get_default_partition_name(const std::string& kmi, bool is_replace_k
 
 int boot_info_default_partition() {
     const std::string kmi = get_current_kmi();
+    if (kmi.empty()) {
+        printf("Failed to obtain trusted KMI for partition selection\n");
+        return 1;
+    }
     // Return partition name only, not full path (matching Rust behavior)
     const std::string partition = get_default_partition_name(kmi, false);
     printf("%s\n", partition.c_str());

@@ -21,6 +21,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <algorithm>
+
 namespace ksuinit {
 
 namespace {
@@ -236,9 +238,11 @@ bool load_module(const char* path) {
     }
 
     std::string param_values;
+    bool config_loaded = false;
     {
         const std::ifstream config("/ksu_config", std::ios::binary);
         if (config.is_open()) {
+            config_loaded = true;
             std::ostringstream buffer;
             buffer << config.rdbuf();
             param_values = buffer.str();
@@ -256,14 +260,23 @@ bool load_module(const char* path) {
         }
         param_values += "allow_shell=1";
     }
-    KLOGI("load module params: %s", param_values.c_str());
+    if (config_loaded) {
+        KLOGI("Loading module configuration (%zu bytes)", param_values.size());
+    }
 
     // Load the module
-    if (init_module_syscall(buffer.data(), buffer.size(), param_values.c_str()) != 0) {
-        KLOGE("init_module failed: %s", strerror(errno));
+    const int module_result =
+        init_module_syscall(buffer.data(), buffer.size(), param_values.c_str());
+    const int module_errno = errno;
+    std::fill(param_values.begin(), param_values.end(), '\0');
+    if (module_result != 0) {
+        KLOGE("init_module failed: %s", strerror(module_errno));
         return false;
     }
 
+    if (config_loaded && unlink("/ksu_config") != 0 && errno != ENOENT) {
+        KLOGW("Failed to remove module configuration: %s", strerror(errno));
+    }
     KLOGI("Module loaded successfully");
     return true;
 }

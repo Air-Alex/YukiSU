@@ -20,6 +20,7 @@ extern "C" {
 
 #include "uapi/app_profile.h"
 #include "uapi/selinux.h"
+#include "uapi/uts_view.h"
 
 // Magic numbers for reboot hook
 #define KSU_INSTALL_MAGIC1 0xDEADBEEF
@@ -288,6 +289,9 @@ struct ksu_magisk_persist_cmd {
 #define KSU_IOCTL_GET_DYNAMIC_MANAGERS                                         \
   _IOWR('K', 241, struct ksu_get_dynamic_managers_cmd)
 #define KSU_IOCTL_MAGISK_PERSIST _IOW('K', 242, struct ksu_magisk_persist_cmd)
+#define KSU_IOCTL_GET_UTS_VIEW_CONFIG _IOR('K', 243, struct ksu_uts_view_config)
+#define KSU_IOCTL_SET_UTS_VIEW_CONFIG _IOW('K', 244, struct ksu_uts_view_config)
+#define KSU_IOCTL_GET_UTS_VIEW_STATUS _IOR('K', 245, struct ksu_uts_view_status)
 
 #define KSU_IOCTL_SUPERKEY_AUTH _IOC(_IOC_READ | _IOC_WRITE, 'K', 107, 0)
 #define KSU_IOCTL_SUPERKEY_STATUS _IOC(_IOC_READ, 'K', 108, 0)

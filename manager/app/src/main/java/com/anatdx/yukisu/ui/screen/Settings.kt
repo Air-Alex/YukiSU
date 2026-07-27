@@ -42,6 +42,7 @@ import com.ramcosta.composedestinations.generated.destinations.AppProfileTemplat
 import com.ramcosta.composedestinations.generated.destinations.FlashScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.LogViewerScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UmountManagerScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.UtsViewScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.MoreSettingsScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.BuildConfig
@@ -403,7 +404,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             summary = yukiZygiskSummary,
                             checked = yukiZygiskEnabled,
                             enabled = yukiZygiskStatus == "supported",
-                            groupPosition = SettingsItemPosition.Last,
+                            groupPosition = SettingsItemPosition.Middle,
                             onCheckedChange = { enable ->
                                 // toggle UX：先翻到用户意图，再异步落地 + toast，失败回滚
                                 yukiZygiskEnabled = enable
@@ -425,6 +426,21 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
+                        val utsViewStatus by produceState(initialValue = "") {
+                            value = if (isUtsViewSupported()) "supported" else "unsupported"
+                        }
+                        SettingItem(
+                            icon = Icons.Filled.Language,
+                            title = stringResource(R.string.settings_uts_view),
+                            summary = when (utsViewStatus) {
+                                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
+                                else -> stringResource(R.string.settings_uts_view_summary)
+                            },
+                            groupPosition = SettingsItemPosition.Last,
+                            onClick = {
+                                navigator.navigate(UtsViewScreenDestination)
+                            }
+                        )
                     }
                 )
             }

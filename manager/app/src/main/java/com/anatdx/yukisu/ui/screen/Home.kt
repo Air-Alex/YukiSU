@@ -13,16 +13,20 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Warning
@@ -41,6 +45,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
@@ -996,6 +1001,7 @@ fun DonateCard() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HomeInfoItem(
     label: String,
@@ -1010,6 +1016,11 @@ private fun HomeInfoItem(
     val expressive = isExpressiveUi
     val cardShape = CardDefaults.elevatedShape
     val compactShape = ListItemDefaults.shapes().shape
+    val marqueeModifier = Modifier.basicMarquee(
+        iterations = Int.MAX_VALUE,
+        repeatDelayMillis = 2_000,
+        velocity = 18.dp,
+    )
     val cardCorners = cardShape as? CornerBasedShape
     val compactCorners = compactShape as? CornerBasedShape
     val expressiveShape = when {
@@ -1082,18 +1093,25 @@ private fun HomeInfoItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
+                modifier = marqueeModifier,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (expressive) FontWeight.Normal else null,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
             )
             Text(
                 text = content,
+                modifier = marqueeModifier,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (contentColor == Color.Unspecified) {
                     LocalContentColor.current
                 } else {
                     contentColor
                 },
-                softWrap = true,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
             )
         }
         trailing?.invoke()
@@ -1122,6 +1140,9 @@ private fun InfoCard(
     var showKsudDialog by remember { mutableStateOf(false) }
     var ksudApkVersion by remember { mutableStateOf<String?>(null) }
     var ksudInstalledVersion by remember { mutableStateOf<String?>(null) }
+    var showOriginalKernelRelease by remember(systemInfo.originalKernelRelease) {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(Unit) {
         val (apk, installed) = withContext(Dispatchers.IO) {
@@ -1156,11 +1177,52 @@ private fun InfoCard(
             null
         }
     }
+    val originalKernelRelease = systemInfo.originalKernelRelease
+    val displayedKernelRelease = if (showOriginalKernelRelease && originalKernelRelease != null) {
+        originalKernelRelease
+    } else {
+        systemInfo.kernelRelease
+    }
     val entries = buildList {
         add(HomeInfoEntry(
             label = stringResource(R.string.home_kernel),
-            content = systemInfo.kernelRelease,
+            content = displayedKernelRelease,
             icon = Icons.Default.Memory,
+            trailing = originalKernelRelease?.let {
+                {
+                    YukiIcon(
+                        imageVector = if (showOriginalKernelRelease) {
+                            Icons.Outlined.AutoFixHigh
+                        } else {
+                            Icons.Filled.AutoFixHigh
+                        },
+                        contentDescription = stringResource(
+                            if (showOriginalKernelRelease) {
+                                R.string.home_kernel_show_effective
+                            } else {
+                                R.string.home_kernel_show_original
+                            }
+                        ),
+                        modifier = if (isExpressiveUi) {
+                            Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    showOriginalKernelRelease = !showOriginalKernelRelease
+                                }
+                                .padding(4.dp)
+                        } else {
+                            Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    showOriginalKernelRelease = !showOriginalKernelRelease
+                                }
+                                .padding(vertical = 4.dp)
+                        },
+                    )
+                }
+            },
         ))
         if (!isSimpleMode) {
             add(HomeInfoEntry(

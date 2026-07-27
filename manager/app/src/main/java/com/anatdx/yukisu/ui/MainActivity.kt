@@ -59,7 +59,9 @@ import com.anatdx.yukisu.ui.screen.BottomBarDestination
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
 import com.anatdx.yukisu.ui.theme.ThemeManager
 import com.anatdx.yukisu.ui.util.KsuCli
+import com.anatdx.yukisu.ui.util.LocalNavigationLeaveGuard
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
+import com.anatdx.yukisu.ui.util.NavigationLeaveGuard
 import com.anatdx.yukisu.ui.util.install
 import com.anatdx.yukisu.ui.util.resetTaskDescriptionToAppName
 import com.anatdx.yukisu.ui.viewmodel.HomeViewModel
@@ -120,6 +122,7 @@ class MainActivity : ComponentActivity() {
                 KernelSUTheme {
                     val navController = rememberNavController()
                     val snackBarHostState = remember { SnackbarHostState() }
+                    val navigationLeaveGuard = remember { NavigationLeaveGuard() }
                     val currentDestination = navController.currentBackStackEntryAsState().value?.destination
 
                     val bottomBarRoutes = remember {
@@ -135,9 +138,11 @@ class MainActivity : ComponentActivity() {
                     )
 
                     BackHandler(currentDestination != null && currentDestination.route != HomeScreenDestination.route) {
-                        navigator.navigate(HomeScreenDestination) {
-                            navigator.clearBackStack(NavGraphs.root as NavHostGraphSpec)
-                            launchSingleTop = true
+                        navigationLeaveGuard.navigateOrIntercept(currentDestination?.route) {
+                            navigator.navigate(HomeScreenDestination) {
+                                navigator.clearBackStack(NavGraphs.root as NavHostGraphSpec)
+                                launchSingleTop = true
+                            }
                         }
                     }
 
@@ -206,7 +211,8 @@ class MainActivity : ComponentActivity() {
                     }
 
                     CompositionLocalProvider(
-                        LocalSnackbarHost provides snackBarHostState
+                        LocalSnackbarHost provides snackBarHostState,
+                        LocalNavigationLeaveGuard provides navigationLeaveGuard,
                     ) {
                         Scaffold(
                             snackbarHost = { SnackbarHost(hostState = snackBarHostState) },

@@ -13,10 +13,6 @@
 #include "loader.hpp"
 #include "log.hpp"
 
-extern "C" {
-#include "uapi/supercall.h"
-}
-
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -26,10 +22,8 @@ extern "C" {
 #include <vector>
 
 #include <fcntl.h>
-#include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
-#include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
@@ -85,7 +79,7 @@ bool mount_filesystem(const char* fstype, const char* mountpoint) {
 }
 
 /**
- * Prepare mount points (/proc, /sys)
+ * Prepare the temporary /proc mount used for printk configuration.
  */
 AutoUmount prepare_mount() {
     AutoUmount auto_umount;
@@ -93,11 +87,6 @@ AutoUmount prepare_mount() {
     // Mount procfs
     if (mount_filesystem("proc", "/proc")) {
         auto_umount.add("/proc");
-    }
-
-    // Mount sysfs
-    if (mount_filesystem("sysfs", "/sys")) {
-        auto_umount.add("/sys");
     }
 
     return auto_umount;
@@ -131,46 +120,7 @@ void unlimit_kmsg() {
     }
 }
 
-/**
- * Check if KernelSU is present using the new v2 method (ioctl)
- */
-bool has_kernelsu_v2() {
-    // Try to get driver fd using reboot syscall with magic numbers
-    // (KSU_INSTALL_MAGIC1/MAGIC2 and KSU_IOCTL_GET_INFO are from uapi/supercall.h)
-    int fd = -1;
-    syscall(__NR_reboot, KSU_INSTALL_MAGIC1, KSU_INSTALL_MAGIC2, 0, &fd);
-
-    uint32_t version = 0;
-    if (fd >= 0) {
-        ksu_get_info_cmd cmd = {0, 0};
-        if (ioctl(fd, KSU_IOCTL_GET_INFO, &cmd) == 0) {
-            version = cmd.version;
-        }
-        close(fd);
-    }
-
-    KLOGI("KernelSU version (v2): %u", version);
-    return version != 0;
-}
-
-/**
- * Check if KernelSU is present using the legacy method (prctl)
- */
-bool has_kernelsu_legacy() {
-    constexpr int CMD_GET_VERSION = 2;
-
-    uint32_t version = 0;
-    syscall(__NR_prctl, 0xDEADBEEF, CMD_GET_VERSION, &version, 0, 0);
-
-    KLOGI("KernelSU version (legacy): %u", version);
-    return version != 0;
-}
-
 }  // anonymous namespace
-
-bool has_kernelsu() {
-    return has_kernelsu_v2() || has_kernelsu_legacy();
-}
 
 bool init() {
     // Setup kernel log first
@@ -178,7 +128,7 @@ bool init() {
 
     KLOGI("Hello, KernelSU!");
 
-    // Mount /proc and /sys to access kernel interface
+    // Mount /proc temporarily for printk configuration.
     // They will be auto-unmounted when this scope exits
     {
         auto auto_umount = prepare_mount();
@@ -186,20 +136,13 @@ bool init() {
         // Disable kmsg rate limiting (requires /proc)
         unlimit_kmsg();
 
-        // Check if GKI KernelSU is present
-        // LKM priority mode: always load LKM even if GKI exists
-        // GKI will yield when LKM sends YIELD command
-        if (has_kernelsu()) {
-            KLOGI("KernelSU GKI detected, LKM will take over...");
-        }
-
         // Load the KernelSU LKM module
         KLOGI("Loading kernelsu.ko..");
         if (!load_module("/kernelsu.ko")) {
             KLOGE("Cannot load kernelsu.ko");
         }
     }
-    // /proc and /sys are unmounted here
+    // /proc is unmounted here
 
     // Remove the current /init (which is us)
     if (unlink("/init") != 0) {

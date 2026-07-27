@@ -37,6 +37,7 @@ class HomeViewModel : ViewModel() {
 
     data class SystemInfo(
         val kernelRelease: String = "",
+        val originalKernelRelease: String? = null,
         val androidVersion: String = "",
         val deviceModel: String = "",
         val managerVersion: Pair<String, Long> = Pair("", 0L),
@@ -195,10 +196,11 @@ class HomeViewModel : ViewModel() {
                 val basicInfo = loadBasicSystemInfo(context)
                 systemInfo = systemInfo.copy(
                     kernelRelease = basicInfo.first,
-                    androidVersion = basicInfo.second,
-                    deviceModel = basicInfo.third,
-                    managerVersion = basicInfo.fourth,
-                    seLinuxStatus = basicInfo.fifth,
+                    originalKernelRelease = basicInfo.second,
+                    androidVersion = basicInfo.third,
+                    deviceModel = basicInfo.fourth,
+                    managerVersion = basicInfo.fifth,
+                    seLinuxStatus = basicInfo.sixth,
                     seccompStatus = readSeccompStatus()
                 )
 
@@ -323,13 +325,21 @@ class HomeViewModel : ViewModel() {
         }
     }.getOrDefault(-1)
 
-    private suspend fun loadBasicSystemInfo(context: Context): Tuple5<String, String, String, Pair<String, Long>, String> {
+    private suspend fun loadBasicSystemInfo(
+        context: Context
+    ): Tuple6<String, String?, String, String, Pair<String, Long>, String> {
         return withContext(Dispatchers.IO) {
             val uname = try {
                 Os.uname()
             } catch (_: Exception) {
                 null
             }
+
+            val utsReleaseSnapshot = try {
+                getUtsViewReleaseSnapshot()
+            } catch (_: Exception) {
+                null
+            }?.takeIf { it.globalEnabled }
 
             val deviceModel = try {
                 resolveDeviceName()
@@ -349,8 +359,9 @@ class HomeViewModel : ViewModel() {
                 "Unknown"
             }
 
-            Tuple5(
-                uname?.release ?: "Unknown",
+            Tuple6(
+                utsReleaseSnapshot?.effectiveRelease ?: uname?.release ?: "Unknown",
+                utsReleaseSnapshot?.originalRelease,
                 Build.VERSION.RELEASE ?: "Unknown",
                 deviceModel,
                 managerVersion,

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.ramcosta.composedestinations.generated.NavGraphs
 import com.ramcosta.composedestinations.spec.RouteOrDirection
 import com.ramcosta.composedestinations.utils.isRouteOnBackStackAsState
@@ -29,6 +30,8 @@ import com.anatdx.yukisu.ui.util.*
 @Composable
 fun BottomBar(navController: NavHostController) {
     val navigator = navController.rememberDestinationsNavigator()
+    val navigationLeaveGuard = LocalNavigationLeaveGuard.current
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
     val isFullFeatured by AppData.DataRefreshManager.isFullFeatured.collectAsState()
     val cardColor = MaterialTheme.colorScheme.surfaceContainer
     val activity = LocalContext.current as MainActivity
@@ -47,11 +50,13 @@ fun BottomBar(navController: NavHostController) {
     val containerColor = cardColor
 
     fun navigate(destination: BottomBarDestination, selected: Boolean) {
-        if (selected) navigator.popBackStack(destination.direction, false)
-        navigator.navigate(destination.direction) {
-            popUpTo(NavGraphs.root) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+        navigationLeaveGuard.navigateOrIntercept(currentRoute) {
+            if (selected) navigator.popBackStack(destination.direction, false)
+            navigator.navigate(destination.direction) {
+                popUpTo(NavGraphs.root) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
         }
     }
 

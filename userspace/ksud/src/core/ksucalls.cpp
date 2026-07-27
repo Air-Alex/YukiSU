@@ -133,6 +133,20 @@ int ksuctl(int request, void* arg) {
 
 namespace {
 
+int uts_ksuctl(int request, void* arg) {
+    const int fd = get_driver_fd();
+    if (fd < 0)
+        return -ENODEV;
+
+    const int ret = ioctl(fd, request, arg);
+    if (ret < 0) {
+        const int error = errno;
+        LOGE("UTS ioctl failed: request=0x%x, errno=%d (%s)", request, error, strerror(error));
+        return -error;
+    }
+    return ret;
+}
+
 const GetInfoCmd& get_info() {
     if (!g_info_cached) {
         GetInfoCmd cmd = {0, 0};
@@ -241,6 +255,25 @@ std::pair<uint64_t, bool> get_feature(uint32_t feature_id) {
 int set_feature(uint32_t feature_id, uint64_t value) {
     SetFeatureCmd cmd = {feature_id, value};
     return ksuctl(KSU_IOCTL_SET_FEATURE, &cmd);
+}
+
+int get_uts_view_config(ksu_uts_view_config* config) {
+    if (config == nullptr)
+        return -EINVAL;
+    memset(config, 0, sizeof(*config));
+    return uts_ksuctl(KSU_IOCTL_GET_UTS_VIEW_CONFIG, config);
+}
+
+int set_uts_view_config(const ksu_uts_view_config& config) {
+    ksu_uts_view_config request = config;
+    return uts_ksuctl(KSU_IOCTL_SET_UTS_VIEW_CONFIG, &request);
+}
+
+int get_uts_view_status(ksu_uts_view_status* status) {
+    if (status == nullptr)
+        return -EINVAL;
+    memset(status, 0, sizeof(*status));
+    return uts_ksuctl(KSU_IOCTL_GET_UTS_VIEW_STATUS, status);
 }
 
 bool uid_granted_root(uint32_t uid) {
