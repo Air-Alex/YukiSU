@@ -6,7 +6,10 @@
 
 #include "loader.hpp"
 #include "log.hpp"
+#include "vermagic.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -18,14 +21,16 @@
 #include <vector>
 
 #include <elf.h>
+#include <fcntl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-
-#include <algorithm>
 
 namespace ksuinit {
 
 namespace {
+
+constexpr size_t kMaximumKmsgCapture = size_t{256} * 1024;
+constexpr size_t kMaximumKmsgRecords = 256;
 
 /**
  * RAII class to manage kptr_restrict setting
@@ -63,6 +68,108 @@ public:
 
 private:
     std::string original_value_;
+};
+
+/**
+ * Non-blocking reader positioned after all existing kernel log records.
+ */
+class KmsgReader {
+public:
+    KmsgReader() {
+        constexpr std::array<const char*, 2> devices = {"/dev/kmsg", "/kmsg"};
+        for (const char* device : devices) {
+            const int descriptor = open(device, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+            if (descriptor < 0) {
+                error_ = errno;
+                continue;
+            }
+            if (lseek(descriptor, 0, SEEK_END) < 0) {
+                error_ = errno;
+                close(descriptor);
+                continue;
+            }
+
+            descriptor_ = descriptor;
+            device_ = device;
+            error_ = 0;
+            break;
+        }
+    }
+
+    KmsgReader(const KmsgReader&) = delete;
+    KmsgReader& operator=(const KmsgReader&) = delete;
+    KmsgReader(KmsgReader&&) = delete;
+    KmsgReader& operator=(KmsgReader&&) = delete;
+
+    ~KmsgReader() {
+        if (descriptor_ >= 0) {
+            close(descriptor_);
+        }
+    }
+
+    [[nodiscard]] bool is_open() const { return descriptor_ >= 0; }
+
+    [[nodiscard]] int error() const { return error_; }
+
+    [[nodiscard]] const char* device() const { return device_; }
+
+    std::string read_new(int& read_error) const {
+        std::string output;
+        std::array<char, 8192> record{};
+        read_error = 0;
+        size_t records_read = 0;
+
+        if (descriptor_ < 0) {
+            read_error = EBADF;
+            return output;
+        }
+
+        while (true) {
+            const ssize_t length = read(descriptor_, record.data(), record.size());
+            if (length > 0) {
+                const size_t record_size = static_cast<size_t>(length);
+                const bool needs_newline = record[record_size - 1] != '\n';
+                const size_t required_space = record_size + (needs_newline ? 1 : 0);
+                if (records_read >= kMaximumKmsgRecords ||
+                    required_space > kMaximumKmsgCapture - output.size()) {
+                    output.clear();
+                    read_error = EOVERFLOW;
+                    break;
+                }
+
+                output.append(record.data(), record_size);
+                if (needs_newline) {
+                    output.push_back('\n');
+                }
+                ++records_read;
+                continue;
+            }
+            if (length == 0) {
+                break;
+            }
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }
+            if (errno == EPIPE) {
+                output.clear();
+                read_error = EOVERFLOW;
+                break;
+            }
+
+            read_error = errno;
+            break;
+        }
+
+        return output;
+    }
+
+private:
+    int descriptor_ = -1;
+    int error_ = ENOENT;
+    const char* device_ = nullptr;
 };
 
 /**
@@ -264,10 +371,42 @@ bool load_module(const char* path) {
         KLOGI("Loading module configuration (%zu bytes)", param_values.size());
     }
 
-    // Load the module
-    const int module_result =
-        init_module_syscall(buffer.data(), buffer.size(), param_values.c_str());
-    const int module_errno = errno;
+    const KmsgReader kmsg_reader;
+    if (kmsg_reader.is_open()) {
+        KLOGI("Watching kernel log from %s for module load errors", kmsg_reader.device());
+    } else {
+        KLOGW("Cannot prepare kernel log fallback: %s", strerror(kmsg_reader.error()));
+    }
+
+    // Load the module. A version-magic mismatch returns ENOEXEC; in that exact
+    // case, use the new kmsg record to safely patch .modinfo and retry once.
+    int module_result = init_module_syscall(buffer.data(), buffer.size(), param_values.c_str());
+    int module_errno = errno;
+    if (module_result != 0 && module_errno == ENOEXEC && kmsg_reader.is_open()) {
+        int read_error = 0;
+        const std::string new_kmsg = kmsg_reader.read_new(read_error);
+        if (read_error != 0) {
+            KLOGW("Cannot read new kernel log records: %s", strerror(read_error));
+        } else {
+            VermagicMismatch mismatch;
+            if (extract_vermagic_mismatch(new_kmsg, mismatch)) {
+                std::string replacement_error;
+                if (replace_module_vermagic(buffer, mismatch.module_vermagic,
+                                            mismatch.required_vermagic, replacement_error)) {
+                    KLOGW("Retrying module load with kernel-required vermagic: %s",
+                          mismatch.required_vermagic.c_str());
+                    module_result =
+                        init_module_syscall(buffer.data(), buffer.size(), param_values.c_str());
+                    module_errno = errno;
+                } else {
+                    KLOGE("Cannot replace module vermagic: %s", replacement_error.c_str());
+                }
+            } else {
+                KLOGW("init_module returned ENOEXEC without a matching vermagic record");
+            }
+        }
+    }
+
     std::fill(param_values.begin(), param_values.end(), '\0');
     if (module_result != 0) {
         KLOGE("init_module failed: %s", strerror(module_errno));

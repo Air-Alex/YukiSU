@@ -30,6 +30,7 @@ add_executable(ksuinit
     src/init.cpp
     src/loader.cpp
     src/log.cpp
+    src/vermagic.cpp
 )
 
 get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/../.." ABSOLUTE)

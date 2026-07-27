@@ -10,6 +10,7 @@ namespace ksuinit {
  * 2. Parses kallsyms to resolve undefined symbols
  * 3. Patches the ELF symbol table with resolved addresses
  * 4. Calls init_module syscall to load the module
+ * 5. On an exact vermagic mismatch, patches .modinfo and retries once
  *
  * @param path Path to the kernel module (.ko file)
  * @return true on success, false on failure
