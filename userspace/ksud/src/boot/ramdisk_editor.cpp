@@ -2,7 +2,9 @@
 
 #include "boot_ramdisk.hpp"
 #include "cpio.hpp"
+#include "readelf_toybox_api.h"
 
+#include <elf.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <algorithm>
@@ -22,10 +24,13 @@ namespace ksud {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kProtocolMagic = {'Y', 'R', 'C', 'P'};
-constexpr std::uint16_t kProtocolVersion = 2;
+constexpr std::uint16_t kProtocolVersion = 3;
 constexpr std::uint16_t kResponseFlag = 0x8000U;
 constexpr std::size_t kFrameHeaderSize = 20;
 constexpr std::size_t kMaximumControlPayload = std::size_t{16} * 1024U * 1024U;
+constexpr std::size_t kMaximumElfHeaderSize = 64U;
+constexpr std::uint16_t kElfHeaderSchemaVersion = 1U;
+constexpr std::uint16_t kElfHeaderWireSize = 96U;
 constexpr std::uint64_t kMaximumRequestPayload =
     kCpioDefaultMaxContentSize + kMaximumControlPayload;
 constexpr std::uint32_t kNullStringLength = std::numeric_limits<std::uint32_t>::max();
@@ -43,15 +48,17 @@ constexpr std::uint32_t kCapabilityAtomicDump = 1U << 10U;
 constexpr std::uint32_t kCapabilityRangedRead = 1U << 11U;
 constexpr std::uint32_t kCapabilityImplicitDirectories = 1U << 12U;
 constexpr std::uint32_t kCapabilityMultipleRamdisks = 1U << 13U;
+constexpr std::uint32_t kCapabilityContentTypes = 1U << 14U;
+constexpr std::uint32_t kCapabilityElfHeader = 1U << 15U;
 constexpr std::uint32_t kCapabilities =
     kCapabilityRead | kCapabilityReplace | kCapabilityCreateFile | kCapabilityCreateDirectory |
     kCapabilityCreateSymbolicLink | kCapabilityCreateHardLink | kCapabilityCopy | kCapabilityMove |
     kCapabilityRemove | kCapabilityUpdateMetadata | kCapabilityAtomicDump | kCapabilityRangedRead |
-    kCapabilityImplicitDirectories | kCapabilityMultipleRamdisks;
+    kCapabilityImplicitDirectories | kCapabilityMultipleRamdisks | kCapabilityContentTypes |
+    kCapabilityElfHeader;
 constexpr unsigned kDocumentIdShift = 48U;
 constexpr std::uint64_t kLocalNodeIdMask = (std::uint64_t{1} << kDocumentIdShift) - 1U;
-constexpr std::size_t kMaximumDocumentCount =
-    std::numeric_limits<std::uint16_t>::max() - 1U;
+constexpr std::size_t kMaximumDocumentCount = std::numeric_limits<std::uint16_t>::max() - 1U;
 
 enum class Opcode : std::uint8_t {
     HELLO = 1,
@@ -70,6 +77,12 @@ enum class Opcode : std::uint8_t {
     DUMP = 14,
     CLOSE = 15,
     LIST_RAMDISKS = 16,
+    ELF_HEADER = 17,
+};
+
+enum class ContentKind : std::uint8_t {
+    UNKNOWN = 0,
+    ELF = 1,
 };
 
 enum class Status : std::uint8_t {
@@ -341,6 +354,12 @@ void append_u8(std::vector<std::uint8_t>& output, std::uint8_t value) {
     output.push_back(value);
 }
 
+void append_u16(std::vector<std::uint8_t>& output, std::uint16_t value) {
+    const std::size_t offset = output.size();
+    output.resize(offset + sizeof(value));
+    encode_u16(output.data() + offset, value);
+}
+
 void append_u32(std::vector<std::uint8_t>& output, std::uint32_t value) {
     const std::size_t offset = output.size();
     output.resize(offset + sizeof(value));
@@ -381,8 +400,43 @@ bool append_optional_string(std::vector<std::uint8_t>& output,
     return append_string(output, *value);
 }
 
-bool append_node(std::vector<std::uint8_t>& output, const CpioNodeInfo& node,
-                 std::size_t document_index) {
+bool read_node_prefix(const CpioDocument& document, const CpioNodeInfo& node,
+                      std::size_t maximum_size, std::vector<std::uint8_t>& output) {
+    output.clear();
+    const std::size_t length =
+        static_cast<std::size_t>(std::min<std::uint64_t>(node.size, maximum_size));
+    output.reserve(length);
+    if (length == 0) {
+        return true;
+    }
+    const bool success = document.read_content(node.path, 0, length,
+                                               [&](const std::uint8_t* data, std::size_t size) {
+                                                   if (size > length - output.size()) {
+                                                       return false;
+                                                   }
+                                                   output.insert(output.end(), data, data + size);
+                                                   return true;
+                                               });
+    return success && output.size() == length;
+}
+
+bool has_elf_magic(const std::uint8_t* data, std::size_t size) {
+    return data != nullptr && size >= SELFMAG && std::memcmp(data, ELFMAG, SELFMAG) == 0;
+}
+
+ContentKind detect_content_kind(const CpioDocument& document, const CpioNodeInfo& node) {
+    if ((node.mode & S_IFMT) != S_IFREG || node.size < SELFMAG) {
+        return ContentKind::UNKNOWN;
+    }
+    std::vector<std::uint8_t> prefix;
+    if (!read_node_prefix(document, node, SELFMAG, prefix)) {
+        return ContentKind::UNKNOWN;
+    }
+    return has_elf_magic(prefix.data(), prefix.size()) ? ContentKind::ELF : ContentKind::UNKNOWN;
+}
+
+bool append_node(std::vector<std::uint8_t>& output, const CpioDocument& document,
+                 const CpioNodeInfo& node, std::size_t document_index) {
     const auto id = encode_node_id(document_index, node.id);
     const auto parent_id = encode_node_id(document_index, node.parent_id);
     if (!id || !parent_id) {
@@ -402,6 +456,7 @@ bool append_node(std::vector<std::uint8_t>& output, const CpioNodeInfo& node,
     append_u32(output, node.rdev_major);
     append_u32(output, node.rdev_minor);
     append_u8(output, node.synthetic ? 1U : 0U);
+    append_u8(output, static_cast<std::uint8_t>(detect_content_kind(document, node)));
     return append_string(output, node.name) && append_string(output, node.path) &&
            append_optional_string(output, node.link_target) &&
            output.size() <= kMaximumControlPayload;
@@ -465,18 +520,17 @@ bool handle_read(std::vector<SessionDocument>& documents, PayloadReader& reader,
     if (!write_all(output_fd, status_bytes.data(), status_bytes.size())) {
         return false;
     }
-    return resolved->document->read_content(
-        resolved->local_id, offset, length, [&](const std::uint8_t* data, std::size_t size) {
-            return write_all(output_fd, data, size);
-        });
+    return resolved->document->read_content(resolved->local_id, offset, length,
+                                            [&](const std::uint8_t* data, std::size_t size) {
+                                                return write_all(output_fd, data, size);
+                                            });
 }
 
 bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& dump_action,
-                    bool& dirty,
-                    bool& should_close, PayloadReader& reader, int output_fd,
+                    bool& dirty, bool& should_close, PayloadReader& reader, int output_fd,
                     const FrameHeader& request) {
     if (request.opcode < static_cast<std::uint16_t>(Opcode::HELLO) ||
-        request.opcode > static_cast<std::uint16_t>(Opcode::LIST_RAMDISKS)) {
+        request.opcode > static_cast<std::uint16_t>(Opcode::ELF_HEADER)) {
         return send_invalid_response(reader, output_fd, request);
     }
     const auto opcode = static_cast<Opcode>(request.opcode);
@@ -513,7 +567,7 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         if (!node) {
             return send_response(output_fd, request, Status::NOT_FOUND);
         }
-        if (!append_node(body, *node, resolved->document_index)) {
+        if (!append_node(body, *resolved->document, *node, resolved->document_index)) {
             return send_response(output_fd, request, Status::LIMIT_EXCEEDED);
         }
         return send_response(output_fd, request, Status::OK, body);
@@ -538,7 +592,7 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         const auto entries = resolved->document->list(resolved->local_id);
         append_u32(body, static_cast<std::uint32_t>(entries.size()));
         for (const auto& entry : entries) {
-            if (!append_node(body, entry, resolved->document_index)) {
+            if (!append_node(body, *resolved->document, entry, resolved->document_index)) {
                 return send_response(output_fd, request, Status::LIMIT_EXCEEDED);
             }
         }
@@ -557,8 +611,8 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         const bool success =
             resolved && resolved->document->replace_content(
                             resolved->local_id, [&](std::uint8_t* output, std::size_t capacity) {
-                return reader.read_some(output, capacity);
-            });
+                                return reader.read_some(output, capacity);
+                            });
         if (!reader.drain()) {
             return false;
         }
@@ -578,14 +632,12 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         }
         const auto parent = resolve_node(documents, parent_id);
         CpioNodeId created_id = kCpioRootNodeId;
-        const bool success =
-            parent &&
-            parent->document->create_file(
-                parent->local_id, name, permissions, uid, gid,
-                [&](std::uint8_t* output, std::size_t capacity) {
-                    return reader.read_some(output, capacity);
-                },
-                &created_id);
+        const bool success = parent && parent->document->create_file(
+                                           parent->local_id, name, permissions, uid, gid,
+                                           [&](std::uint8_t* output, std::size_t capacity) {
+                                               return reader.read_some(output, capacity);
+                                           },
+                                           &created_id);
         if (!reader.drain()) {
             return false;
         }
@@ -630,9 +682,8 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         }
         const auto parent = resolve_node(documents, parent_id);
         CpioNodeId created_id = kCpioRootNodeId;
-        const bool success =
-            parent && parent->document->create_symbolic_link(parent->local_id, name, target, uid,
-                                                             gid, &created_id);
+        const bool success = parent && parent->document->create_symbolic_link(
+                                           parent->local_id, name, target, uid, gid, &created_id);
         dirty = dirty || success;
         if (success && !append_node_id(body, parent->document_index, created_id)) {
             return send_response(output_fd, request, Status::LIMIT_EXCEEDED);
@@ -651,10 +702,9 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         const auto parent = resolve_node(documents, parent_id);
         const auto target = resolve_node(documents, target_id);
         CpioNodeId created_id = kCpioRootNodeId;
-        const bool success =
-            parent && target && parent->document_index == target->document_index &&
-            parent->document->create_hard_link(parent->local_id, name, target->local_id,
-                                               &created_id);
+        const bool success = parent && target && parent->document_index == target->document_index &&
+                             parent->document->create_hard_link(parent->local_id, name,
+                                                                target->local_id, &created_id);
         dirty = dirty || success;
         if (success && !append_node_id(body, parent->document_index, created_id)) {
             return send_response(output_fd, request, Status::LIMIT_EXCEEDED);
@@ -677,7 +727,8 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
         const bool success =
             source && destination && source->document_index == destination->document_index &&
             (opcode == Opcode::COPY
-                 ? source->document->copy(source->local_id, destination->local_id, name, &created_id)
+                 ? source->document->copy(source->local_id, destination->local_id, name,
+                                          &created_id)
                  : source->document->move(source->local_id, destination->local_id, name));
         dirty = dirty || success;
         if (success && opcode == Opcode::COPY &&
@@ -789,6 +840,75 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
             }
         }
         return send_response(output_fd, request, Status::OK, body);
+
+    case Opcode::ELF_HEADER: {
+        std::uint64_t id = 0;
+        if (!reader.read_u64(id) || !require_empty(reader)) {
+            return send_invalid_response(reader, output_fd, request);
+        }
+        const auto resolved = resolve_node(documents, id);
+        if (!resolved) {
+            return send_response(output_fd, request, Status::NOT_FOUND);
+        }
+        const auto node = resolved->document->stat(resolved->local_id);
+        if (!node) {
+            return send_response(output_fd, request, Status::NOT_FOUND);
+        }
+        if ((node->mode & S_IFMT) != S_IFREG || node->size < SELFMAG) {
+            return send_response(output_fd, request, Status::INVALID_REQUEST);
+        }
+        std::vector<std::uint8_t> prefix;
+        if (!read_node_prefix(*resolved->document, *node, SELFMAG, prefix)) {
+            return send_response(output_fd, request, Status::IO_ERROR);
+        }
+        if (!has_elf_magic(prefix.data(), prefix.size())) {
+            return send_response(output_fd, request, Status::INVALID_REQUEST);
+        }
+
+        std::vector<std::uint8_t> header_bytes;
+        if (!read_node_prefix(*resolved->document, *node, kMaximumElfHeaderSize, header_bytes)) {
+            return send_response(output_fd, request, Status::IO_ERROR);
+        }
+        yukisu_readelf_header header{};
+        yukisu_readelf_error error{};
+        if (yukisu_readelf_parse_header(header_bytes.data(), header_bytes.size(), node->size,
+                                        &header, &error) != YUKISU_READELF_OK) {
+            return send_response(output_fd, request, Status::OPERATION_FAILED);
+        }
+
+        append_u16(body, kElfHeaderSchemaVersion);
+        append_u16(body, kElfHeaderWireSize);
+        append_u32(body, header.api_version);
+        append_u32(body, header.header_flags);
+        append_u32(body, 0U);
+        append_u64(body, header.file_size);
+        body.insert(body.end(), header.ident, header.ident + YUKISU_READELF_IDENT_SIZE);
+        append_u8(body, header.elf_class);
+        append_u8(body, header.data_encoding);
+        append_u8(body, header.ident_version);
+        append_u8(body, header.os_abi);
+        append_u8(body, header.abi_version);
+        append_u8(body, 0U);
+        append_u8(body, 0U);
+        append_u8(body, 0U);
+        append_u16(body, header.type);
+        append_u16(body, header.machine);
+        append_u32(body, header.elf_version);
+        append_u64(body, header.entry);
+        append_u64(body, header.program_header_offset);
+        append_u64(body, header.section_header_offset);
+        append_u32(body, header.flags);
+        append_u16(body, header.header_size);
+        append_u16(body, header.program_header_entry_size);
+        append_u16(body, header.program_header_count);
+        append_u16(body, header.section_header_entry_size);
+        append_u16(body, header.section_header_count);
+        append_u16(body, header.section_name_index);
+        if (body.size() != kElfHeaderWireSize) {
+            return send_response(output_fd, request, Status::OPERATION_FAILED);
+        }
+        return send_response(output_fd, request, Status::OK, body);
+    }
     }
 
     return send_invalid_response(reader, output_fd, request);
@@ -830,8 +950,8 @@ int run_document_session(std::vector<SessionDocument> documents, const DumpActio
         }
 
         PayloadReader reader(input_fd, request.payload_size);
-        const bool response_sent = handle_request(documents, dump_action, dirty, should_close,
-                                                  reader, output_fd, request);
+        const bool response_sent =
+            handle_request(documents, dump_action, dirty, should_close, reader, output_fd, request);
         if (!reader.drain() || !response_sent) {
             return 1;
         }

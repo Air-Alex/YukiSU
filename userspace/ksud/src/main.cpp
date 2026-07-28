@@ -16,6 +16,9 @@ extern "C" int resetprop_main(int argc, char** argv);
 #if defined(NDK_BUSYBOX_AVAILABLE) && NDK_BUSYBOX_AVAILABLE
 extern "C" int busybox_main(int argc, char** argv);
 #endif  // #if defined(NDK_BUSYBOX_AVAILABLE) && N...
+#if defined(TOYBOX_READELF_AVAILABLE) && TOYBOX_READELF_AVAILABLE
+extern "C" int yukisu_toybox_main(int argc, char** argv);
+#endif  // #if defined(TOYBOX_READELF_AVAILABLE) &&...
 #if defined(ZYGISKD_AVAILABLE) && ZYGISKD_AVAILABLE
 extern "C" int zygiskd_main(int argc, char** argv);
 #endif  // #if defined(ZYGISKD_AVAILABLE) && ZYGIS...
@@ -83,6 +86,13 @@ int main(int argc, char** argv) {
             return r;
     }
 #endif  // #if defined(ZYGISKD_AVAILABLE) && ZYGIS...
+#if defined(TOYBOX_READELF_AVAILABLE) && TOYBOX_READELF_AVAILABLE
+    {
+        const int r = dispatch("readelf", yukisu_toybox_main);
+        if (r >= 0)
+            return r;
+    }
+#endif  // #if defined(TOYBOX_READELF_AVAILABLE) &&...
 #if defined(NDK_BUSYBOX_AVAILABLE) && NDK_BUSYBOX_AVAILABLE
     {
         const int r = dispatch("busybox", busybox_main);

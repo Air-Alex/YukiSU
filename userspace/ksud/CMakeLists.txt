@@ -169,6 +169,24 @@ file(MAKE_DIRECTORY ${GENERATED_DIR})
 
 # Generate version file at configure time
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+# readelf_toyboxAlone: a minimal Android 16 Toybox readelf applet. Its
+# subproject namespaces all Toybox-defined symbols before exposing the archive,
+# so it can coexist with the BusyBox library already welded into ksud.
+set(READELF_TOYBOX_ALONE_DIR
+    ${CMAKE_SOURCE_DIR}/third_party/readelf_toyboxAlone
+)
+if(NOT EXISTS ${READELF_TOYBOX_ALONE_DIR}/CMakeLists.txt)
+    message(FATAL_ERROR
+        "readelf_toyboxAlone submodule is missing; run git submodule update --init")
+endif()
+add_subdirectory(
+    ${READELF_TOYBOX_ALONE_DIR}
+    ${CMAKE_BINARY_DIR}/readelf-toybox
+)
+set(TOYBOX_READELF_AVAILABLE 1)
+message(STATUS "readelf_toyboxAlone: building ksud multi-call applet")
+
 execute_process(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_version.py ${VERSION_CPP}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -317,6 +335,7 @@ set(KSUD_INCLUDE_DIRS
     ${miniz_BINARY_DIR}
     ${LZ4_LIB_DIR}
     ${MKBOOTFS_ALONE_DIR}/include
+    ${READELF_TOYBOX_ALONE_DIR}/include
     ${GENERATED_DIR}
     ${REPO_ROOT}  # uapi/ kernel headers for userspace
 )
@@ -342,6 +361,9 @@ if(MKBOOTFS_ALONE_AVAILABLE)
 endif()
 if(NDK_BUSYBOX_AVAILABLE)
     list(APPEND KSUD_DEFINES NDK_BUSYBOX_AVAILABLE=1)
+endif()
+if(TOYBOX_READELF_AVAILABLE)
+    list(APPEND KSUD_DEFINES TOYBOX_READELF_AVAILABLE=1)
 endif()
 if(ZYGISKD_AVAILABLE)
     list(APPEND KSUD_DEFINES ZYGISKD_AVAILABLE=1)
@@ -390,7 +412,11 @@ add_executable(ksud
     $<TARGET_OBJECTS:ksud_generated_objs>
     $<TARGET_OBJECTS:ksud_thirdparty_objs>
 )
+
 target_compile_definitions(ksud PRIVATE ${KSUD_DEFINES})
+if(TOYBOX_READELF_AVAILABLE)
+    target_link_libraries(ksud PRIVATE readelf_toybox)
+endif()
 if(ZYGISKD_AVAILABLE)
     # zygiskd (welded in) logs via liblog's __android_log_print
     target_link_libraries(ksud PRIVATE log)

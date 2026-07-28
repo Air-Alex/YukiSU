@@ -1,6 +1,7 @@
 package ui.screen.ramdisk
 
 import android.content.Context
+import android.content.res.Resources
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
@@ -58,11 +60,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.anatdx.yukifb.backend.FileContentSource
 import com.anatdx.yukifb.model.EntryId
 import com.anatdx.yukifb.model.FileEntry
 import com.anatdx.yukifb.model.FileEntryType
+import com.anatdx.yukifb.model.TextFileEncoding
 import com.anatdx.yukifb.state.FileBrowserAction
 import com.anatdx.yukifb.state.TextFileEditorState
 import com.anatdx.yukifb.state.rememberFileBrowserController
@@ -76,16 +81,17 @@ import com.anatdx.yukisu.ui.util.getKsud
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ui.screen.partition.PartitionManagerHelper
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -116,21 +122,68 @@ fun RamdiskEditorScreen(
     var hasRebuiltImage by remember { mutableStateOf(false) }
     var hasUnexportedImage by remember { mutableStateOf(false) }
     var openedTextFile by remember { mutableStateOf<OpenedTextFile?>(null) }
-    var isOpeningTextFile by remember { mutableStateOf(false) }
+    var openedElfFile by remember { mutableStateOf<OpenedElfFile?>(null) }
+    var pendingTextFile by remember { mutableStateOf<PendingTextFile?>(null) }
+    var isOpeningFile by remember { mutableStateOf(false) }
     var isSavingTextFile by remember { mutableStateOf(false) }
+    var textOperationJob by remember { mutableStateOf<Job?>(null) }
     var discardPrompt by remember { mutableStateOf<DiscardPrompt?>(null) }
+    val sessionOperationJobs = remember { mutableSetOf<Job>() }
+
+    fun launchTextOperation(block: suspend () -> Unit) {
+        sessionOperationJobs.removeAll { it.isCompleted }
+        textOperationJob?.cancel()
+        val job = scope.launch {
+            try {
+                block()
+            } finally {
+                if (textOperationJob === currentCoroutineContext()[Job]) {
+                    textOperationJob = null
+                }
+            }
+        }
+        textOperationJob = job
+        sessionOperationJobs += job
+    }
+
+    fun launchSessionOperation(block: suspend () -> Unit) {
+        sessionOperationJobs.removeAll { it.isCompleted }
+        sessionOperationJobs += scope.launch { block() }
+    }
 
     LaunchedEffect(partitionName, targetSlot, retryGeneration) {
-        (loadState as? RamdiskEditorLoadState.Ready)?.image?.closeNow()
+        val previousImage = (loadState as? RamdiskEditorLoadState.Ready)?.image
+        val previousOperations = sessionOperationJobs.toList()
+        previousOperations.forEach { it.cancel() }
+        previousImage?.closeNow()
+        previousOperations.joinAll()
+        sessionOperationJobs.clear()
+        textOperationJob = null
+        openedTextFile = null
+        openedElfFile = null
+        pendingTextFile = null
+        pendingImportDirectory = null
+        pendingExportEntry = null
+        importGeneration = 0
+        isImporting = false
+        isExportingFile = false
+        isOpeningFile = false
+        isSavingTextFile = false
+        isDumping = false
+        hasRebuiltImage = false
+        hasUnexportedImage = false
+        discardPrompt = null
         loadState = RamdiskEditorLoadState.Loading
         selectedFragmentIndex = null
-        loadState = runCatching {
+        loadState = try {
             prepareRamdiskEditor(
                 context = context,
                 partitionName = partitionName,
                 targetSlot = targetSlot,
             )
-        }.getOrElse { error ->
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
             RamdiskEditorLoadState.Error(
                 error.message ?: resources.getString(R.string.partition_unknown)
             )
@@ -155,7 +208,7 @@ fun RamdiskEditorScreen(
             ?.fragments
             ?.getOrNull(selectedFragmentIndex ?: 0)
         if (uri != null && parentId != null && backend != null) {
-            scope.launch {
+            launchSessionOperation {
                 isImporting = true
                 runCatching {
                     val name = withContext(Dispatchers.IO) {
@@ -196,7 +249,7 @@ fun RamdiskEditorScreen(
             ?.fragments
             ?.getOrNull(selectedFragmentIndex ?: 0)
         if (uri != null && entry != null && backend != null) {
-            scope.launch {
+            launchSessionOperation {
                 isExportingFile = true
                 runCatching {
                     withContext(Dispatchers.IO) {
@@ -233,7 +286,7 @@ fun RamdiskEditorScreen(
     ) { uri: Uri? ->
         val outputImage = (loadState as? RamdiskEditorLoadState.Ready)?.image?.outputImage
         if (uri != null && outputImage?.isFile == true) {
-            scope.launch {
+            launchSessionOperation {
                 runCatching {
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
@@ -315,7 +368,7 @@ fun RamdiskEditorScreen(
 
             fun rebuildImage() {
                 if (!dirty || isDumping) return
-                scope.launch {
+                launchSessionOperation {
                     isDumping = true
                     runCatching { image.dump() }
                         .onSuccess {
@@ -379,6 +432,7 @@ fun RamdiskEditorScreen(
                 LaunchedEffect(
                     browserState.currentDirectory.id,
                     browserState.selectedIds,
+                    browserState.search != null,
                 ) {
                     lastRootBackAt = 0L
                 }
@@ -386,20 +440,28 @@ fun RamdiskEditorScreen(
                 fun handleBrowserBack() {
                     val editor = openedTextFile
                     when {
+                        (editor != null || openedElfFile != null) &&
+                            (isOpeningFile || isSavingTextFile) -> Unit
+
                         editor?.state?.hasUnsavedChanges == true -> {
                             discardPrompt = DiscardPrompt.TEXT_FILE
                         }
 
                         editor != null -> openedTextFile = null
+                        openedElfFile != null -> openedElfFile = null
                         browserState.isBusy ||
                             isImporting ||
                             isExportingFile ||
-                            isOpeningTextFile ||
+                            isOpeningFile ||
                             isSavingTextFile ||
                             isDumping -> Unit
 
                         browserState.isSelectionMode -> {
                             browserController.dispatch(FileBrowserAction.ClearSelection)
+                        }
+
+                        browserState.search != null -> {
+                            browserController.dispatch(FileBrowserAction.StopSearch)
                         }
 
                         browserState.breadcrumbs.size > 1 -> {
@@ -418,83 +480,195 @@ fun RamdiskEditorScreen(
 
                 Box(Modifier.fillMaxSize()) {
                     val editor = openedTextFile
+                    val elfFile = openedElfFile
                     if (editor != null) {
                         TextFileEditor(
                             fileName = editor.entry.name,
                             state = editor.state,
-                            onSave = { text ->
+                            onSave = { request ->
                                 if (!isSavingTextFile) {
-                                    scope.launch {
+                                    launchTextOperation {
                                         isSavingTextFile = true
-                                        runCatching {
+                                        val failure = try {
+                                            val encoded =
+                                                withContext(Dispatchers.Default) {
+                                                    encodeRamdiskText(
+                                                        text = request.text,
+                                                        encoding = request.encoding,
+                                                        preservedByteOrderMark =
+                                                            editor.sourceByteOrderMark.takeIf {
+                                                                editor.sourceEncoding ==
+                                                                    request.encoding
+                                                            },
+                                                    )
+                                                }
                                             backend.replace(
                                                 editor.entry.id,
                                                 FileContentSource {
-                                                    ByteArrayInputStream(
-                                                        text.toByteArray(Charsets.UTF_8)
-                                                    )
+                                                    ByteArrayInputStream(encoded.bytes)
                                                 },
                                             )
-                                        }.onSuccess {
-                                            editor.state.markSaved()
-                                        }.onFailure { error ->
+                                            editor.updatePersistedSource(
+                                                encoded = encoded,
+                                                encoding = request.encoding,
+                                            )
+                                            if (
+                                                editor.state.createSaveRequest() == request
+                                            ) {
+                                                editor.state.markSaved()
+                                            }
+                                            null
+                                        } catch (error: CancellationException) {
+                                            throw error
+                                        } catch (error: Throwable) {
+                                            error
+                                        } finally {
+                                            isSavingTextFile = false
+                                        }
+                                        if (failure != null) {
                                             snackbarHost.showSnackbar(
                                                 resources.getString(
                                                     R.string.ramdisk_editor_text_save_failed,
-                                                    error.message
+                                                    failure.message
                                                         ?: resources.getString(
                                                             R.string.partition_unknown
                                                         ),
                                                 )
                                             )
                                         }
-                                        isSavingTextFile = false
                                     }
                                 }
                             },
-                            onClose = { openedTextFile = null },
+                            onReopenWithEncoding = { encoding ->
+                                if (!isOpeningFile && !isSavingTextFile) {
+                                    launchTextOperation {
+                                        isOpeningFile = true
+                                        val failure = try {
+                                            val decoded = withContext(Dispatchers.Default) {
+                                                decodeRamdiskText(
+                                                    bytes = editor.sourceBytes,
+                                                    encoding = encoding,
+                                                )
+                                            }
+                                            editor.updateDecodedSource(decoded)
+                                            null
+                                        } catch (error: CancellationException) {
+                                            throw error
+                                        } catch (error: Throwable) {
+                                            error
+                                        } finally {
+                                            isOpeningFile = false
+                                        }
+                                        if (failure != null) {
+                                            snackbarHost.showSnackbar(
+                                                resources.getString(
+                                                    R.string.ramdisk_editor_open_failed,
+                                                    failure.message
+                                                        ?: resources.getString(
+                                                            R.string.partition_unknown
+                                                        ),
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            onClose = {
+                                if (!isOpeningFile && !isSavingTextFile) {
+                                    openedTextFile = null
+                                }
+                            },
                             modifier = Modifier.fillMaxSize(),
-                            isSaving = isSavingTextFile,
+                            isSaving = isSavingTextFile || isOpeningFile,
+                            availableEncodings = supportedRamdiskTextEncodings,
+                        )
+                    } else if (elfFile != null) {
+                        ElfSummaryViewer(
+                            fileName = elfFile.entry.name,
+                            header = elfFile.header,
+                            onClose = {
+                                if (!isOpeningFile) {
+                                    openedElfFile = null
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
                         )
                     } else {
                         FileBrowser(
                             controller = browserController,
                             onOpenFile = { entry ->
-                                if (!isOpeningTextFile) {
-                                    scope.launch {
-                                        isOpeningTextFile = true
-                                        runCatching {
+                                if (!isOpeningFile) {
+                                    launchTextOperation {
+                                        isOpeningFile = true
+                                        val failure = try {
                                             require(entry.type == FileEntryType.REGULAR_FILE) {
                                                 resources.getString(
                                                     R.string.ramdisk_editor_regular_files_only
                                                 )
                                             }
-                                            require((entry.size ?: 0L) <= MAX_TEXT_FILE_SIZE) {
-                                                resources.getString(
-                                                    R.string.ramdisk_editor_text_too_large
+                                            if (entry.mimeType == ELF_MIME_TYPE) {
+                                                pendingTextFile = null
+                                                openedElfFile = OpenedElfFile(
+                                                    entry = entry,
+                                                    header = backend.readElfHeader(entry.id),
                                                 )
+                                            } else {
+                                                require(
+                                                    (entry.size ?: 0L) <=
+                                                        MAX_RAMDISK_TEXT_FILE_SIZE
+                                                ) {
+                                                    resources.getString(
+                                                        R.string.ramdisk_editor_text_too_large
+                                                    )
+                                                }
+                                                val bytes = backend.read(entry.id) { input ->
+                                                    readRamdiskTextBytes(input)
+                                                }
+                                                val decoded = try {
+                                                    withContext(Dispatchers.Default) {
+                                                        decodeInitialRamdiskText(bytes)
+                                                    }
+                                                } catch (error: CancellationException) {
+                                                    throw error
+                                                } catch (_: IOException) {
+                                                    null
+                                                }
+                                                if (
+                                                    decoded == null ||
+                                                    decoded.requiresEncodingConfirmation
+                                                ) {
+                                                    pendingTextFile = PendingTextFile(
+                                                        entry = entry,
+                                                        sourceBytes = bytes,
+                                                    )
+                                                } else {
+                                                    pendingTextFile = null
+                                                    openedTextFile = OpenedTextFile(
+                                                        entry = entry,
+                                                        sourceBytes = bytes,
+                                                        decoded = decoded,
+                                                    )
+                                                }
                                             }
-                                            val text = backend.read(entry.id) { input ->
-                                                readUtf8Text(input)
-                                            }
-                                            OpenedTextFile(
-                                                entry = entry,
-                                                state = TextFileEditorState(text),
-                                            )
-                                        }.onSuccess { opened ->
-                                            openedTextFile = opened
-                                        }.onFailure { error ->
+                                            null
+                                        } catch (error: CancellationException) {
+                                            throw error
+                                        } catch (error: Throwable) {
+                                            error
+                                        } finally {
+                                            isOpeningFile = false
+                                        }
+                                        if (failure != null) {
                                             snackbarHost.showSnackbar(
                                                 resources.getString(
                                                     R.string.ramdisk_editor_open_failed,
-                                                    error.message
+                                                    failure.message
                                                         ?: resources.getString(
                                                             R.string.partition_unknown
                                                         ),
                                                 )
                                             )
                                         }
-                                        isOpeningTextFile = false
                                     }
                                 }
                             },
@@ -524,7 +698,7 @@ fun RamdiskEditorScreen(
                         )
                     }
 
-                    if (isImporting || isExportingFile || isOpeningTextFile) {
+                    if (isImporting || isExportingFile || isOpeningFile) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
@@ -573,6 +747,58 @@ fun RamdiskEditorScreen(
         }
 
         null -> Unit
+    }
+
+    pendingTextFile?.let { pending ->
+        TextEncodingDialog(
+            fileName = pending.entry.name,
+            encodings = supportedRamdiskTextEncodings,
+            busy = isOpeningFile,
+            onDismiss = {
+                if (!isOpeningFile) {
+                    pendingTextFile = null
+                }
+            },
+            onEncodingSelected = { encoding ->
+                if (!isOpeningFile) {
+                    launchTextOperation {
+                        isOpeningFile = true
+                        val failure = try {
+                            val decoded = withContext(Dispatchers.Default) {
+                                decodeRamdiskText(
+                                    bytes = pending.sourceBytes,
+                                    encoding = encoding,
+                                )
+                            }
+                            openedTextFile = OpenedTextFile(
+                                entry = pending.entry,
+                                sourceBytes = pending.sourceBytes,
+                                decoded = decoded,
+                            )
+                            pendingTextFile = null
+                            null
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            error
+                        } finally {
+                            isOpeningFile = false
+                        }
+                        if (failure != null) {
+                            snackbarHost.showSnackbar(
+                                resources.getString(
+                                    R.string.ramdisk_editor_open_failed,
+                                    failure.message
+                                        ?: resources.getString(
+                                            R.string.partition_unknown
+                                        ),
+                                )
+                            )
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -862,6 +1088,261 @@ private fun DiscardDialog(
     )
 }
 
+@Composable
+private fun TextEncodingDialog(
+    fileName: String,
+    encodings: List<TextFileEncoding>,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onEncodingSelected: (TextFileEncoding) -> Unit,
+) {
+    YukiAlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.ramdisk_editor_choose_encoding_title, fileName))
+        },
+        text = {
+            Column {
+                Text(stringResource(R.string.ramdisk_editor_choose_encoding_message))
+                encodings.forEach { encoding ->
+                    TextButton(
+                        onClick = { onEncodingSelected(encoding) },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = encoding.displayName,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Start,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !busy,
+            ) {
+                Text(stringResource(R.string.ramdisk_editor_cancel))
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ElfSummaryViewer(
+    fileName: String,
+    header: ElfHeaderInfo,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fields = header.toDisplayFields(LocalResources.current)
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text(fileName) },
+                navigationIcon = {
+                    IconButton(onClick = onClose) {
+                        YukiIcon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.ramdisk_editor_back),
+                        )
+                    }
+                },
+            )
+        },
+    ) { paddingValues ->
+        SelectionContainer {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                        Text(
+                            text = stringResource(R.string.ramdisk_editor_elf_summary_title),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.ramdisk_editor_elf_summary_description
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+                items(
+                    items = fields,
+                    key = { it.first },
+                ) { (label, value) ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                    ) {
+                        ListItem(
+                            content = {
+                                Text(
+                                    text = stringResource(label),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = value,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            },
+                            colors = ListItemDefaults.colors(
+                                containerColor = androidx.compose.ui.graphics.Color.Transparent
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun ElfHeaderInfo.toDisplayFields(resources: Resources): List<Pair<Int, String>> {
+    fun bytes(value: ULong): String = resources.getString(
+        R.string.ramdisk_editor_elf_value_bytes,
+        value.toString(),
+    )
+
+    fun offset(value: ULong): String = resources.getString(
+        R.string.ramdisk_editor_elf_value_offset,
+        "0x${value.toString(16)}",
+        value.toString(),
+    )
+
+    fun enumValue(name: String?, raw: Int): String =
+        if (name == null) {
+            resources.getString(
+                R.string.ramdisk_editor_elf_value_unknown,
+                raw.toString(16),
+            )
+        } else {
+            resources.getString(R.string.ramdisk_editor_elf_value_enum, name, raw)
+        }
+
+    fun count(value: Int, extended: Boolean): String =
+        if (extended) {
+            resources.getString(
+                R.string.ramdisk_editor_elf_value_extended,
+                value,
+            )
+        } else {
+            value.toString()
+        }
+
+    val entryWidth = if (elfClass == ELF_CLASS_32) 8 else 16
+    return listOf(
+        R.string.ramdisk_editor_elf_field_file_size to bytes(fileSize),
+        R.string.ramdisk_editor_elf_field_magic to ident.joinToString(" ") {
+            "%02x".format(Locale.US, it.toInt() and 0xff)
+        },
+        R.string.ramdisk_editor_elf_field_class to enumValue(elfClassName(elfClass), elfClass),
+        R.string.ramdisk_editor_elf_field_data to
+            enumValue(elfDataEncodingName(dataEncoding), dataEncoding),
+        R.string.ramdisk_editor_elf_field_ident_version to
+            if (identVersion == ELF_VERSION_CURRENT) {
+                resources.getString(
+                    R.string.ramdisk_editor_elf_value_current,
+                    identVersion.toString(),
+                )
+            } else {
+                identVersion.toString()
+            },
+        R.string.ramdisk_editor_elf_field_os_abi to enumValue(elfOsAbiName(osAbi), osAbi),
+        R.string.ramdisk_editor_elf_field_abi_version to abiVersion.toString(),
+        R.string.ramdisk_editor_elf_field_type to enumValue(elfTypeName(type), type),
+        R.string.ramdisk_editor_elf_field_machine to enumValue(elfMachineName(machine), machine),
+        R.string.ramdisk_editor_elf_field_object_version to
+            if (elfVersion == ELF_VERSION_CURRENT.toUInt()) {
+                resources.getString(
+                    R.string.ramdisk_editor_elf_value_current,
+                    elfVersion.toString(),
+                )
+            } else {
+                "0x${elfVersion.toString(16)}"
+            },
+        R.string.ramdisk_editor_elf_field_entry to
+            "0x${entry.toString(16).padStart(entryWidth, '0')}",
+        R.string.ramdisk_editor_elf_field_program_offset to offset(programHeaderOffset),
+        R.string.ramdisk_editor_elf_field_section_offset to offset(sectionHeaderOffset),
+        R.string.ramdisk_editor_elf_field_flags to
+            "0x${flags.toString(16).padStart(8, '0')}",
+        R.string.ramdisk_editor_elf_field_header_size to bytes(headerSize.toULong()),
+        R.string.ramdisk_editor_elf_field_program_entry_size to
+            bytes(programHeaderEntrySize.toULong()),
+        R.string.ramdisk_editor_elf_field_program_count to count(
+            programHeaderCount,
+            (headerFlags and ELF_HEADER_EXTENDED_PHNUM) != 0u,
+        ),
+        R.string.ramdisk_editor_elf_field_section_entry_size to
+            bytes(sectionHeaderEntrySize.toULong()),
+        R.string.ramdisk_editor_elf_field_section_count to count(
+            sectionHeaderCount,
+            (headerFlags and ELF_HEADER_EXTENDED_SHNUM) != 0u,
+        ),
+        R.string.ramdisk_editor_elf_field_section_name_index to count(
+            sectionNameIndex,
+            (headerFlags and ELF_HEADER_EXTENDED_SHSTRNDX) != 0u,
+        ),
+    )
+}
+
+private fun elfClassName(value: Int): String? = when (value) {
+    ELF_CLASS_32 -> "ELF32"
+    ELF_CLASS_64 -> "ELF64"
+    else -> null
+}
+
+private fun elfDataEncodingName(value: Int): String? = when (value) {
+    1 -> "2's complement, little endian"
+    2 -> "2's complement, big endian"
+    else -> null
+}
+
+private fun elfTypeName(value: Int): String? = when (value) {
+    0 -> "NONE"
+    1 -> "REL"
+    2 -> "EXEC"
+    3 -> "DYN"
+    4 -> "CORE"
+    else -> null
+}
+
+private fun elfOsAbiName(value: Int): String? = when (value) {
+    0 -> "UNIX - System V"
+    1 -> "HP-UX"
+    2 -> "NetBSD"
+    3 -> "GNU/Linux"
+    6 -> "Solaris"
+    7 -> "AIX"
+    8 -> "IRIX"
+    9 -> "FreeBSD"
+    10 -> "Tru64"
+    12 -> "OpenBSD"
+    64 -> "ARM EABI"
+    97 -> "ARM"
+    255 -> "Standalone"
+    else -> null
+}
+
+private fun elfMachineName(value: Int): String? = ELF_MACHINE_NAMES[value]
+
 private suspend fun prepareRamdiskEditor(
     context: Context,
     partitionName: String,
@@ -923,30 +1404,6 @@ private fun queryDisplayName(context: Context, uri: Uri): String? =
         if (index < 0) null else cursor.getString(index)?.takeIf(String::isNotBlank)
     }
 
-private fun readUtf8Text(input: java.io.InputStream): String {
-    val output = ByteArrayOutputStream()
-    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-    var total = 0
-    while (true) {
-        val count = input.read(buffer)
-        if (count < 0) break
-        total += count
-        if (total > MAX_TEXT_FILE_SIZE) {
-            throw IOException("The file exceeds the text editor limit")
-        }
-        output.write(buffer, 0, count)
-    }
-    val bytes = output.toByteArray()
-    if (bytes.any { it == 0.toByte() }) {
-        throw IOException("The selected file contains binary data")
-    }
-    return Charsets.UTF_8.newDecoder()
-        .onMalformedInput(CodingErrorAction.REPORT)
-        .onUnmappableCharacter(CodingErrorAction.REPORT)
-        .decode(ByteBuffer.wrap(bytes))
-        .toString()
-}
-
 private fun buildExportFileName(partitionName: String): String {
     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     return "${partitionName}_ramdisk_$timestamp.img"
@@ -964,9 +1421,49 @@ private sealed interface RamdiskEditorLoadState {
     data class Error(val message: String) : RamdiskEditorLoadState
 }
 
-private data class OpenedTextFile(
+private class OpenedTextFile(
     val entry: FileEntry,
-    val state: TextFileEditorState,
+    sourceBytes: ByteArray,
+    decoded: DecodedRamdiskText,
+) {
+    val state = TextFileEditorState(
+        initialText = decoded.text,
+        initialEncoding = decoded.encoding,
+    )
+    var sourceBytes: ByteArray = sourceBytes
+        private set
+    var sourceEncoding: TextFileEncoding = decoded.encoding
+        private set
+    var sourceByteOrderMark: UnicodeByteOrderMark? = decoded.byteOrderMark
+        private set
+
+    fun updateDecodedSource(decoded: DecodedRamdiskText) {
+        state.replaceDocument(
+            text = decoded.text,
+            encoding = decoded.encoding,
+        )
+        sourceEncoding = decoded.encoding
+        sourceByteOrderMark = decoded.byteOrderMark
+    }
+
+    fun updatePersistedSource(
+        encoded: EncodedRamdiskText,
+        encoding: TextFileEncoding,
+    ) {
+        sourceBytes = encoded.bytes
+        sourceEncoding = encoding
+        sourceByteOrderMark = encoded.byteOrderMark
+    }
+}
+
+private data class PendingTextFile(
+    val entry: FileEntry,
+    val sourceBytes: ByteArray,
+)
+
+private data class OpenedElfFile(
+    val entry: FileEntry,
+    val header: ElfHeaderInfo,
 )
 
 private enum class DiscardPrompt {
@@ -974,5 +1471,44 @@ private enum class DiscardPrompt {
     TEXT_FILE,
 }
 
-private const val MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024
 private const val ROOT_EXIT_CONFIRM_INTERVAL_MILLIS = 2_500L
+private const val ELF_CLASS_32 = 1
+private const val ELF_CLASS_64 = 2
+private const val ELF_VERSION_CURRENT = 1
+private const val ELF_HEADER_EXTENDED_PHNUM = 1u
+private const val ELF_HEADER_EXTENDED_SHNUM = 2u
+private const val ELF_HEADER_EXTENDED_SHSTRNDX = 4u
+private val ELF_MACHINE_NAMES = mapOf(
+    2 to "sparc",
+    3 to "386",
+    4 to "m68k",
+    6 to "486",
+    8 to "mips",
+    15 to "parisc",
+    18 to "sparc8+",
+    20 to "ppc",
+    21 to "ppc64",
+    22 to "s390",
+    40 to "arm",
+    42 to "sh",
+    43 to "sparc9",
+    50 to "ia64",
+    62 to "x86-64",
+    88 to "m32r",
+    92 to "openrisc",
+    93 to "arc",
+    94 to "xtensa",
+    113 to "nios2",
+    135 to "score",
+    140 to "c6x",
+    164 to "hexagon",
+    183 to "arm64",
+    188 to "tile",
+    189 to "microblaze",
+    191 to "tilegx",
+    195 to "arcv2",
+    243 to "riscv",
+    247 to "bpf",
+    252 to "csky",
+    258 to "loongarch",
+)

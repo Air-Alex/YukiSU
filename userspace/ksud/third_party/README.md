@@ -29,6 +29,13 @@ ksud uses **git submodules** in this directory (`userspace/ksud/third_party/`) a
 - **Purpose**: Compiled **into ksud** as multi-call. `ksu/bin/busybox` → symlink to ksud; argv0 dispatch to `busybox_main()`.
 - **Init/update**: `git submodule update --init userspace/ksud/third_party/ndk-busybox`
 
+### readelf_toyboxAlone
+
+- **Path**: `userspace/ksud/third_party/readelf_toyboxAlone`
+- **Purpose**: Android 16 Toybox `readelf` compiled **into ksud** as a namespaced multi-call applet, plus a reentrant structured ELF-header API shared by ksud and the CLI. `ksud readelf` works without a ROM-provided executable.
+- **License**: 0BSD
+- **Init/update**: `git submodule update --init userspace/ksud/third_party/readelf_toyboxAlone`
+
 ## FetchContent (auto-downloaded)
 
 ### PicoSHA2

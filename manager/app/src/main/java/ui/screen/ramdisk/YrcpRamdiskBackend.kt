@@ -198,6 +198,9 @@ internal class YrcpRamdiskBackend private constructor(
         }
     }
 
+    suspend fun readElfHeader(entryId: EntryId): ElfHeaderInfo =
+        session.elfHeader(entryId.toNodeId())
+
     suspend fun importFile(
         parentId: EntryId,
         name: String,
@@ -322,6 +325,31 @@ internal data class RamdiskFragmentInfo(
     val boardId: List<Long>,
 )
 
+internal data class ElfHeaderInfo(
+    val apiVersion: UInt,
+    val headerFlags: UInt,
+    val fileSize: ULong,
+    val ident: ByteArray,
+    val elfClass: Int,
+    val dataEncoding: Int,
+    val identVersion: Int,
+    val osAbi: Int,
+    val abiVersion: Int,
+    val type: Int,
+    val machine: Int,
+    val elfVersion: UInt,
+    val entry: ULong,
+    val programHeaderOffset: ULong,
+    val sectionHeaderOffset: ULong,
+    val flags: UInt,
+    val headerSize: Int,
+    val programHeaderEntrySize: Int,
+    val programHeaderCount: Int,
+    val sectionHeaderEntrySize: Int,
+    val sectionHeaderCount: Int,
+    val sectionNameIndex: Int,
+)
+
 internal class YrcpSession private constructor(
     private val process: Process,
 ) {
@@ -369,6 +397,12 @@ internal class YrcpSession private constructor(
 
     suspend fun listRamdisks(): List<RamdiskFragmentInfo> =
         requestBytes(OPCODE_LIST_RAMDISKS, ByteArray(0)).decodeRamdiskList()
+
+    suspend fun elfHeader(nodeId: Long): ElfHeaderInfo =
+        requestBytes(
+            OPCODE_ELF_HEADER,
+            payloadOf { writeU64(nodeId) },
+        ).decodeElfHeaderInfo()
 
     suspend fun createFile(
         parentId: Long,
@@ -699,6 +733,7 @@ internal data class YrcpNode(
     val specialDeviceMajor: Long,
     val specialDeviceMinor: Long,
     val synthetic: Boolean,
+    val contentKind: YrcpContentKind,
     val name: String,
     val path: String,
     val linkTarget: String?,
@@ -716,6 +751,10 @@ internal data class YrcpNode(
             modifiedAtMillis = modifiedSeconds
                 .takeIf { it <= Long.MAX_VALUE / 1_000L }
                 ?.times(1_000L),
+            mimeType = when (contentKind) {
+                YrcpContentKind.UNKNOWN -> null
+                YrcpContentKind.ELF -> ELF_MIME_TYPE
+            },
             unixMetadata = UnixMetadata(
                 permissions = (mode and PERMISSION_MASK).toInt(),
                 uid = uid,
@@ -730,11 +769,74 @@ internal data class YrcpNode(
     }
 }
 
-private fun ByteArray.decodeSingleNode(): YrcpNode {
+internal enum class YrcpContentKind {
+    UNKNOWN,
+    ELF;
+
+    companion object {
+        fun fromWire(value: Int): YrcpContentKind =
+            when (value) {
+                CONTENT_KIND_ELF -> ELF
+                else -> UNKNOWN
+            }
+    }
+}
+
+internal fun ByteArray.decodeSingleNode(): YrcpNode {
     val input = LittleEndianInput(ByteArrayInputStream(this))
     return input.readNode().also {
         if (input.available() != 0) throw IOException("Unexpected trailing bytes after node record")
     }
+}
+
+internal fun ByteArray.decodeElfHeaderInfo(): ElfHeaderInfo {
+    val input = LittleEndianInput(ByteArrayInputStream(this))
+    val schemaVersion = input.readU16()
+    val fixedSize = input.readU16()
+    if (schemaVersion != ELF_HEADER_SCHEMA_VERSION) {
+        throw IOException("Unsupported ELF header schema $schemaVersion")
+    }
+    if (fixedSize < ELF_HEADER_WIRE_SIZE || fixedSize > size) {
+        throw IOException("Invalid ELF header structure size $fixedSize")
+    }
+
+    val result = ElfHeaderInfo(
+        apiVersion = input.readU32().toUInt(),
+        headerFlags = input.readU32().toUInt(),
+        fileSize = run {
+            input.readU32() // Reserved.
+            input.readULong()
+        },
+        ident = input.readExactly(ELF_IDENT_SIZE),
+        elfClass = input.readByte(),
+        dataEncoding = input.readByte(),
+        identVersion = input.readByte(),
+        osAbi = input.readByte(),
+        abiVersion = input.readByte(),
+        type = run {
+            input.readExactly(3) // Reserved.
+            input.readU16()
+        },
+        machine = input.readU16(),
+        elfVersion = input.readU32().toUInt(),
+        entry = input.readULong(),
+        programHeaderOffset = input.readULong(),
+        sectionHeaderOffset = input.readULong(),
+        flags = input.readU32().toUInt(),
+        headerSize = input.readU16(),
+        programHeaderEntrySize = input.readU16(),
+        programHeaderCount = input.readU16(),
+        sectionHeaderEntrySize = input.readU16(),
+        sectionHeaderCount = input.readU16(),
+        sectionNameIndex = input.readU16(),
+    )
+    if (fixedSize > ELF_HEADER_WIRE_SIZE) {
+        input.readExactly(fixedSize - ELF_HEADER_WIRE_SIZE)
+    }
+    if (input.available() != 0) {
+        throw IOException("Unexpected trailing bytes in ELF header response")
+    }
+    return result
 }
 
 private fun ByteArray.decodeNodeList(): List<YrcpNode> {
@@ -803,6 +905,7 @@ private fun LittleEndianInput.readNode(): YrcpNode =
         specialDeviceMajor = readU32(),
         specialDeviceMinor = readU32(),
         synthetic = readByte() != 0,
+        contentKind = YrcpContentKind.fromWire(readByte()),
         name = readString(),
         path = readString(),
         linkTarget = readOptionalString(),
@@ -882,11 +985,18 @@ private class LittleEndianInput(
     }
 
     fun readU64(): Long {
-        var value = 0L
-        repeat(U64_SIZE) { shift ->
-            value = value or (readByte().toLong() shl (shift * 8))
+        val value = readULong()
+        if (value > Long.MAX_VALUE.toULong()) {
+            throw IOException("YRCP u64 value exceeds the signed Android range")
         }
-        if (value < 0) throw IOException("YRCP u64 value exceeds the signed Android range")
+        return value.toLong()
+    }
+
+    fun readULong(): ULong {
+        var value = 0uL
+        repeat(U64_SIZE) { shift ->
+            value = value or (readByte().toULong() shl (shift * 8))
+        }
         return value
     }
 
@@ -988,7 +1098,7 @@ private fun Long.toFileEntryType(): FileEntryType =
 
 private const val TAG = "YrcpRamdiskBackend"
 private val PROTOCOL_MAGIC = byteArrayOf('Y'.code.toByte(), 'R'.code.toByte(), 'C'.code.toByte(), 'P'.code.toByte())
-private const val PROTOCOL_VERSION = 2
+private const val PROTOCOL_VERSION = 3
 private const val RESPONSE_FLAG = 0x8000
 private const val STATUS_OK = 0
 
@@ -1008,6 +1118,7 @@ private const val OPCODE_UPDATE_METADATA = 13
 private const val OPCODE_DUMP = 14
 private const val OPCODE_CLOSE = 15
 private const val OPCODE_LIST_RAMDISKS = 16
+private const val OPCODE_ELF_HEADER = 17
 
 private const val CAPABILITY_READ = 1L shl 0
 private const val CAPABILITY_REPLACE = 1L shl 1
@@ -1022,16 +1133,22 @@ private const val CAPABILITY_UPDATE_METADATA = 1L shl 9
 private const val CAPABILITY_ATOMIC_DUMP = 1L shl 10
 private const val CAPABILITY_RANGED_READ = 1L shl 11
 private const val CAPABILITY_MULTIPLE_RAMDISKS = 1L shl 13
+private const val CAPABILITY_CONTENT_TYPES = 1L shl 14
+private const val CAPABILITY_ELF_HEADER = 1L shl 15
 private const val REQUIRED_CAPABILITIES =
     CAPABILITY_READ or CAPABILITY_REPLACE or CAPABILITY_CREATE_FILE or
         CAPABILITY_CREATE_DIRECTORY or CAPABILITY_CREATE_SYMBOLIC_LINK or
         CAPABILITY_CREATE_HARD_LINK or CAPABILITY_COPY or CAPABILITY_MOVE or
         CAPABILITY_REMOVE or CAPABILITY_UPDATE_METADATA or CAPABILITY_ATOMIC_DUMP or
-        CAPABILITY_RANGED_READ or CAPABILITY_MULTIPLE_RAMDISKS
+        CAPABILITY_RANGED_READ or CAPABILITY_MULTIPLE_RAMDISKS or
+        CAPABILITY_CONTENT_TYPES or CAPABILITY_ELF_HEADER
 
 private const val U16_SIZE = 2
 private const val U32_SIZE = 4
 private const val U64_SIZE = 8
+private const val ELF_HEADER_SCHEMA_VERSION = 1
+private const val ELF_HEADER_WIRE_SIZE = 96
+private const val ELF_IDENT_SIZE = 16
 private const val UINT32_MAX = 0xFFFF_FFFFL
 private const val MAX_CONTROL_PAYLOAD = 16L * 1024L * 1024L
 private const val MAX_NODE_COUNT = 1_000_000L
@@ -1052,3 +1169,6 @@ private const val FILE_TYPE_BLOCK_DEVICE = 0x6000L
 private const val FILE_TYPE_REGULAR = 0x8000L
 private const val FILE_TYPE_SYMBOLIC_LINK = 0xA000L
 private const val FILE_TYPE_SOCKET = 0xC000L
+
+private const val CONTENT_KIND_ELF = 1
+internal const val ELF_MIME_TYPE = "application/x-elf"

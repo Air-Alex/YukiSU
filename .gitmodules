@@ -16,3 +16,6 @@
 [submodule "userspace/ksud/third_party/mkbootfsAlone"]
 	path = userspace/ksud/third_party/mkbootfsAlone
 	url = https://github.com/Anatdx/mkbootfsAlone.git
+[submodule "userspace/ksud/third_party/readelf_toyboxAlone"]
+	path = userspace/ksud/third_party/readelf_toyboxAlone
+	url = https://github.com/Anatdx/readelf_toyboxAlone.git

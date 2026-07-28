@@ -263,4 +263,5 @@ dependencies {
     implementation(libs.ucrop)
     implementation(libs.yukifb)
 
+    testImplementation(libs.kotlin.test)
 }

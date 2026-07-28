@@ -578,6 +578,36 @@
     <string name="ramdisk_editor_regular_files_only" tools:ignore="MissingTranslation">Only regular files can be opened in the text editor</string>
     <string name="ramdisk_editor_text_too_large" tools:ignore="MissingTranslation">This file is too large for the text editor</string>
     <string name="ramdisk_editor_open_failed" tools:ignore="MissingTranslation">Cannot open file: %s</string>
+    <string name="ramdisk_editor_choose_encoding_title" tools:ignore="MissingTranslation">%s encoding</string>
+    <string name="ramdisk_editor_choose_encoding_message" tools:ignore="MissingTranslation">The encoding could not be detected. Choose how to decode this file.</string>
+    <string name="ramdisk_editor_elf_summary_title" tools:ignore="MissingTranslation">ELF header summary</string>
+    <string name="ramdisk_editor_elf_summary_description" tools:ignore="MissingTranslation">Decoded through the structured readelf_toyboxAlone API built into ksud. This view is read-only.</string>
+    <string name="ramdisk_editor_elf_field_file_size" tools:ignore="MissingTranslation">File size</string>
+    <string name="ramdisk_editor_elf_field_magic" tools:ignore="MissingTranslation">Magic</string>
+    <string name="ramdisk_editor_elf_field_class" tools:ignore="MissingTranslation">Class</string>
+    <string name="ramdisk_editor_elf_field_data" tools:ignore="MissingTranslation">Data encoding</string>
+    <string name="ramdisk_editor_elf_field_ident_version" tools:ignore="MissingTranslation">Identification version</string>
+    <string name="ramdisk_editor_elf_field_os_abi" tools:ignore="MissingTranslation">OS/ABI</string>
+    <string name="ramdisk_editor_elf_field_abi_version" tools:ignore="MissingTranslation">ABI version</string>
+    <string name="ramdisk_editor_elf_field_type" tools:ignore="MissingTranslation">Object type</string>
+    <string name="ramdisk_editor_elf_field_machine" tools:ignore="MissingTranslation">Machine</string>
+    <string name="ramdisk_editor_elf_field_object_version" tools:ignore="MissingTranslation">Object version</string>
+    <string name="ramdisk_editor_elf_field_entry" tools:ignore="MissingTranslation">Entry point</string>
+    <string name="ramdisk_editor_elf_field_program_offset" tools:ignore="MissingTranslation">Program header offset</string>
+    <string name="ramdisk_editor_elf_field_section_offset" tools:ignore="MissingTranslation">Section header offset</string>
+    <string name="ramdisk_editor_elf_field_flags" tools:ignore="MissingTranslation">Processor flags</string>
+    <string name="ramdisk_editor_elf_field_header_size" tools:ignore="MissingTranslation">ELF header size</string>
+    <string name="ramdisk_editor_elf_field_program_entry_size" tools:ignore="MissingTranslation">Program header entry size</string>
+    <string name="ramdisk_editor_elf_field_program_count" tools:ignore="MissingTranslation">Program header count</string>
+    <string name="ramdisk_editor_elf_field_section_entry_size" tools:ignore="MissingTranslation">Section header entry size</string>
+    <string name="ramdisk_editor_elf_field_section_count" tools:ignore="MissingTranslation">Section header count</string>
+    <string name="ramdisk_editor_elf_field_section_name_index" tools:ignore="MissingTranslation">Section-name table index</string>
+    <string name="ramdisk_editor_elf_value_bytes" tools:ignore="MissingTranslation">%1$s bytes</string>
+    <string name="ramdisk_editor_elf_value_offset" tools:ignore="MissingTranslation">%1$s (%2$s bytes)</string>
+    <string name="ramdisk_editor_elf_value_enum" tools:ignore="MissingTranslation">%1$s (%2$d)</string>
+    <string name="ramdisk_editor_elf_value_unknown" tools:ignore="MissingTranslation">Unknown (0x%1$s)</string>
+    <string name="ramdisk_editor_elf_value_current" tools:ignore="MissingTranslation">%1$s (current)</string>
+    <string name="ramdisk_editor_elf_value_extended" tools:ignore="MissingTranslation">%1$d (extended numbering)</string>
     <string name="ramdisk_editor_text_save_failed" tools:ignore="MissingTranslation">Cannot save file: %s</string>
     <string name="ramdisk_editor_export_image" tools:ignore="MissingTranslation">Export rebuilt image</string>
     <string name="ramdisk_editor_rebuild_success" tools:ignore="MissingTranslation">Boot image rebuilt in app cache</string>

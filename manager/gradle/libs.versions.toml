@@ -27,7 +27,7 @@ ndk = "29.0.14206865"
 foundation = "1.11.4"
 bouncycastle = "1.85"
 ucrop = "2.2.11"
-yukifb = "0.1.0"
+yukifb = "0.1.1"
 appcompat = "1.7.1"
 exifinterface = "1.4.1"
 transition = "1.6.0"
@@ -75,6 +75,7 @@ gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 io-coil-kt-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil-compose" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 
 me-zhanghai-android-appiconloader-coil = { group = "me.zhanghai.android.appiconloader", name = "appiconloader-coil", version.ref = "appiconloader-coil" }
 
