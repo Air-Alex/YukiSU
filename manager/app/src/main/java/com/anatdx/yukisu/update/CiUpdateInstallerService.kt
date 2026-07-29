@@ -1,5 +1,6 @@
 package com.anatdx.yukisu.update
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageInstaller
@@ -27,6 +28,7 @@ class CiUpdateInstallerService : RootService() {
             ).apply {
                 setAppPackageName(packageName)
                 setSize(apkSize)
+                enableReplaceExisting()
             }
             return installer.createSession(params)
         }
@@ -73,14 +75,28 @@ class CiUpdateInstallerService : RootService() {
         }
 
         override fun abandonSession(sessionId: Int) {
-            installer.abandonSession(sessionId)
+            if (installer.getSessionInfo(sessionId) != null) {
+                installer.abandonSession(sessionId)
+            }
         }
     }
 
     override fun onBind(intent: Intent): IBinder = InstallerStub()
 
+    @SuppressLint("DiscouragedPrivateApi")
+    private fun PackageInstaller.SessionParams.enableReplaceExisting() {
+        val installFlags = javaClass.getDeclaredField("installFlags").apply {
+            isAccessible = true
+        }
+        installFlags.setInt(
+            this,
+            installFlags.getInt(this) or INSTALL_REPLACE_EXISTING,
+        )
+    }
+
     private companion object {
         const val APK_SPLIT_NAME = "base.apk"
+        const val INSTALL_REPLACE_EXISTING = 0x00000002
         const val MAX_APK_BYTES = 32L * 1024 * 1024
     }
 }
