@@ -6,6 +6,7 @@ import android.content.pm.PackageInstaller
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.anatdx.yukisu.ICiUpdateInstaller
+import com.anatdx.yukisu.R
 import com.topjohnwu.superuser.ipc.RootService
 
 class CiUpdateInstallerService : RootService() {
@@ -14,8 +15,12 @@ class CiUpdateInstallerService : RootService() {
 
     private inner class InstallerStub : ICiUpdateInstaller.Stub() {
         override fun createSession(apkSize: Long, packageName: String): Int {
-            require(apkSize in 1..MAX_APK_BYTES) { "Invalid CI update APK size" }
-            require(packageName.isNotBlank()) { "Invalid CI update package name" }
+            require(apkSize in 1..MAX_APK_BYTES) {
+                getString(R.string.ci_update_error_apk_invalid)
+            }
+            require(packageName.isNotBlank()) {
+                getString(R.string.ci_update_error_install_failed)
+            }
 
             val params = PackageInstaller.SessionParams(
                 PackageInstaller.SessionParams.MODE_FULL_INSTALL
@@ -31,7 +36,9 @@ class CiUpdateInstallerService : RootService() {
             apkStream: ParcelFileDescriptor,
             apkSize: Long,
         ) {
-            require(apkSize in 1..MAX_APK_BYTES) { "Invalid CI update APK size" }
+            require(apkSize in 1..MAX_APK_BYTES) {
+                getString(R.string.ci_update_error_apk_invalid)
+            }
             installer.openSession(sessionId).use { session ->
                 ParcelFileDescriptor.AutoCloseInputStream(apkStream).use { input ->
                     session.openWrite(APK_SPLIT_NAME, 0L, apkSize).use { output ->
@@ -41,11 +48,17 @@ class CiUpdateInstallerService : RootService() {
                             val count = input.read(buffer)
                             if (count < 0) break
                             total += count
-                            check(total <= apkSize) { "CI update APK exceeds its declared size" }
+                            check(total <= apkSize) {
+                                getString(R.string.ci_update_error_apk_invalid)
+                            }
                             output.write(buffer, 0, count)
                         }
                         check(total == apkSize) {
-                            "CI update APK is truncated: expected $apkSize bytes, received $total"
+                            getString(
+                                R.string.ci_update_error_apk_truncated,
+                                apkSize,
+                                total,
+                            )
                         }
                         session.fsync(output)
                     }

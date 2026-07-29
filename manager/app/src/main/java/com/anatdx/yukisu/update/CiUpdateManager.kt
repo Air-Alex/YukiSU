@@ -8,10 +8,12 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.net.toUri
 import com.anatdx.yukisu.BuildConfig
+import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ksuApp
 import com.anatdx.yukisu.ui.util.KsuCli
 import kotlinx.coroutines.CancellationException
@@ -153,7 +155,10 @@ object CiUpdateManager {
             try {
                 return@withContext withTimeout(METADATA_SOURCE_TIMEOUT_MS) { source() }
             } catch (timeout: TimeoutCancellationException) {
-                val error = IOException("$name CI metadata source timed out", timeout)
+                val error = IOException(
+                    message(R.string.ci_update_error_metadata_timeout, name),
+                    timeout,
+                )
                 Log.w(TAG, error.message, error)
                 failures += error
             } catch (cancelled: CancellationException) {
@@ -164,7 +169,7 @@ object CiUpdateManager {
             }
         }
 
-        throw IOException("All CI metadata sources failed").apply {
+        throw IOException(message(R.string.ci_update_error_metadata_sources_failed)).apply {
             failures.forEach(::addSuppressed)
         }
     }
@@ -249,7 +254,9 @@ object CiUpdateManager {
     }
 
     private fun metadataCacheDir(name: String): File = File(ksuApp.cacheDir, name).apply {
-        check(isDirectory || mkdirs()) { "Cannot create the CI metadata cache" }
+        check(isDirectory || mkdirs()) {
+            message(R.string.ci_update_error_metadata_cache)
+        }
     }
 
     private suspend fun downloadMetadataFile(
@@ -279,13 +286,25 @@ object CiUpdateManager {
                 response.use {
                     try {
                         check(response.isSuccessful) {
-                            "${request.url.host} returned HTTP ${response.code}"
+                            message(
+                                R.string.ci_update_error_http,
+                                request.url.host,
+                                response.code,
+                            )
                         }
                         val body = response.body
-                            ?: error("${request.url.host} returned an empty response")
+                            ?: error(
+                                message(
+                                    R.string.ci_update_error_empty_response,
+                                    request.url.host,
+                                )
+                            )
                         val contentLength = body.contentLength()
                         check(contentLength < 0 || contentLength <= maxBytes) {
-                            "${request.url.host} response is too large"
+                            message(
+                                R.string.ci_update_error_response_too_large,
+                                request.url.host,
+                            )
                         }
                         val output = ByteArrayOutputStream()
                         body.byteStream().use { input ->
@@ -321,7 +340,7 @@ object CiUpdateManager {
             .build()
         val response = requestMetadata(request, MAX_METADATA_BYTES)
         check(JSONArray(response.body.decodeToString()).length() > 0) {
-            "GitHub returned an empty commit history"
+            message(R.string.ci_update_error_metadata_invalid)
         }
         val commitCount = response.linkHeader
             ?.split(',')
@@ -342,11 +361,15 @@ object CiUpdateManager {
         if (runs.length() == 0) return null
 
         val run = runs.getJSONObject(0)
-        check(run.optString("head_branch") == "main") { "GitHub returned a non-main CI run" }
-        check(run.optString("event") in setOf("push", "workflow_dispatch")) {
-            "GitHub returned an unsupported CI event"
+        check(run.optString("head_branch") == "main") {
+            message(R.string.ci_update_error_metadata_invalid)
         }
-        check(run.optString("conclusion") == "success") { "GitHub returned an unsuccessful CI run" }
+        check(run.optString("event") in setOf("push", "workflow_dispatch")) {
+            message(R.string.ci_update_error_metadata_invalid)
+        }
+        check(run.optString("conclusion") == "success") {
+            message(R.string.ci_update_error_metadata_invalid)
+        }
         val commitSha = run.optString("head_sha")
         val commitMessage = run.optJSONObject("head_commit")
             ?.optString("message")
@@ -361,34 +384,42 @@ object CiUpdateManager {
 
     private fun parseSignedCiMetadata(body: String): CiRun {
         val metadata = JSONObject(body)
-        check(metadata.optInt("schema_version") == 1) { "Unsupported CI metadata schema" }
+        check(metadata.optInt("schema_version") == 1) {
+            message(R.string.ci_update_error_metadata_invalid)
+        }
         check(metadata.optString("repository") == "Anatdx/YukiSU") {
-            "CI metadata repository does not match"
+            message(R.string.ci_update_error_metadata_invalid)
         }
         check(metadata.optString("workflow") == "build-manager.yml") {
-            "CI metadata workflow does not match"
+            message(R.string.ci_update_error_metadata_invalid)
         }
-        check(metadata.optString("branch") == "main") { "CI metadata branch does not match" }
+        check(metadata.optString("branch") == "main") {
+            message(R.string.ci_update_error_metadata_invalid)
+        }
         val runId = metadata.optLong("run_id", -1L)
-        check(runId > 0L) { "CI metadata run ID is invalid" }
+        check(runId > 0L) { message(R.string.ci_update_error_metadata_invalid) }
         val versionCode = metadata.optInt("version_code", -1)
-        check(versionCode > 0) { "CI metadata version code is invalid" }
+        check(versionCode > 0) { message(R.string.ci_update_error_metadata_invalid) }
         val commitSha = metadata.optString("commit_sha")
-        check(commitSha.matches(Regex("[0-9a-fA-F]{40}"))) { "CI metadata commit SHA is invalid" }
+        check(commitSha.matches(Regex("[0-9a-fA-F]{40}"))) {
+            message(R.string.ci_update_error_metadata_invalid)
+        }
         val apkSha256 = metadata.optString("apk_sha256")
             .takeIf(String::isNotBlank)
             ?.also {
                 check(it.matches(Regex("[0-9a-fA-F]{64}"))) {
-                    "CI metadata APK digest is invalid"
+                    message(R.string.ci_update_error_metadata_invalid)
                 }
             }
         val apkSize = metadata.optLong("apk_size", -1L)
             .takeIf { it >= 0L }
             ?.also {
-                check(it in 1..MAX_APK_BYTES) { "CI metadata APK size is invalid" }
+                check(it in 1..MAX_APK_BYTES) {
+                    message(R.string.ci_update_error_metadata_invalid)
+                }
             }
         check((apkSha256 == null) == (apkSize == null)) {
-            "CI metadata APK identity is incomplete"
+            message(R.string.ci_update_error_metadata_invalid)
         }
         return CiRun(
             runId = runId,
@@ -432,19 +463,26 @@ object CiUpdateManager {
                     )
                 )
                 return@withContext PreparedCiUpdate(
-                    apk = checkNotNull(extracted[APK_NAME]),
-                    signature = checkNotNull(extracted[SIGNATURE_NAME]),
+                    apk = checkNotNull(extracted[APK_NAME]) {
+                        message(R.string.ci_update_error_artifact_invalid)
+                    },
+                    signature = checkNotNull(extracted[SIGNATURE_NAME]) {
+                        message(R.string.ci_update_error_artifact_invalid)
+                    },
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                val failure = IOException("$name CI artifact source failed", error)
+                val failure = IOException(
+                    message(R.string.ci_update_error_artifact_source_failed, name),
+                    error,
+                )
                 Log.w(TAG, failure.message, failure)
                 failures += failure
             }
         }
 
-        throw IOException("All CI artifact sources failed").apply {
+        throw IOException(message(R.string.ci_update_error_artifact_sources_failed)).apply {
             failures.forEach(::addSuppressed)
         }
     }
@@ -456,11 +494,14 @@ object CiUpdateManager {
     ): ByteArray {
         val request = Request.Builder().url(url).cacheControl(CacheControl.FORCE_NETWORK).build()
         return ksuApp.okhttpClient.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "$sourceName returned HTTP ${response.code}" }
-            val body = response.body ?: error("$sourceName returned an empty response")
+            check(response.isSuccessful) {
+                message(R.string.ci_update_error_http, sourceName, response.code)
+            }
+            val body = response.body
+                ?: error(message(R.string.ci_update_error_empty_response, sourceName))
             val contentLength = body.contentLength()
             check(contentLength < 0 || contentLength <= MAX_ARCHIVE_BYTES) {
-                "$sourceName CI artifact is too large"
+                message(R.string.ci_update_error_response_too_large, sourceName)
             }
             val archive = ByteArrayOutputStream(
                 contentLength.coerceIn(0L, MAX_ARCHIVE_BYTES).toInt()
@@ -479,18 +520,25 @@ object CiUpdateManager {
 
     fun verify(context: Context, run: CiRun, update: PreparedCiUpdate) {
         check(update.apk.size.toLong() in 1..MAX_APK_BYTES) {
-            "CI update APK has an invalid size"
+            context.getString(R.string.ci_update_error_apk_invalid)
         }
-        verifyDetachedSignature(context, update.apk, update.signature)
+        try {
+            verifyDetachedSignature(context, update.apk, update.signature)
+        } catch (error: Exception) {
+            throw IllegalStateException(
+                context.getString(R.string.ci_update_error_signature_invalid),
+                error,
+            )
+        }
         run.apkSize?.let { expectedSize ->
             check(update.apk.size.toLong() == expectedSize) {
-                "CI update APK size does not match the signed metadata"
+                context.getString(R.string.ci_update_error_apk_invalid)
             }
         }
         run.apkSha256?.let { expectedDigest ->
             val digest = MessageDigest.getInstance("SHA-256").digest(update.apk).toHex()
             check(digest.equals(expectedDigest, ignoreCase = true)) {
-                "CI update APK digest does not match the signed metadata"
+                context.getString(R.string.ci_update_error_apk_invalid)
             }
         }
     }
@@ -534,7 +582,9 @@ object CiUpdateManager {
         )
 
     fun startSystemInstaller(context: Context, apk: File) {
-        check(apk.isFile) { "CI update APK is no longer available" }
+        check(apk.isFile) {
+            context.getString(R.string.ci_update_error_apk_not_available)
+        }
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
@@ -595,7 +645,9 @@ object CiUpdateManager {
     private fun materializeSystemInstallerApk(context: Context, contents: ByteArray): File {
         cleanupCachedUpdate(context)
         val updateDir = File(context.cacheDir, UPDATE_CACHE_DIR).apply {
-            check(isDirectory || mkdirs()) { "Cannot create the CI update cache" }
+            check(isDirectory || mkdirs()) {
+                context.getString(R.string.ci_update_error_update_cache)
+            }
         }
         return File(updateDir, APK_NAME).also { apk ->
             apk.outputStream().buffered().use { output -> output.write(contents) }
@@ -606,7 +658,9 @@ object CiUpdateManager {
         context: Context,
         apk: File,
     ): CiInstallResult {
-        check(apk.isFile) { "CI update APK is no longer available" }
+        check(apk.isFile) {
+            context.getString(R.string.ci_update_error_apk_not_available)
+        }
         return if (canRequestPackageInstalls(context)) {
             startSystemInstaller(context, apk)
             CiInstallResult.SystemInstallerStarted
@@ -629,21 +683,31 @@ object CiUpdateManager {
                 }
                 val normalizedName = entry.name.removePrefix("./")
                 check(entry.name == normalizedName || entry.name == "./$normalizedName") {
-                    "Unsafe path in CI artifact"
+                    message(R.string.ci_update_error_artifact_invalid)
                 }
                 val target = expected[normalizedName]
-                    ?: error("Unexpected file in CI artifact: ${entry.name}")
-                check('/' !in normalizedName && '\\' !in normalizedName) { "Unsafe path in CI artifact" }
-                check(extracted.add(normalizedName)) { "Duplicate file in CI artifact: $normalizedName" }
-                check(entry.size < 0 || entry.size <= target.second) { "$normalizedName is too large" }
+                    ?: error(message(R.string.ci_update_error_artifact_invalid))
+                check('/' !in normalizedName && '\\' !in normalizedName) {
+                    message(R.string.ci_update_error_artifact_invalid)
+                }
+                check(extracted.add(normalizedName)) {
+                    message(R.string.ci_update_error_artifact_invalid)
+                }
+                check(entry.size < 0 || entry.size <= target.second) {
+                    message(R.string.ci_update_error_artifact_invalid)
+                }
                 target.first.outputStream().buffered().use { output ->
                     copyWithLimit(zip, output, target.second)
                 }
-                check(target.first.length() > 0) { "$normalizedName is empty" }
+                check(target.first.length() > 0) {
+                    message(R.string.ci_update_error_artifact_invalid)
+                }
                 zip.closeEntry()
             }
         }
-        check(extracted == expected.keys) { "CI artifact does not contain the expected APK/signature pair" }
+        check(extracted == expected.keys) {
+            message(R.string.ci_update_error_artifact_invalid)
+        }
     }
 
     private fun extractExpectedBytes(
@@ -660,29 +724,33 @@ object CiUpdateManager {
                 }
                 val normalizedName = entry.name.removePrefix("./")
                 check(entry.name == normalizedName || entry.name == "./$normalizedName") {
-                    "Unsafe path in CI artifact"
+                    message(R.string.ci_update_error_artifact_invalid)
                 }
                 val limit = expected[normalizedName]
-                    ?: error("Unexpected file in CI artifact: ${entry.name}")
+                    ?: error(message(R.string.ci_update_error_artifact_invalid))
                 check('/' !in normalizedName && '\\' !in normalizedName) {
-                    "Unsafe path in CI artifact"
+                    message(R.string.ci_update_error_artifact_invalid)
                 }
                 check(normalizedName !in extracted) {
-                    "Duplicate file in CI artifact: $normalizedName"
+                    message(R.string.ci_update_error_artifact_invalid)
                 }
-                check(entry.size < 0 || entry.size <= limit) { "$normalizedName is too large" }
+                check(entry.size < 0 || entry.size <= limit) {
+                    message(R.string.ci_update_error_artifact_invalid)
+                }
                 val output = ByteArrayOutputStream(
                     entry.size.coerceIn(0L, limit).toInt()
                 )
                 copyWithLimit(zip, output, limit)
                 val contents = output.toByteArray()
-                check(contents.isNotEmpty()) { "$normalizedName is empty" }
+                check(contents.isNotEmpty()) {
+                    message(R.string.ci_update_error_artifact_invalid)
+                }
                 extracted[normalizedName] = contents
                 zip.closeEntry()
             }
         }
         check(extracted.keys == expected.keys) {
-            "CI artifact does not contain the expected APK/signature pair"
+            message(R.string.ci_update_error_artifact_invalid)
         }
         return extracted
     }
@@ -720,23 +788,27 @@ object CiUpdateManager {
         }
         val signature = readDetachedSignature(signatureInput)
         val signingKey = keyRings.getPublicKey(signature.keyID)
-            ?: error("PGP signature was made by an unknown key")
+            ?: error(context.getString(R.string.ci_update_error_signature_invalid))
 
         val owningRing = keyRings.keyRings.asSequence().firstOrNull { ring ->
             ring.getPublicKey(signingKey.keyID) != null
-        } ?: error("PGP signing key is not in the embedded keyring")
+        } ?: error(context.getString(R.string.ci_update_error_signature_invalid))
         check(fingerprint(owningRing.publicKey) == PRIMARY_KEY_FINGERPRINT) {
-            "PGP signing key does not belong to the pinned primary key"
+            context.getString(R.string.ci_update_error_signature_invalid)
         }
-        check(!signingKey.isMasterKey) { "The CI artifact must be signed by an allowed subkey" }
+        check(!signingKey.isMasterKey) {
+            context.getString(R.string.ci_update_error_signature_invalid)
+        }
         check(fingerprint(signingKey) in ALLOWED_SIGNING_SUBKEY_FINGERPRINTS) {
-            "PGP signing subkey is not allowed"
+            context.getString(R.string.ci_update_error_signature_invalid)
         }
-        check(!signingKey.hasRevocation()) { "PGP signing subkey is revoked" }
+        check(!signingKey.hasRevocation()) {
+            context.getString(R.string.ci_update_error_signature_invalid)
+        }
         check(signature.signatureType == PGPSignature.BINARY_DOCUMENT) {
-            "PGP signature has an unexpected type"
+            context.getString(R.string.ci_update_error_signature_invalid)
         }
-        checkSignatureTime(signingKey, signature.creationTime)
+        checkSignatureTime(context, signingKey, signature.creationTime)
 
         signature.init(
             Ed25519PgpContentVerifierProvider,
@@ -748,13 +820,15 @@ object CiUpdateManager {
             if (count < 0) break
             signature.update(buffer, 0, count)
         }
-        check(signature.verify()) { "PGP signature verification failed" }
+        check(signature.verify()) {
+            context.getString(R.string.ci_update_error_signature_invalid)
+        }
     }
 
     private fun readDetachedSignature(input: InputStream): PGPSignature {
         PGPUtil.getDecoderStream(input).use { decoded ->
             return findSignature(PGPObjectFactory(decoded, BcKeyFingerprintCalculator()))
-                ?: error("Detached PGP signature is missing")
+                ?: error(message(R.string.ci_update_error_signature_invalid))
         }
     }
 
@@ -762,7 +836,9 @@ object CiUpdateManager {
         while (true) {
             when (val item = factory.nextObject() ?: return null) {
                 is PGPSignatureList -> {
-                    check(item.size() == 1) { "Expected exactly one detached PGP signature" }
+                    check(item.size() == 1) {
+                        message(R.string.ci_update_error_signature_invalid)
+                    }
                     return item[0]
                 }
                 is PGPCompressedData -> {
@@ -773,15 +849,23 @@ object CiUpdateManager {
         }
     }
 
-    private fun checkSignatureTime(key: PGPPublicKey, signatureTime: Date) {
-        check(!signatureTime.before(key.creationTime)) { "PGP signature predates its signing key" }
+    private fun checkSignatureTime(
+        context: Context,
+        key: PGPPublicKey,
+        signatureTime: Date,
+    ) {
+        check(!signatureTime.before(key.creationTime)) {
+            context.getString(R.string.ci_update_error_signature_invalid)
+        }
         val validSeconds = key.validSeconds
         if (validSeconds > 0) {
             val expiresAt = key.creationTime.time + validSeconds * 1000L
-            check(signatureTime.time <= expiresAt) { "PGP signature was made after the key expired" }
+            check(signatureTime.time <= expiresAt) {
+                context.getString(R.string.ci_update_error_signature_invalid)
+            }
         }
         check(signatureTime.time <= System.currentTimeMillis() + 10L * 60 * 1000) {
-            "PGP signature time is in the future"
+            context.getString(R.string.ci_update_error_signature_invalid)
         }
     }
 
@@ -789,34 +873,38 @@ object CiUpdateManager {
     private fun verifyApk(context: Context, requestedRun: CiRun, apk: File) {
         val packageManager = context.packageManager
         val archiveInfo = getPackageInfo(packageManager, apk.absolutePath)
-            ?: error("Android rejected the APK signature or manifest")
-        check(archiveInfo.packageName == context.packageName) { "APK package name does not match" }
+            ?: error(context.getString(R.string.ci_update_error_apk_invalid))
+        check(archiveInfo.packageName == context.packageName) {
+            context.getString(R.string.ci_update_error_apk_invalid)
+        }
 
         val currentInfo = getPackageInfo(packageManager, context.packageName)
-            ?: error("Cannot read the installed package")
+            ?: error(context.getString(R.string.ci_update_error_apk_invalid))
         val newVersion = PackageInfoCompat.getLongVersionCode(archiveInfo)
         val currentVersion = PackageInfoCompat.getLongVersionCode(currentInfo)
         check(newVersion > currentVersion) {
-            "APK version $newVersion is not newer than installed version $currentVersion"
+            context.getString(R.string.ci_update_error_apk_invalid)
         }
         check(newVersion >= requestedRun.versionCode) {
-            "APK version $newVersion is older than requested version ${requestedRun.versionCode}"
+            context.getString(R.string.ci_update_error_apk_invalid)
         }
 
         val apkRunId = archiveInfo.applicationInfo?.metaData
             ?.getString(CI_RUN_ID_META_DATA)
             ?.removePrefix("run-")
             ?.toLongOrNull()
-            ?: error("APK does not contain a valid CI run ID")
+            ?: error(context.getString(R.string.ci_update_error_apk_invalid))
         check(apkRunId >= requestedRun.runId && apkRunId > BuildConfig.CI_RUN_ID) {
-            "APK CI run ID $apkRunId is not the requested update"
+            context.getString(R.string.ci_update_error_apk_invalid)
         }
 
         val archiveSigners = currentSigners(archiveInfo)
         val installedSigners = currentSigners(currentInfo)
-        check(archiveSigners.isNotEmpty()) { "APK does not have an Android signing certificate" }
+        check(archiveSigners.isNotEmpty()) {
+            context.getString(R.string.ci_update_error_apk_invalid)
+        }
         check(archiveSigners == installedSigners) {
-            "APK Android signing certificate does not match the installed app"
+            context.getString(R.string.ci_update_error_apk_invalid)
         }
     }
 
@@ -857,7 +945,9 @@ object CiUpdateManager {
             val count = input.read(buffer)
             if (count < 0) break
             total += count
-            check(total <= limit) { "Downloaded file exceeds its size limit" }
+            check(total <= limit) {
+                message(R.string.ci_update_error_response_too_large, "CI")
+            }
             output.write(buffer, 0, count)
         }
     }
@@ -875,7 +965,9 @@ object CiUpdateManager {
             val count = input.read(buffer)
             if (count < 0) break
             total += count
-            check(total <= MAX_ARCHIVE_BYTES) { "Downloaded file exceeds its size limit" }
+            check(total <= MAX_ARCHIVE_BYTES) {
+                message(R.string.ci_update_error_response_too_large, "CI")
+            }
             output.write(buffer, 0, count)
             if (contentLength > 0) {
                 val progress = ((total * 100L) / contentLength).toInt().coerceIn(0, 100)
@@ -890,5 +982,8 @@ object CiUpdateManager {
     private fun fingerprint(key: PGPPublicKey): String = key.fingerprint.toHex()
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02X".format(it) }
+
+    private fun message(@StringRes id: Int, vararg args: Any): String =
+        ksuApp.getString(id, *args)
 
 }

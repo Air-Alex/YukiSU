@@ -191,6 +191,25 @@
     <string name="ci_update_failed" tools:ignore="MissingTranslation">CI update failed: %1$s</string>
     <string name="ci_update_root_installed" tools:ignore="MissingTranslation">CI update installed. Reopen the app to use it.</string>
     <string name="ci_update_install_permission_denied" tools:ignore="MissingTranslation">Permission to install unknown apps was not granted.</string>
+    <string name="ci_update_error_metadata_timeout" tools:ignore="MissingTranslation">%1$s CI metadata request timed out.</string>
+    <string name="ci_update_error_metadata_sources_failed" tools:ignore="MissingTranslation">All CI metadata sources failed.</string>
+    <string name="ci_update_error_metadata_cache" tools:ignore="MissingTranslation">Unable to create the CI metadata cache.</string>
+    <string name="ci_update_error_http" tools:ignore="MissingTranslation">%1$s returned HTTP %2$d.</string>
+    <string name="ci_update_error_empty_response" tools:ignore="MissingTranslation">%1$s returned an empty response.</string>
+    <string name="ci_update_error_response_too_large" tools:ignore="MissingTranslation">%1$s response is too large.</string>
+    <string name="ci_update_error_metadata_invalid" tools:ignore="MissingTranslation">The CI update metadata is invalid.</string>
+    <string name="ci_update_error_artifact_source_failed" tools:ignore="MissingTranslation">%1$s CI update download failed.</string>
+    <string name="ci_update_error_artifact_sources_failed" tools:ignore="MissingTranslation">All CI update download sources failed.</string>
+    <string name="ci_update_error_artifact_invalid" tools:ignore="MissingTranslation">The downloaded CI update archive is invalid.</string>
+    <string name="ci_update_error_signature_invalid" tools:ignore="MissingTranslation">The CI update signature is invalid.</string>
+    <string name="ci_update_error_apk_invalid" tools:ignore="MissingTranslation">The CI update APK is invalid.</string>
+    <string name="ci_update_error_apk_truncated" tools:ignore="MissingTranslation">The CI update APK is incomplete. Expected byte count: %1$d; received: %2$d.</string>
+    <string name="ci_update_error_apk_not_available" tools:ignore="MissingTranslation">The CI update APK is no longer available.</string>
+    <string name="ci_update_error_update_cache" tools:ignore="MissingTranslation">Unable to create the CI update cache.</string>
+    <string name="ci_update_error_installer_unavailable" tools:ignore="MissingTranslation">The root installer service is unavailable.</string>
+    <string name="ci_update_error_install_failed" tools:ignore="MissingTranslation">The CI update could not be installed.</string>
+    <string name="ci_update_error_install_status" tools:ignore="MissingTranslation">PackageInstaller failed with status %1$d.</string>
+    <string name="ci_update_error_stream_failed" tools:ignore="MissingTranslation">The CI update stream failed.</string>
     <string name="settings_auto_jailbreak">Auto jailbreak</string>
     <string name="settings_auto_jailbreak_summary">Automatically use Magica to bootstrap late-load when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
     <string name="settings_adb_root">ADB Root</string>

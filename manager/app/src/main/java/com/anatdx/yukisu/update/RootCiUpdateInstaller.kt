@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.core.content.ContextCompat
 import com.anatdx.yukisu.ICiUpdateInstaller
+import com.anatdx.yukisu.R
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
 import kotlinx.coroutines.CompletableDeferred
@@ -57,7 +58,12 @@ internal class RootCiUpdateInstaller private constructor(
             output.close()
             remoteWrite.await()
         } catch (error: Exception) {
-            runCatching { writeSide.closeWithError(error.message ?: "CI update stream failed") }
+            runCatching {
+                writeSide.closeWithError(
+                    error.message
+                        ?: context.getString(R.string.ci_update_error_stream_failed)
+                )
+            }
             runCatching { output.close() }
             runCatching { remoteWrite.await() }
             throw error
@@ -97,7 +103,7 @@ internal class RootCiUpdateInstaller private constructor(
             )
             check(status == PackageInstaller.STATUS_SUCCESS) {
                 statusIntent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-                    ?: "PackageInstaller failed with status $status"
+                    ?: context.getString(R.string.ci_update_error_install_status, status)
             }
         } finally {
             pendingIntent.cancel()
@@ -127,7 +133,11 @@ internal class RootCiUpdateInstaller private constructor(
                             if (!completed.compareAndSet(false, true)) return
                             if (binder == null) {
                                 continuation.resumeWithException(
-                                    IllegalStateException("Root CI installer returned no binder")
+                                    IllegalStateException(
+                                        appContext.getString(
+                                            R.string.ci_update_error_installer_unavailable
+                                        )
+                                    )
                                 )
                                 return
                             }
@@ -143,7 +153,11 @@ internal class RootCiUpdateInstaller private constructor(
                         override fun onServiceDisconnected(name: ComponentName?) {
                             if (completed.compareAndSet(false, true)) {
                                 continuation.resumeWithException(
-                                    IllegalStateException("Root CI installer disconnected")
+                                    IllegalStateException(
+                                        appContext.getString(
+                                            R.string.ci_update_error_installer_unavailable
+                                        )
+                                    )
                                 )
                             }
                         }

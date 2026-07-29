@@ -1,5 +1,7 @@
 package com.anatdx.yukisu.update
 
+import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ksuApp
 import org.bouncycastle.bcpg.EdDSAPublicBCPGKey
 import org.bouncycastle.bcpg.HashAlgorithmTags
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags
@@ -19,27 +21,29 @@ internal object Ed25519PgpContentVerifierProvider : PGPContentVerifierBuilderPro
 
     override fun get(keyAlgorithm: Int, hashAlgorithm: Int): PGPContentVerifierBuilder {
         if (keyAlgorithm != PublicKeyAlgorithmTags.EDDSA_LEGACY) {
-            throw PGPException("Unsupported CI signing key algorithm: $keyAlgorithm")
+            throw PGPException(ksuApp.getString(R.string.ci_update_error_signature_invalid))
         }
         if (hashAlgorithm != HashAlgorithmTags.SHA512) {
-            throw PGPException("Unsupported CI signature hash algorithm: $hashAlgorithm")
+            throw PGPException(ksuApp.getString(R.string.ci_update_error_signature_invalid))
         }
         return PGPContentVerifierBuilder { publicKey -> buildVerifier(publicKey) }
     }
 
     private fun buildVerifier(publicKey: PGPPublicKey): PGPContentVerifier {
         if (publicKey.algorithm != PublicKeyAlgorithmTags.EDDSA_LEGACY) {
-            throw PGPException("CI signing key is not an Ed25519 OpenPGP key")
+            throw PGPException(ksuApp.getString(R.string.ci_update_error_signature_invalid))
         }
         val key = publicKey.publicKeyPacket.key as? EdDSAPublicBCPGKey
-            ?: throw PGPException("CI signing key has an unexpected packet format")
+            ?: throw PGPException(
+                ksuApp.getString(R.string.ci_update_error_signature_invalid)
+            )
         if (key.curveOID.id != LEGACY_ED25519_CURVE_OID) {
-            throw PGPException("CI signing key is not on the Ed25519 curve")
+            throw PGPException(ksuApp.getString(R.string.ci_update_error_signature_invalid))
         }
 
         val encodedPoint = key.encodedPoint.toByteArray()
         if (encodedPoint.size != 33 || encodedPoint[0] != 0x40.toByte()) {
-            throw PGPException("CI signing key has an invalid Ed25519 public point")
+            throw PGPException(ksuApp.getString(R.string.ci_update_error_signature_invalid))
         }
         return Ed25519PgpContentVerifier(
             publicKey.keyID,
