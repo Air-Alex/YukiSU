@@ -188,6 +188,7 @@
     <string name="ci_update_retry">重试</string>
     <string name="ci_update_failed">CI 更新失败：%1$s</string>
     <string name="ci_update_root_installed">CI 更新已安装，请重新打开应用</string>
+    <string name="ci_update_install_permission_denied">未授予安装未知应用的权限。</string>
     <string name="settings_auto_jailbreak">自动越狱</string>
     <string name="settings_auto_jailbreak_summary">开机检测到 Permissive SELinux 时自动使用 Magica 引导 late-load。需要授予本应用自启动权限。</string>
     <string name="settings_adb_root">ADB Root</string>

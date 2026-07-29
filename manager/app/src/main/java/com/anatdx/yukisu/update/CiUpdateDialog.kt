@@ -3,6 +3,8 @@ package com.anatdx.yukisu.update
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -38,6 +41,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private enum class CiUpdateStage {
     READY,
@@ -58,6 +62,7 @@ private sealed interface CiUpdateCheckState {
 @Composable
 fun CiUpdateCard() {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var checkRequest by remember { mutableIntStateOf(0) }
@@ -66,6 +71,26 @@ fun CiUpdateCard() {
     var stage by remember { mutableStateOf(CiUpdateStage.READY) }
     var progress by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf("") }
+    var pendingSystemInstallerApk by remember { mutableStateOf<File?>(null) }
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val apk = pendingSystemInstallerApk ?: return@rememberLauncherForActivityResult
+        pendingSystemInstallerApk = null
+        if (!CiUpdateManager.canRequestPackageInstalls(context)) {
+            error = resources.getString(R.string.ci_update_install_permission_denied)
+            stage = CiUpdateStage.FAILED
+            return@rememberLauncherForActivityResult
+        }
+        try {
+            CiUpdateManager.startSystemInstaller(context, apk)
+            checkState = CiUpdateCheckState.Current
+            showDialog = false
+        } catch (throwable: Exception) {
+            error = throwable.message ?: throwable.javaClass.simpleName
+            stage = CiUpdateStage.FAILED
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         var started = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
@@ -74,7 +99,12 @@ fun CiUpdateCard() {
                 Lifecycle.Event.ON_START -> {
                     if (!started) {
                         started = true
-                        if (checkState != CiUpdateCheckState.Checking) checkRequest++
+                        if (
+                            pendingSystemInstallerApk == null &&
+                            checkState != CiUpdateCheckState.Checking
+                        ) {
+                            checkRequest++
+                        }
                     }
                 }
                 Lifecycle.Event.ON_STOP -> started = false
@@ -167,6 +197,13 @@ fun CiUpdateCard() {
                         Toast.LENGTH_LONG,
                     ).show()
                     CiInstallResult.SystemInstallerStarted -> Unit
+                    CiInstallResult.SystemInstallerPermissionRequired -> {
+                        pendingSystemInstallerApk = prepared.apk
+                        installPermissionLauncher.launch(
+                            CiUpdateManager.unknownSourcesPermissionIntent(context)
+                        )
+                        return@launch
+                    }
                 }
                 checkState = CiUpdateCheckState.Current
                 showDialog = false

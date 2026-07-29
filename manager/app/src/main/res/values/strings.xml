@@ -190,6 +190,7 @@
     <string name="ci_update_retry" tools:ignore="MissingTranslation">Retry</string>
     <string name="ci_update_failed" tools:ignore="MissingTranslation">CI update failed: %1$s</string>
     <string name="ci_update_root_installed" tools:ignore="MissingTranslation">CI update installed. Reopen the app to use it.</string>
+    <string name="ci_update_install_permission_denied" tools:ignore="MissingTranslation">Permission to install unknown apps was not granted.</string>
     <string name="settings_auto_jailbreak">Auto jailbreak</string>
     <string name="settings_auto_jailbreak_summary">Automatically use Magica to bootstrap late-load when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
     <string name="settings_adb_root">ADB Root</string>

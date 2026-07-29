@@ -6,12 +6,15 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.net.toUri
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.ksuApp
 import com.anatdx.yukisu.ui.util.KsuCli
+import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -67,6 +70,7 @@ data class PreparedCiUpdate(
 sealed interface CiInstallResult {
     data object RootInstalled : CiInstallResult
     data object SystemInstallerStarted : CiInstallResult
+    data object SystemInstallerPermissionRequired : CiInstallResult
 }
 
 object CiUpdateManager {
@@ -87,6 +91,7 @@ object CiUpdateManager {
     private const val SIGNATURE_NAME = "app-release.sig"
     private const val UPDATE_CACHE_DIR = "ci-update"
     private const val LEGACY_UPDATE_GLOB = "/data/local/tmp/yukisu-ci-update-*.apk"
+    private const val INSTALL_SPLIT_NAME = "base.apk"
     private const val METADATA_NAME = "ci-update.json"
     private const val METADATA_SIGNATURE_NAME = "ci-update.sig"
     private const val CI_RUN_ID_META_DATA = "com.anatdx.yukisu.CI_RUN_ID"
@@ -104,6 +109,7 @@ object CiUpdateManager {
     private const val METADATA_SOURCE_TIMEOUT_MS = 5_000L
     private const val METADATA_CHECK_DEDUPLICATION_MS = 5_000L
     private const val CI_MANAGER_VERSION_CODE_BASE = 10_000 - 3_135
+    private val INSTALL_SESSION_ID_PATTERN = Regex("""\[(\d+)]""")
 
     private val metadataCheckMutex = Mutex()
     private var lastMetadataCheckAt = 0L
@@ -472,41 +478,45 @@ object CiUpdateManager {
 
     suspend fun install(context: Context, apk: File): CiInstallResult = withContext(Dispatchers.IO) {
         if (KsuCli.SHELL.isRoot) {
-            val apkSize = apk.length()
-            check(apkSize in 1..MAX_APK_BYTES) { "CI update APK has an invalid size" }
-            val source = shellQuote(apk.absolutePath)
-            val signature = shellQuote(File(apk.parentFile, SIGNATURE_NAME).absolutePath)
-            // Feed PackageInstaller through stdin so it never needs access to the
-            // app-private path. The producer removes the source before pm can
-            // commit and terminate this app during package replacement.
-            val streamAndRemove =
-                "(cat $source; result=\$?; rm -f $source $signature; exit \$result)"
             try {
-                val result = KsuCli.SHELL.newJob()
-                    .add("$streamAndRemove | pm install -r -S $apkSize -")
-                    .exec()
-                check(result.isSuccess) {
-                    (result.err + result.out).joinToString("\n")
-                        .ifBlank { "Root package install failed" }
-                }
-                CiInstallResult.RootInstalled
-            } finally {
+                installWithRootSession(apk)
                 cleanupCachedUpdate(context)
+                CiInstallResult.RootInstalled
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Root CI update install failed; falling back to system installer", error)
+                withContext(Dispatchers.Main) {
+                    startSystemInstallerOrRequestPermission(context, apk)
+                }
             }
         } else {
             withContext(Dispatchers.Main) {
-                val uri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    apk,
-                )
-                val intent = Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, "application/vnd.android.package-archive")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
+                startSystemInstallerOrRequestPermission(context, apk)
             }
-            CiInstallResult.SystemInstallerStarted
         }
+    }
+
+    fun canRequestPackageInstalls(context: Context): Boolean =
+        context.packageManager.canRequestPackageInstalls()
+
+    fun unknownSourcesPermissionIntent(context: Context): Intent =
+        Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            "package:${context.packageName}".toUri(),
+        )
+
+    fun startSystemInstaller(context: Context, apk: File) {
+        check(apk.isFile) { "CI update APK is no longer available" }
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            apk,
+        )
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
     }
 
     /**
@@ -530,6 +540,84 @@ object CiUpdateManager {
         if (!result.isSuccess) {
             Log.w(TAG, "Failed to remove legacy CI update APKs")
         }
+    }
+
+    private fun installWithRootSession(apk: File) {
+        val apkSize = apk.length()
+        check(apkSize in 1..MAX_APK_BYTES) { "CI update APK has an invalid size" }
+        val source = shellQuote(apk.absolutePath)
+        var sessionId: Int? = null
+        var committed = false
+        try {
+            val createResult = KsuCli.SHELL.newJob()
+                .add("pm install-create -r -S $apkSize")
+                .exec()
+            check(createResult.isSuccess) {
+                shellFailure(createResult, "Failed to create PackageInstaller session")
+            }
+            sessionId = parseInstallSessionId(createResult)
+
+            // The root shell opens the app-private file for stdin; PackageInstaller
+            // only sees that descriptor and copies the APK into its own session.
+            val writeResult = KsuCli.SHELL.newJob()
+                .add(
+                    "pm install-write -S $apkSize $sessionId " +
+                        "$INSTALL_SPLIT_NAME - < $source"
+                )
+                .exec()
+            check(writeResult.isSuccess) {
+                shellFailure(writeResult, "Failed to stream APK into PackageInstaller")
+            }
+
+            // Keep the private source until commit has succeeded so the system
+            // installer can reuse it if the privileged install is rejected.
+            val commitResult = KsuCli.SHELL.newJob()
+                .add("pm install-commit $sessionId")
+                .exec()
+            check(commitResult.isSuccess) {
+                shellFailure(commitResult, "Failed to commit PackageInstaller session")
+            }
+            committed = true
+        } finally {
+            if (!committed) {
+                sessionId?.let(::abandonInstallSession)
+            }
+        }
+    }
+
+    private fun startSystemInstallerOrRequestPermission(
+        context: Context,
+        apk: File,
+    ): CiInstallResult {
+        check(apk.isFile) { "CI update APK is no longer available" }
+        return if (canRequestPackageInstalls(context)) {
+            startSystemInstaller(context, apk)
+            CiInstallResult.SystemInstallerStarted
+        } else {
+            CiInstallResult.SystemInstallerPermissionRequired
+        }
+    }
+
+    private fun parseInstallSessionId(result: Shell.Result): Int {
+        val output = (result.out + result.err).joinToString("\n")
+        return INSTALL_SESSION_ID_PATTERN.findAll(output)
+            .lastOrNull()
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
+            ?: error("PackageInstaller did not return a session ID: $output")
+    }
+
+    private fun abandonInstallSession(sessionId: Int) {
+        val result = KsuCli.SHELL.newJob().add("pm install-abandon $sessionId").exec()
+        if (!result.isSuccess) {
+            Log.w(TAG, shellFailure(result, "Failed to abandon PackageInstaller session $sessionId"))
+        }
+    }
+
+    private fun shellFailure(result: Shell.Result, operation: String): String {
+        val details = (result.err + result.out).joinToString("\n")
+        return if (details.isBlank()) operation else "$operation: $details"
     }
 
     private fun extractExpectedFiles(
