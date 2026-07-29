@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -426,19 +427,23 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
-                        val utsViewStatus by produceState(initialValue = "") {
-                            value = if (isUtsViewSupported()) "supported" else "unsupported"
+                        val utsViewSupported by produceState<Boolean?>(initialValue = null) {
+                            value = isUtsViewSupported()
                         }
                         SettingItem(
                             icon = Icons.Filled.Language,
                             title = stringResource(R.string.settings_uts_view),
-                            summary = when (utsViewStatus) {
-                                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
-                                else -> stringResource(R.string.settings_uts_view_summary)
+                            summary = if (utsViewSupported == false) {
+                                stringResource(R.string.feature_status_unsupported_summary)
+                            } else {
+                                stringResource(R.string.settings_uts_view_summary)
                             },
+                            enabled = utsViewSupported == true,
                             groupPosition = SettingsItemPosition.Last,
                             onClick = {
-                                navigator.navigate(UtsViewScreenDestination)
+                                if (utsViewSupported == true) {
+                                    navigator.navigate(UtsViewScreenDestination)
+                                }
                             }
                         )
                     }
@@ -818,6 +823,7 @@ fun SettingItem(
     title: String,
     summary: String? = null,
     groupPosition: SettingsItemPosition = SettingsItemPosition.Middle,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val expressiveShape = if (groupPosition == SettingsItemPosition.Only) {
@@ -828,6 +834,7 @@ fun SettingItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.5f)
             .then(
                 if (isExpressiveUi) {
                     Modifier
@@ -840,9 +847,9 @@ fun SettingItem(
                         .background(
                             MaterialTheme.colorScheme.surfaceContainer.copy(alpha = cardAlpha)
                         )
-                        .clickable(onClick = onClick)
+                        .clickable(enabled = enabled, onClick = onClick)
                 } else {
-                    Modifier.clickable(onClick = onClick)
+                    Modifier.clickable(enabled = enabled, onClick = onClick)
                 }
             )
             .padding(horizontal = SPACING_LARGE, vertical = 12.dp),
