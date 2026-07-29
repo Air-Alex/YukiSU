@@ -14,7 +14,6 @@ import androidx.core.net.toUri
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.ksuApp
 import com.anatdx.yukisu.ui.util.KsuCli
-import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -43,6 +42,7 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -60,17 +60,19 @@ data class CiRun(
     val versionCode: Int,
     val commitSha: String,
     val commitMessage: String,
+    val apkSha256: String? = null,
+    val apkSize: Long? = null,
 )
 
 data class PreparedCiUpdate(
-    val apk: File,
-    val signature: File,
+    val apk: ByteArray,
+    val signature: ByteArray,
 )
 
 sealed interface CiInstallResult {
     data object RootInstalled : CiInstallResult
     data object SystemInstallerStarted : CiInstallResult
-    data object SystemInstallerPermissionRequired : CiInstallResult
+    data class SystemInstallerPermissionRequired(val apk: File) : CiInstallResult
 }
 
 object CiUpdateManager {
@@ -91,7 +93,6 @@ object CiUpdateManager {
     private const val SIGNATURE_NAME = "app-release.sig"
     private const val UPDATE_CACHE_DIR = "ci-update"
     private const val LEGACY_UPDATE_GLOB = "/data/local/tmp/yukisu-ci-update-*.apk"
-    private const val INSTALL_SPLIT_NAME = "base.apk"
     private const val METADATA_NAME = "ci-update.json"
     private const val METADATA_SIGNATURE_NAME = "ci-update.sig"
     private const val CI_RUN_ID_META_DATA = "com.anatdx.yukisu.CI_RUN_ID"
@@ -101,16 +102,14 @@ object CiUpdateManager {
         "C09CE484EEA3F2D88E9CDCC8EBDB0D663D7AB2F6",
     )
 
-    private const val MAX_ARCHIVE_BYTES = 300L * 1024 * 1024
-    private const val MAX_APK_BYTES = 250L * 1024 * 1024
+    private const val MAX_ARCHIVE_BYTES = 32L * 1024 * 1024
+    private const val MAX_APK_BYTES = 32L * 1024 * 1024
     private const val MAX_SIGNATURE_BYTES = 256L * 1024
     private const val MAX_METADATA_ARCHIVE_BYTES = 1024L * 1024
     private const val MAX_METADATA_BYTES = 256L * 1024
     private const val METADATA_SOURCE_TIMEOUT_MS = 5_000L
     private const val METADATA_CHECK_DEDUPLICATION_MS = 5_000L
     private const val CI_MANAGER_VERSION_CODE_BASE = 10_000 - 3_135
-    private val INSTALL_SESSION_ID_PATTERN = Regex("""\[(\d+)]""")
-
     private val metadataCheckMutex = Mutex()
     private var lastMetadataCheckAt = 0L
     private var lastMetadataCheck: Result<CiRun?>? = null
@@ -376,11 +375,28 @@ object CiUpdateManager {
         check(versionCode > 0) { "CI metadata version code is invalid" }
         val commitSha = metadata.optString("commit_sha")
         check(commitSha.matches(Regex("[0-9a-fA-F]{40}"))) { "CI metadata commit SHA is invalid" }
+        val apkSha256 = metadata.optString("apk_sha256")
+            .takeIf(String::isNotBlank)
+            ?.also {
+                check(it.matches(Regex("[0-9a-fA-F]{64}"))) {
+                    "CI metadata APK digest is invalid"
+                }
+            }
+        val apkSize = metadata.optLong("apk_size", -1L)
+            .takeIf { it >= 0L }
+            ?.also {
+                check(it in 1..MAX_APK_BYTES) { "CI metadata APK size is invalid" }
+            }
+        check((apkSha256 == null) == (apkSize == null)) {
+            "CI metadata APK identity is incomplete"
+        }
         return CiRun(
             runId = runId,
             versionCode = versionCode,
             commitSha = commitSha,
             commitMessage = metadata.optString("commit_message"),
+            apkSha256 = apkSha256,
+            apkSize = apkSize,
         )
     }
 
@@ -396,15 +412,8 @@ object CiUpdateManager {
     )
 
     suspend fun downloadAndExtract(
-        context: Context,
         onProgress: (Int) -> Unit,
     ): PreparedCiUpdate = withContext(Dispatchers.IO) {
-        val updateDir = File(context.cacheDir, UPDATE_CACHE_DIR).apply {
-            check(isDirectory || mkdirs()) { "Cannot create the CI update cache" }
-        }
-        val archive = File(updateDir, "Manager-arm64-v8a.zip")
-        val apk = File(updateDir, APK_NAME)
-        val signature = File(updateDir, SIGNATURE_NAME)
         val sources = listOf(
             "Cloudflare Pages" to PAGES_ARCHIVE_URL,
             "nightly.link" to NIGHTLY_ARCHIVE_URL,
@@ -412,33 +421,29 @@ object CiUpdateManager {
         val failures = mutableListOf<Throwable>()
 
         for ((name, url) in sources) {
-            archive.delete()
-            apk.delete()
-            signature.delete()
             withContext(Dispatchers.Main) { onProgress(0) }
             try {
-                downloadUpdateArchive(name, url, archive, onProgress)
-                extractExpectedFiles(
+                val archive = downloadUpdateArchive(name, url, onProgress)
+                val extracted = extractExpectedBytes(
                     archive = archive,
                     expected = mapOf(
-                        APK_NAME to (apk to MAX_APK_BYTES),
-                        SIGNATURE_NAME to (signature to MAX_SIGNATURE_BYTES),
-                    ),
+                        APK_NAME to MAX_APK_BYTES,
+                        SIGNATURE_NAME to MAX_SIGNATURE_BYTES,
+                    )
                 )
-                return@withContext PreparedCiUpdate(apk, signature)
+                return@withContext PreparedCiUpdate(
+                    apk = checkNotNull(extracted[APK_NAME]),
+                    signature = checkNotNull(extracted[SIGNATURE_NAME]),
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 val failure = IOException("$name CI artifact source failed", error)
                 Log.w(TAG, failure.message, failure)
                 failures += failure
-            } finally {
-                archive.delete()
             }
         }
 
-        apk.delete()
-        signature.delete()
         throw IOException("All CI artifact sources failed").apply {
             failures.forEach(::addSuppressed)
         }
@@ -447,53 +452,75 @@ object CiUpdateManager {
     private suspend fun downloadUpdateArchive(
         sourceName: String,
         url: String,
-        archive: File,
         onProgress: (Int) -> Unit,
-    ) {
+    ): ByteArray {
         val request = Request.Builder().url(url).cacheControl(CacheControl.FORCE_NETWORK).build()
-        ksuApp.okhttpClient.newCall(request).execute().use { response ->
+        return ksuApp.okhttpClient.newCall(request).execute().use { response ->
             check(response.isSuccessful) { "$sourceName returned HTTP ${response.code}" }
             val body = response.body ?: error("$sourceName returned an empty response")
             val contentLength = body.contentLength()
             check(contentLength < 0 || contentLength <= MAX_ARCHIVE_BYTES) {
                 "$sourceName CI artifact is too large"
             }
+            val archive = ByteArrayOutputStream(
+                contentLength.coerceIn(0L, MAX_ARCHIVE_BYTES).toInt()
+            )
             body.byteStream().use { input ->
-                archive.outputStream().buffered().use { output ->
-                    copyDownloadWithProgress(
-                        input = input,
-                        output = output,
-                        contentLength = contentLength,
-                        onProgress = onProgress,
-                    )
-                }
+                copyDownloadWithProgress(
+                    input = input,
+                    output = archive,
+                    contentLength = contentLength,
+                    onProgress = onProgress,
+                )
             }
+            archive.toByteArray()
         }
     }
 
     fun verify(context: Context, run: CiRun, update: PreparedCiUpdate) {
+        check(update.apk.size.toLong() in 1..MAX_APK_BYTES) {
+            "CI update APK has an invalid size"
+        }
         verifyDetachedSignature(context, update.apk, update.signature)
-        verifyApk(context, run, update.apk)
+        run.apkSize?.let { expectedSize ->
+            check(update.apk.size.toLong() == expectedSize) {
+                "CI update APK size does not match the signed metadata"
+            }
+        }
+        run.apkSha256?.let { expectedDigest ->
+            val digest = MessageDigest.getInstance("SHA-256").digest(update.apk).toHex()
+            check(digest.equals(expectedDigest, ignoreCase = true)) {
+                "CI update APK digest does not match the signed metadata"
+            }
+        }
     }
 
-    suspend fun install(context: Context, apk: File): CiInstallResult = withContext(Dispatchers.IO) {
-        if (KsuCli.SHELL.isRoot) {
+    suspend fun install(
+        context: Context,
+        run: CiRun,
+        update: PreparedCiUpdate,
+    ): CiInstallResult = withContext(Dispatchers.IO) {
+        if (KsuCli.SHELL.isRoot && run.apkSha256 != null && run.apkSize != null) {
             try {
-                installWithRootSession(apk)
+                installWithRootService(context, update.apk)
                 cleanupCachedUpdate(context)
-                CiInstallResult.RootInstalled
+                return@withContext CiInstallResult.RootInstalled
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Root CI update install failed; falling back to system installer", error)
-                withContext(Dispatchers.Main) {
-                    startSystemInstallerOrRequestPermission(context, apk)
-                }
             }
-        } else {
-            withContext(Dispatchers.Main) {
-                startSystemInstallerOrRequestPermission(context, apk)
-            }
+        }
+
+        val apk = materializeSystemInstallerApk(context, update.apk)
+        try {
+            verifyApk(context, run, apk)
+        } catch (error: Exception) {
+            apk.delete()
+            throw error
+        }
+        withContext(Dispatchers.Main) {
+            startSystemInstallerOrRequestPermission(context, apk)
         }
     }
 
@@ -542,46 +569,36 @@ object CiUpdateManager {
         }
     }
 
-    private fun installWithRootSession(apk: File) {
-        val apkSize = apk.length()
-        check(apkSize in 1..MAX_APK_BYTES) { "CI update APK has an invalid size" }
-        val source = shellQuote(apk.absolutePath)
+    private suspend fun installWithRootService(context: Context, apk: ByteArray) {
         var sessionId: Int? = null
         var committed = false
-        try {
-            val createResult = KsuCli.SHELL.newJob()
-                .add("pm install-create -r -S $apkSize")
-                .exec()
-            check(createResult.isSuccess) {
-                shellFailure(createResult, "Failed to create PackageInstaller session")
+        RootCiUpdateInstaller.connect(context).use { installer ->
+            try {
+                val id = installer.createSession(apk.size.toLong())
+                sessionId = id
+                installer.writeSession(id, apk.size.toLong()) { output ->
+                    ByteArrayInputStream(apk).use { input -> input.copyTo(output) }
+                }
+                installer.commitSession(id)
+                committed = true
+            } finally {
+                if (!committed) {
+                    sessionId?.let { id ->
+                        runCatching { installer.abandonSession(id) }
+                            .onFailure { Log.w(TAG, "Failed to abandon CI install session $id", it) }
+                    }
+                }
             }
-            sessionId = parseInstallSessionId(createResult)
+        }
+    }
 
-            // The root shell opens the app-private file for stdin; PackageInstaller
-            // only sees that descriptor and copies the APK into its own session.
-            val writeResult = KsuCli.SHELL.newJob()
-                .add(
-                    "pm install-write -S $apkSize $sessionId " +
-                        "$INSTALL_SPLIT_NAME - < $source"
-                )
-                .exec()
-            check(writeResult.isSuccess) {
-                shellFailure(writeResult, "Failed to stream APK into PackageInstaller")
-            }
-
-            // Keep the private source until commit has succeeded so the system
-            // installer can reuse it if the privileged install is rejected.
-            val commitResult = KsuCli.SHELL.newJob()
-                .add("pm install-commit $sessionId")
-                .exec()
-            check(commitResult.isSuccess) {
-                shellFailure(commitResult, "Failed to commit PackageInstaller session")
-            }
-            committed = true
-        } finally {
-            if (!committed) {
-                sessionId?.let(::abandonInstallSession)
-            }
+    private fun materializeSystemInstallerApk(context: Context, contents: ByteArray): File {
+        cleanupCachedUpdate(context)
+        val updateDir = File(context.cacheDir, UPDATE_CACHE_DIR).apply {
+            check(isDirectory || mkdirs()) { "Cannot create the CI update cache" }
+        }
+        return File(updateDir, APK_NAME).also { apk ->
+            apk.outputStream().buffered().use { output -> output.write(contents) }
         }
     }
 
@@ -594,30 +611,8 @@ object CiUpdateManager {
             startSystemInstaller(context, apk)
             CiInstallResult.SystemInstallerStarted
         } else {
-            CiInstallResult.SystemInstallerPermissionRequired
+            CiInstallResult.SystemInstallerPermissionRequired(apk)
         }
-    }
-
-    private fun parseInstallSessionId(result: Shell.Result): Int {
-        val output = (result.out + result.err).joinToString("\n")
-        return INSTALL_SESSION_ID_PATTERN.findAll(output)
-            .lastOrNull()
-            ?.groupValues
-            ?.get(1)
-            ?.toIntOrNull()
-            ?: error("PackageInstaller did not return a session ID: $output")
-    }
-
-    private fun abandonInstallSession(sessionId: Int) {
-        val result = KsuCli.SHELL.newJob().add("pm install-abandon $sessionId").exec()
-        if (!result.isSuccess) {
-            Log.w(TAG, shellFailure(result, "Failed to abandon PackageInstaller session $sessionId"))
-        }
-    }
-
-    private fun shellFailure(result: Shell.Result, operation: String): String {
-        val details = (result.err + result.out).joinToString("\n")
-        return if (details.isBlank()) operation else "$operation: $details"
     }
 
     private fun extractExpectedFiles(
@@ -651,14 +646,79 @@ object CiUpdateManager {
         check(extracted == expected.keys) { "CI artifact does not contain the expected APK/signature pair" }
     }
 
+    private fun extractExpectedBytes(
+        archive: ByteArray,
+        expected: Map<String, Long>,
+    ): Map<String, ByteArray> {
+        val extracted = mutableMapOf<String, ByteArray>()
+        ZipInputStream(BufferedInputStream(ByteArrayInputStream(archive))).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (entry.isDirectory) {
+                    zip.closeEntry()
+                    continue
+                }
+                val normalizedName = entry.name.removePrefix("./")
+                check(entry.name == normalizedName || entry.name == "./$normalizedName") {
+                    "Unsafe path in CI artifact"
+                }
+                val limit = expected[normalizedName]
+                    ?: error("Unexpected file in CI artifact: ${entry.name}")
+                check('/' !in normalizedName && '\\' !in normalizedName) {
+                    "Unsafe path in CI artifact"
+                }
+                check(normalizedName !in extracted) {
+                    "Duplicate file in CI artifact: $normalizedName"
+                }
+                check(entry.size < 0 || entry.size <= limit) { "$normalizedName is too large" }
+                val output = ByteArrayOutputStream(
+                    entry.size.coerceIn(0L, limit).toInt()
+                )
+                copyWithLimit(zip, output, limit)
+                val contents = output.toByteArray()
+                check(contents.isNotEmpty()) { "$normalizedName is empty" }
+                extracted[normalizedName] = contents
+                zip.closeEntry()
+            }
+        }
+        check(extracted.keys == expected.keys) {
+            "CI artifact does not contain the expected APK/signature pair"
+        }
+        return extracted
+    }
+
     private fun verifyDetachedSignature(context: Context, apk: File, signatureFile: File) {
+        apk.inputStream().buffered().use { data ->
+            signatureFile.inputStream().buffered().use { signature ->
+                verifyDetachedSignature(context, data, signature)
+            }
+        }
+    }
+
+    private fun verifyDetachedSignature(
+        context: Context,
+        data: ByteArray,
+        signature: ByteArray,
+    ) {
+        ByteArrayInputStream(data).use { dataInput ->
+            ByteArrayInputStream(signature).use { signatureInput ->
+                verifyDetachedSignature(context, dataInput, signatureInput)
+            }
+        }
+    }
+
+    private fun verifyDetachedSignature(
+        context: Context,
+        data: InputStream,
+        signatureInput: InputStream,
+    ) {
         val keyRings = context.assets.open("ci-update-public-key.asc").use { keyInput ->
             PGPPublicKeyRingCollection(
                 PGPUtil.getDecoderStream(keyInput),
                 BcKeyFingerprintCalculator(),
             )
         }
-        val signature = readDetachedSignature(signatureFile)
+        val signature = readDetachedSignature(signatureInput)
         val signingKey = keyRings.getPublicKey(signature.keyID)
             ?: error("PGP signature was made by an unknown key")
 
@@ -682,19 +742,17 @@ object CiUpdateManager {
             Ed25519PgpContentVerifierProvider,
             signingKey,
         )
-        apk.inputStream().buffered().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                signature.update(buffer, 0, count)
-            }
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = data.read(buffer)
+            if (count < 0) break
+            signature.update(buffer, 0, count)
         }
         check(signature.verify()) { "PGP signature verification failed" }
     }
 
-    private fun readDetachedSignature(file: File): PGPSignature {
-        PGPUtil.getDecoderStream(file.inputStream().buffered()).use { decoded ->
+    private fun readDetachedSignature(input: InputStream): PGPSignature {
+        PGPUtil.getDecoderStream(input).use { decoded ->
             return findSignature(PGPObjectFactory(decoded, BcKeyFingerprintCalculator()))
                 ?: error("Detached PGP signature is missing")
         }
@@ -832,7 +890,5 @@ object CiUpdateManager {
     private fun fingerprint(key: PGPPublicKey): String = key.fingerprint.toHex()
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02X".format(it) }
-
-    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
 }

@@ -182,7 +182,7 @@ fun CiUpdateCard() {
                 error = ""
                 progress = 0
                 stage = CiUpdateStage.DOWNLOADING
-                val prepared = CiUpdateManager.downloadAndExtract(context) { downloaded ->
+                val prepared = CiUpdateManager.downloadAndExtract { downloaded ->
                     progress = downloaded
                 }
                 stage = CiUpdateStage.VERIFYING
@@ -190,15 +190,15 @@ fun CiUpdateCard() {
                     CiUpdateManager.verify(context, availableRun, prepared)
                 }
                 stage = CiUpdateStage.INSTALLING
-                when (CiUpdateManager.install(context, prepared.apk)) {
+                when (val result = CiUpdateManager.install(context, availableRun, prepared)) {
                     CiInstallResult.RootInstalled -> Toast.makeText(
                         context,
                         R.string.ci_update_root_installed,
                         Toast.LENGTH_LONG,
                     ).show()
                     CiInstallResult.SystemInstallerStarted -> Unit
-                    CiInstallResult.SystemInstallerPermissionRequired -> {
-                        pendingSystemInstallerApk = prepared.apk
+                    is CiInstallResult.SystemInstallerPermissionRequired -> {
+                        pendingSystemInstallerApk = result.apk
                         installPermissionLauncher.launch(
                             CiUpdateManager.unknownSourcesPermissionIntent(context)
                         )

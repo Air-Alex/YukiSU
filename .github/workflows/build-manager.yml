@@ -348,12 +348,15 @@ jobs:
           [[ "$CI_VERSION_CODE" =~ ^[0-9]+$ ]]
           export CI_COMMIT_MESSAGE
           export CI_VERSION_CODE
+          export MANAGER_APK
           CI_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
           python3 - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
 
+          apk_path = Path(os.environ["MANAGER_APK"])
           metadata = {
               "schema_version": 1,
               "repository": "Anatdx/YukiSU",
@@ -363,6 +366,8 @@ jobs:
               "version_code": int(os.environ["CI_VERSION_CODE"]),
               "commit_sha": os.environ["CI_COMMIT_SHA"],
               "commit_message": os.environ["CI_COMMIT_MESSAGE"],
+              "apk_sha256": hashlib.sha256(apk_path.read_bytes()).hexdigest(),
+              "apk_size": apk_path.stat().st_size,
           }
           Path("update-metadata/ci-update.json").write_text(
               json.dumps(metadata, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n",
