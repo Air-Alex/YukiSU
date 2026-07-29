@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">MIUI の設定でこのアプリにホーム画面ショートカットの作成を許可してから、もう一度お試しください</string>
     <string name="module_shortcut_permission_tip_oppo">システム設定でこのアプリにホーム画面ショートカットの作成を許可してから、もう一度お試しください</string>
     <string name="module_shortcut_permission_tip_default">ランチャーの権限を確認し、ホーム画面ショートカットの作成を許可してから、もう一度お試しください</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">モジュールの復元を確認</string>
-    <string name="restore_confirm_message">この操作によりモジュールが上書きされます。続行しますか？</string>
     <string name="confirm">確認</string>
     <string name="cancel">キャンセル</string>
-    <!-- Backup related -->
-    <string name="backup_success">バックアップが完了しました (tar.gz)</string>
-    <string name="backup_failed">バックアップに失敗: %1$s</string>
-    <string name="backup_modules">モジュールをバックアップ</string>
-    <string name="restore_modules">モジュールを復元</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">モジュールは正常に復元されました、再起動が必要です</string>
-    <string name="restore_failed">復元に失敗: %1$s</string>
-    <string name="restart_now">今すぐ再起動</string>
-    <string name="unknown_error">不明なエラー</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">コマンドの実行に失敗しました: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">許可リストのバックアップが成功しました</string>
     <string name="allowlist_backup_failed">許可リストのバックアップに失敗: %1$s</string>

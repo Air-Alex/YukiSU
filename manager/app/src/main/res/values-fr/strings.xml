@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Veuillez autoriser cette application à créer des raccourcis sur l\'écran d\'accueil dans les paramètres MIUI, puis réessayez</string>
     <string name="module_shortcut_permission_tip_oppo">Veuillez autoriser cette application à créer des raccourcis sur l\'écran d\'accueil dans les paramètres système, puis réessayez</string>
     <string name="module_shortcut_permission_tip_default">Veuillez vérifier les autorisations du lanceur et autoriser la création de raccourcis sur l\'écran d\'accueil, puis réessayez</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Confirmer la restauration</string>
-    <string name="restore_confirm_message">Cette opération va écraser les modules existants. Continuer ?</string>
     <string name="confirm">Confirmer</string>
     <string name="cancel">Annuler</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sauvegarde réussie (tar.gz)</string>
-    <string name="backup_failed">Échec de la sauvegarde : %1$s</string>
-    <string name="backup_modules">modules de sauvegarde</string>
-    <string name="restore_modules">Restaurer les modules</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Succès de la sauvegarde, redémarrer</string>
-    <string name="restore_failed">Échec de la restauration : %1$s</string>
-    <string name="restart_now">Redémarrer</string>
-    <string name="unknown_error">Erreur inconnue</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">L\'exécution de la commande a échoué : %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Sauvegarde de la liste blanche réussie</string>
     <string name="allowlist_backup_failed">La sauvegarde de la liste d\'autorisations a échoué : %1$s</string>

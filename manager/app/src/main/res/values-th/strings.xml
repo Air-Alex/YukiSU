@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">กรุณาอนุญาตให้แอปนี้สร้างทางลัดหน้าจอหลักในการตั้งค่า MIUI แล้วลองอีกครั้ง</string>
     <string name="module_shortcut_permission_tip_oppo">กรุณาอนุญาตให้แอปนี้สร้างทางลัดหน้าจอหลักในการตั้งค่าระบบ แล้วลองอีกครั้ง</string>
     <string name="module_shortcut_permission_tip_default">กรุณาตรวจสอบสิทธิ์ของตัวเรียกใช้และอนุญาตให้สร้างทางลัดหน้าจอหลัก แล้วลองอีกครั้ง</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">ยืนยันการกู้คืนโมดูล</string>
-    <string name="restore_confirm_message">การดำเนินการนี้จะเขียนทับโมดูลที่มีอยู่ทั้งหมด ดำเนินการต่อหรือไม่?</string>
     <string name="confirm">ยืนยัน</string>
     <string name="cancel">ยกเลิก</string>
-    <!-- Backup related -->
-    <string name="backup_success">สำรองข้อมูลสำเร็จ (tar.gz)</string>
-    <string name="backup_failed">สำรองข้อมูลไม่สำเร็จ: %1$s</string>
-    <string name="backup_modules">สำรองโมดูล</string>
-    <string name="restore_modules">กู้คืนโมดูล</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">กู้คืนโมดูลสำเร็จ ต้องรีสตาร์ต</string>
-    <string name="restore_failed">กู้คืนไม่สำเร็จ: %1$s</string>
-    <string name="restart_now">รีสตาร์ตเดี๋ยวนี้</string>
-    <string name="unknown_error">ข้อผิดพลาดที่ไม่รู้จัก</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">ไม่สามารถดำเนินการคำสั่ง: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">สำรองข้อมูลรายการที่อนุญาตเรียบร้อยแล้ว</string>
     <string name="allowlist_backup_failed">ไม่สามารถสำรองข้อมูลรายการที่อนุญาต: %1$s</string>

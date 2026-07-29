@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Zezwól tej aplikacji na tworzenie skrótów na ekranie głównym w ustawieniach MIUI, a następnie spróbuj ponownie</string>
     <string name="module_shortcut_permission_tip_oppo">Zezwól tej aplikacji na tworzenie skrótów na ekranie głównym w ustawieniach systemu, a następnie spróbuj ponownie</string>
     <string name="module_shortcut_permission_tip_default">Sprawdź uprawnienia launchera i zezwól na tworzenie skrótów na ekranie głównym, a następnie spróbuj ponownie</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Potwierdź przywracanie modułu</string>
-    <string name="restore_confirm_message">Ta operacja nadpisze wszystkie istniejące moduły. Kontynuować?</string>
     <string name="confirm">Potwierdź</string>
     <string name="cancel">Anuluj</string>
-    <!-- Backup related -->
-    <string name="backup_success">Kopia zapasowa zakończona pomyślnie (tar.gz)</string>
-    <string name="backup_failed">Tworzenie kopii zapasowej nie powiodło się: %1$s</string>
-    <string name="backup_modules">Utwórz kopię zapasową modułów</string>
-    <string name="restore_modules">Przywróć moduły</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduły przywrócone pomyślnie, wymagany restart</string>
-    <string name="restore_failed">Przywracanie nie powiodło się: %1$s</string>
-    <string name="restart_now">Uruchom ponownie teraz</string>
-    <string name="unknown_error">Nieznany błąd</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Nie udało się wykonać polecenia: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Pomyślnie utworzono kopię zapasową listy dozwolonych</string>
     <string name="allowlist_backup_failed">Nie udało się utworzyć kopii zapasowej listy dozwolonych: %1$s</string>

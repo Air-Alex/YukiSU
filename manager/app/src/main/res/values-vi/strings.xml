@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Vui lòng cho phép ứng dụng này tạo lối tắt màn hình chính trong cài đặt MIUI, rồi thử lại</string>
     <string name="module_shortcut_permission_tip_oppo">Vui lòng cho phép ứng dụng này tạo lối tắt màn hình chính trong cài đặt hệ thống, rồi thử lại</string>
     <string name="module_shortcut_permission_tip_default">Vui lòng kiểm tra quyền của trình khởi chạy và cho phép tạo lối tắt màn hình chính, rồi thử lại</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Xác nhận khôi phục module</string>
-    <string name="restore_confirm_message">Hành động này sẽ ghi đè lên tất cả các module hiện có. Tiếp tục?</string>
     <string name="confirm">Xác nhận</string>
     <string name="cancel">Thoát</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sao lưu thành công (tar.gz)</string>
-    <string name="backup_failed">Sao lưu thất bại: %1$s</string>
-    <string name="backup_modules">Sao lưu các module</string>
-    <string name="restore_modules">Khôi phục các module</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Các module đã được khôi phục thành công, cần khởi động lại</string>
-    <string name="restore_failed">Khôi phục thất bại: %1$s</string>
-    <string name="restart_now">Khởi động lại ngay</string>
-    <string name="unknown_error">Lỗi không xác định</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Thực thi lệnh thất bại: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Sao lưu danh sách cho phép thành công</string>
     <string name="allowlist_backup_failed">Sao lưu danh sách cho phép thất bại: %1$s</string>

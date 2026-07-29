@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Sila benarkan aplikasi ini mencipta pintasan skrin utama dalam tetapan MIUI, kemudian cuba lagi</string>
     <string name="module_shortcut_permission_tip_oppo">Sila benarkan aplikasi ini mencipta pintasan skrin utama dalam tetapan sistem, kemudian cuba lagi</string>
     <string name="module_shortcut_permission_tip_default">Sila semak kebenaran pelancar dan benarkan penciptaan pintasan skrin utama, kemudian cuba lagi</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Sahkan Pemulihan Modul</string>
-    <string name="restore_confirm_message">Operasi ini akan menulis ganti semua modul sedia ada. Teruskan?</string>
     <string name="confirm">Sahkan</string>
     <string name="cancel">Batal</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sandaran berjaya (tar.gz)</string>
-    <string name="backup_failed">Sandaran gagal: %1$s</string>
-    <string name="backup_modules">Sandarkan modul</string>
-    <string name="restore_modules">Pulihkan modul</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Modul berjaya dipulihkan, perlu mula semula</string>
-    <string name="restore_failed">Pemulihan gagal: %1$s</string>
-    <string name="restart_now">Mula Semula Sekarang</string>
-    <string name="unknown_error">Ralat tidak diketahui</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Gagal melaksanakan arahan: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Senarai Benar disandarkan dengan jayanya</string>
     <string name="allowlist_backup_failed">Gagal membuat sandaran senarai dibenarkan: %1$s</string>

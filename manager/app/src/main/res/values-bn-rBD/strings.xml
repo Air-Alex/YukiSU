@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">অনুগ্রহ করে MIUI সেটিংসে এই অ্যাপকে হোম স্ক্রিন শর্টকাট তৈরি করার অনুমতি দিন, তারপর আবার চেষ্টা করুন</string>
     <string name="module_shortcut_permission_tip_oppo">অনুগ্রহ করে সিস্টেম সেটিংসে এই অ্যাপকে হোম স্ক্রিন শর্টকাট তৈরি করার অনুমতি দিন, তারপর আবার চেষ্টা করুন</string>
     <string name="module_shortcut_permission_tip_default">অনুগ্রহ করে লঞ্চার অনুমতি পরীক্ষা করুন এবং হোম স্ক্রিন শর্টকাট তৈরি করার অনুমতি দিন, তারপর আবার চেষ্টা করুন</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">মডিউল পুনরুদ্ধার নিশ্চিত করুন</string>
-    <string name="restore_confirm_message">এই অপারেশনটি সমস্ত বিদ্যমান মডিউল ওভাররাইট করবে। চালিয়ে যাবেন?</string>
     <string name="confirm">নিশ্চিত করুন</string>
     <string name="cancel">বাতিল করুন</string>
-    <!-- Backup related -->
-    <string name="backup_success">ব্যাকআপ সফল (tar.gz)</string>
-    <string name="backup_failed">ব্যাকআপ ব্যর্থ: %1$s</string>
-    <string name="backup_modules">মডিউল ব্যাকআপ করুন</string>
-    <string name="restore_modules">মডিউল পুনরুদ্ধার করুন</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">মডিউল সফলভাবে পুনরুদ্ধার করা হয়েছে, পুনরায় চালু করা প্রয়োজন</string>
-    <string name="restore_failed">পুনরুদ্ধার ব্যর্থ: %1$s</string>
-    <string name="restart_now">এখন পুনরায় চালু করুন</string>
-    <string name="unknown_error">অজানা ত্রুটি</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">কমান্ড নির্বাহ ব্যর্থ: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">ব্যাকআপ সম্পন্ন</string>
     <string name="allowlist_backup_failed">অনুমতি তালিকা ব্যাকআপ ব্যর্থ: %1$s</string>

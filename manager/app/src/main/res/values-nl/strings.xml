@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Sta deze app toe om snelkoppelingen op het startscherm te maken in de MIUI-instellingen en probeer het opnieuw</string>
     <string name="module_shortcut_permission_tip_oppo">Sta deze app toe om snelkoppelingen op het startscherm te maken in de systeeminstellingen en probeer het opnieuw</string>
     <string name="module_shortcut_permission_tip_default">Controleer de launcher-machtigingen en sta het maken van snelkoppelingen op het startscherm toe, en probeer het opnieuw</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Moduleherstel bevestigen</string>
-    <string name="restore_confirm_message">Deze bewerking overschrijft alle bestaande modules. Doorgaan?</string>
     <string name="confirm">Bevestigen</string>
     <string name="cancel">Annuleren</string>
-    <!-- Backup related -->
-    <string name="backup_success">Back-up geslaagd (tar.gz)</string>
-    <string name="backup_failed">Back-up mislukt: %1$s</string>
-    <string name="backup_modules">Maak een back-up van modules</string>
-    <string name="restore_modules">Modules herstellen</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Modules succesvol hersteld, herstart vereist</string>
-    <string name="restore_failed">Herstel mislukt: %1$s</string>
-    <string name="restart_now">Nu herstarten</string>
-    <string name="unknown_error">Onbekende fout</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Kan opdracht niet uitvoeren: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Er is een back-up gemaakt van de toelatingslijst</string>
     <string name="allowlist_backup_failed">Kan geen back-up maken van de toelatingslijst: %1$s</string>

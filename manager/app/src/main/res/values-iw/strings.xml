@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">אנא אפשר לאפליקציה זו ליצור קיצורי דרך במסך הבית בהגדרות MIUI, ואז נסה שוב</string>
     <string name="module_shortcut_permission_tip_oppo">אנא אפשר לאפליקציה זו ליצור קיצורי דרך במסך הבית בהגדרות המערכת, ואז נסה שוב</string>
     <string name="module_shortcut_permission_tip_default">אנא בדוק את הרשאות המשגר ואפשר יצירת קיצורי דרך במסך הבית, ואז נסה שוב</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">אשר שחזור מודול</string>
-    <string name="restore_confirm_message">פעולה זו תדרוס את כל המודולים הקיימים. להמשיך?</string>
     <string name="confirm">אשר</string>
     <string name="cancel">ביטול</string>
-    <!-- Backup related -->
-    <string name="backup_success">הגיבוי הצליח (tar.gz)</string>
-    <string name="backup_failed">הגיבוי נכשל: %1$s</string>
-    <string name="backup_modules">גבה מודולים</string>
-    <string name="restore_modules">שחזר מודולים</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">המודולים שוחזרו בהצלחה, נדרשת הפעלה מחדש</string>
-    <string name="restore_failed">השחזור נכשל: %1$s</string>
-    <string name="restart_now">הפעל מחדש כעת</string>
-    <string name="unknown_error">שגיאה לא ידועה</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">ביצוע הפקודה נכשל: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">הגיבוי הושלם</string>
     <string name="allowlist_backup_failed">גיבוי רשימת ההיתר נכשל: %1$s</string>

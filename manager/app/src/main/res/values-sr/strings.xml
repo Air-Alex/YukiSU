@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Дозволите креирање пречица на почетном екрану за ову апликацију у подешавањима MIUI, а затим покушајте поново</string>
     <string name="module_shortcut_permission_tip_oppo">Дозволите креирање пречица на почетном екрану за ову апликацију у системским поставкама, а затим покушајте поново</string>
     <string name="module_shortcut_permission_tip_default">Проверите дозволе покретача и дозволите креирање пречица на почетном екрану, а затим покушајте поново</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Потврдите обнављање модула</string>
-    <string name="restore_confirm_message">Ова операција ће преписати све постојеће модуле. Наставити?</string>
     <string name="confirm">Потврди</string>
     <string name="cancel">Откажи</string>
-    <!-- Backup related -->
-    <string name="backup_success">Израда резервне копије успела (тар.гз)</string>
-    <string name="backup_failed">Прављење резервне копије није успело: %1$s</string>
-    <string name="backup_modules">Резервни модули</string>
-    <string name="restore_modules">Вратите модуле</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Модули су успешно враћени, потребно је поновно покретање</string>
-    <string name="restore_failed">Враћање није успело: %1$s</string>
-    <string name="restart_now">Поново покрени</string>
-    <string name="unknown_error">Непозната грешка</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Извршавање команде није успело: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Успешно је направљена резервна копија листе дозвољених</string>
     <string name="allowlist_backup_failed">Прављење резервне копије листе дозвољених није успело: %1$s</string>

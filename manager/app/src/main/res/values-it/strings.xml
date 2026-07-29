@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Consenti a questa app di creare scorciatoie nella schermata Home nelle impostazioni MIUI, poi riprova</string>
     <string name="module_shortcut_permission_tip_oppo">Consenti a questa app di creare scorciatoie nella schermata Home nelle impostazioni di sistema, poi riprova</string>
     <string name="module_shortcut_permission_tip_default">Controlla le autorizzazioni del launcher e consenti la creazione di scorciatoie nella schermata Home, poi riprova</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Conferma ripristino modulo</string>
-    <string name="restore_confirm_message">Questa operazione sovrascriverà tutti i moduli esistenti. Continuare?</string>
     <string name="confirm">Conferma</string>
     <string name="cancel">Annulla</string>
-    <!-- Backup related -->
-    <string name="backup_success">Backup riuscito (tar.gz)</string>
-    <string name="backup_failed">Backup non riuscito: %1$s</string>
-    <string name="backup_modules">Eseguire il backup dei moduli</string>
-    <string name="restore_modules">Ripristinare i moduli</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduli ripristinati correttamente, è necessario riavviare</string>
-    <string name="restore_failed">Ripristino non riuscito: %1$s</string>
-    <string name="restart_now">Riavvia ora</string>
-    <string name="unknown_error">Errore sconosciuto</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Impossibile eseguire il comando: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Backup della lista consentita eseguito correttamente</string>
     <string name="allowlist_backup_failed">Impossibile eseguire il backup della lista consentita: %1$s</string>

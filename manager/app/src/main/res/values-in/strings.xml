@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Izinkan aplikasi ini membuat pintasan layar utama di pengaturan MIUI, lalu coba lagi</string>
     <string name="module_shortcut_permission_tip_oppo">Izinkan aplikasi ini membuat pintasan layar utama di pengaturan sistem, lalu coba lagi</string>
     <string name="module_shortcut_permission_tip_default">Periksa izin peluncur dan izinkan pembuatan pintasan layar utama, lalu coba lagi</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Konfirmasi pemulihan module</string>
-    <string name="restore_confirm_message">Operasi ini akan menimpa semua modul yang ada. Lanjutkan?</string>
     <string name="confirm">Konfirmasi</string>
     <string name="cancel">Batal</string>
-    <!-- Backup related -->
-    <string name="backup_success">Pencadangan berhasil (tar.gz)</string>
-    <string name="backup_failed">Pencadangan gagal: %1$s</string>
-    <string name="backup_modules">cadangkan modul</string>
-    <string name="restore_modules">pulihkan modul</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Modul berhasil dipulihkan, restart diperlukan</string>
-    <string name="restore_failed">Pemulihan gagal: %1$s</string>
-    <string name="restart_now">Mulai Ulang Sekarang</string>
-    <string name="unknown_error">Kesalahan tidak diketahui</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Eksekusi perintah gagal: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Cadangan daftar izin berhasil</string>
     <string name="allowlist_backup_failed">Gagal mencadangkan daftar izin: %1$s</string>

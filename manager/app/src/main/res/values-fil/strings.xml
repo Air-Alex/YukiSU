@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Mangyaring payagan ang app na ito na gumawa ng home screen shortcut sa MIUI settings, pagkatapos ay subukan muli</string>
     <string name="module_shortcut_permission_tip_oppo">Mangyaring payagan ang app na ito na gumawa ng home screen shortcut sa system settings, pagkatapos ay subukan muli</string>
     <string name="module_shortcut_permission_tip_default">Mangyaring tingnan ang mga permission ng launcher at payagan ang paggawa ng home screen shortcut, pagkatapos ay subukan muli</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Kumpirmahin ang Pag-restore ng Module</string>
-    <string name="restore_confirm_message">Mao-overwrite ng operasyong ito ang lahat ng umiiral na module. Magpatuloy?</string>
     <string name="confirm">Kumpirmahin</string>
     <string name="cancel">Kanselahin</string>
-    <!-- Backup related -->
-    <string name="backup_success">Matagumpay ang backup (tar.gz)</string>
-    <string name="backup_failed">Nabigo ang backup: %1$s</string>
-    <string name="backup_modules">I-back up ang mga module</string>
-    <string name="restore_modules">Ibalik ang mga module</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Matagumpay na na-restore ang mga module, kailangang i-restart</string>
-    <string name="restore_failed">Nabigo ang pag-restore: %1$s</string>
-    <string name="restart_now">I-restart Ngayon</string>
-    <string name="unknown_error">Hindi kilalang error</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Nabigong isagawa ang utos: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Matagumpay na na-back up ang Allowlist</string>
     <string name="allowlist_backup_failed">Nabigong i-backup ang allowlist: %1$s</string>

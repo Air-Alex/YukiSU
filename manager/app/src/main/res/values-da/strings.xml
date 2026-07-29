@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Tillad venligst denne app at oprette genveje på startskærmen i MIUI-indstillinger, og prøv igen</string>
     <string name="module_shortcut_permission_tip_oppo">Tillad venligst denne app at oprette genveje på startskærmen i systemindstillinger, og prøv igen</string>
     <string name="module_shortcut_permission_tip_default">Tjek venligst launcher-tilladelser og tillad oprettelse af genveje på startskærmen, og prøv igen</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Bekræft gendannelse af modul</string>
-    <string name="restore_confirm_message">Denne handling overskriver alle eksisterende moduler. Fortsæt?</string>
     <string name="confirm">Bekræft</string>
     <string name="cancel">Annuller</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sikkerhedskopiering lykkedes (tar.gz)</string>
-    <string name="backup_failed">Sikkerhedskopiering mislykkedes: %1$s</string>
-    <string name="backup_modules">Sikkerhedskopier moduler</string>
-    <string name="restore_modules">Gendan moduler</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduler gendannet, genstart påkrævet</string>
-    <string name="restore_failed">Gendannelse mislykkedes: %1$s</string>
-    <string name="restart_now">Genstart nu</string>
-    <string name="unknown_error">Ukendt fejl</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Kunne ikke udføre kommandoen: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Tilladelseslisten blev sikkerhedskopieret</string>
     <string name="allowlist_backup_failed">Kunne ikke sikkerhedskopiere tilladelseslisten: %1$s</string>

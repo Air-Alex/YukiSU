@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Permite que esta aplicación cree accesos directos en la pantalla de inicio en los ajustes de MIUI y vuelve a intentarlo</string>
     <string name="module_shortcut_permission_tip_oppo">Permite que esta aplicación cree accesos directos en la pantalla de inicio en los ajustes del sistema y vuelve a intentarlo</string>
     <string name="module_shortcut_permission_tip_default">Comprueba los permisos del lanzador y permite crear accesos directos en la pantalla de inicio, luego vuelve a intentarlo</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Confirmar restauración del módulo</string>
-    <string name="restore_confirm_message">Esta operación sobrescribirá todos los módulos existentes. ¿Continuar?</string>
     <string name="confirm">Confirmar</string>
     <string name="cancel">Cancelar</string>
-    <!-- Backup related -->
-    <string name="backup_success">Copia de seguridad exitosa (tar.gz)</string>
-    <string name="backup_failed">Copia de seguridad fallida: %1$s</string>
-    <string name="backup_modules">módulos de respaldo</string>
-    <string name="restore_modules">restaurar módulos</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Módulos restaurados con éxito, se requiere reiniciar</string>
-    <string name="restore_failed">Restauración fallida: %1$s</string>
-    <string name="restart_now">Reiniciar ahora</string>
-    <string name="unknown_error">Error desconocido</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Ejecución del comando fallida: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Copia de seguridad correcta</string>
     <string name="allowlist_backup_failed">Copia de seguridad de lista fallida: %1$s</string>

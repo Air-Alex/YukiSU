@@ -254,23 +254,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Please allow creating home screen shortcuts for this app in MIUI settings, then retry</string>
     <string name="module_shortcut_permission_tip_oppo">Please allow creating home screen shortcuts for this app in system settings, then retry</string>
     <string name="module_shortcut_permission_tip_default">Please check launcher permissions and allow creating home screen shortcuts, then retry</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Confirm Module Restoration</string>
-    <string name="restore_confirm_message">This operation will overwrite all existing modules. Continue?</string>
     <string name="confirm">Confirm</string>
     <string name="cancel">Cancel</string>
-    <!-- Backup related -->
-    <string name="backup_success">Backup successful (tar.gz)</string>
-    <string name="backup_failed">Backup failed: %1$s</string>
-    <string name="backup_modules">Backup modules</string>
-    <string name="restore_modules">Restore modules</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Modules restored successfully, restart required</string>
-    <string name="restore_failed">Restore failed: %1$s</string>
-    <string name="restart_now">Restart Now</string>
-    <string name="unknown_error">Unknown error</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Failed to execute command: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Allowlist backed up successfully</string>
     <string name="allowlist_backup_failed">Failed to backup allowlist: %1$s</string>

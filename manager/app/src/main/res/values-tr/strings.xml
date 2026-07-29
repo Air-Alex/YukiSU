@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Lütfen MIUI ayarlarında bu uygulamanın ana ekran kısayolları oluşturmasına izin verin, ardından tekrar deneyin</string>
     <string name="module_shortcut_permission_tip_oppo">Lütfen sistem ayarlarında bu uygulamanın ana ekran kısayolları oluşturmasına izin verin, ardından tekrar deneyin</string>
     <string name="module_shortcut_permission_tip_default">Lütfen başlatıcı izinlerini kontrol edin ve ana ekran kısayolları oluşturmaya izin verin, ardından tekrar deneyin</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Modül Geri Yüklemeyi Onayla</string>
-    <string name="restore_confirm_message">Bu işlem, mevcut tüm modülleri üzerine yazacaktır. Devam etmek istiyor musunuz?</string>
     <string name="confirm">Onayla</string>
     <string name="cancel">İptal</string>
-    <!-- Backup related -->
-    <string name="backup_success">Yedekleme başarılı (tar.gz)</string>
-    <string name="backup_failed">Yedekleme başarısız: %1$s</string>
-    <string name="backup_modules">Modülleri yedekle</string>
-    <string name="restore_modules">Modülleri geri yükle</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Modüller başarıyla geri yüklendi, yeniden başlatma gerekiyor</string>
-    <string name="restore_failed">Geri yükleme başarısız: %1$s</string>
-    <string name="restart_now">Şimdi yeniden başlat</string>
-    <string name="unknown_error">Bilinmeyen hata</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Komut yürütme başarısız: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">İzin verilenler listesi yedekleme başarılı</string>
     <string name="allowlist_backup_failed">İzin verilenler listesi yedekleme başarısız: %1$s</string>

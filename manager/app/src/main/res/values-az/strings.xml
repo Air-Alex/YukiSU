@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Zəhmət olmasa MIUI ayarlarında bu tətbiqə ana ekran qısayolları yaratmağa icazə verin, sonra yenidən cəhd edin</string>
     <string name="module_shortcut_permission_tip_oppo">Zəhmət olmasa sistem ayarlarında bu tətbiqə ana ekran qısayolları yaratmağa icazə verin, sonra yenidən cəhd edin</string>
     <string name="module_shortcut_permission_tip_default">Zəhmət olmasa başladıcı icazələrini yoxlayın və ana ekran qısayolları yaratmağa icazə verin, sonra yenidən cəhd edin</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Modulun Bərpasını Təsdiqlə</string>
-    <string name="restore_confirm_message">Bu əməliyyat bütün mövcud modulların üzərinə yazacaq. Davam edilsin?</string>
     <string name="confirm">Təsdiqlə</string>
     <string name="cancel">Ləğv et</string>
-    <!-- Backup related -->
-    <string name="backup_success">Ehtiyat nüsxə uğurlu oldu (tar.gz)</string>
-    <string name="backup_failed">Ehtiyat nüsxə alınmadı: %1$s</string>
-    <string name="backup_modules">Modulların ehtiyat nüsxəsini çıxarın</string>
-    <string name="restore_modules">Modulları bərpa edin</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Modullar uğurla bərpa edildi, yenidən başlatma tələb olunur</string>
-    <string name="restore_failed">Bərpa alınmadı: %1$s</string>
-    <string name="restart_now">İndi yenidən başlat</string>
-    <string name="unknown_error">Naməlum xəta</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">əmri yerinə yetirmək alınmadı: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">İcazə verilənlər siyahısı uğurla yedəkləndi</string>
     <string name="allowlist_backup_failed">İcazə verilən siyahını yedəkləmək alınmadı: %1$s</string>

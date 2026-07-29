@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">لطفاً در تنظیمات MIUI به این برنامه اجازه ایجاد میانبر در صفحه اصلی را بدهید، سپس دوباره تلاش کنید</string>
     <string name="module_shortcut_permission_tip_oppo">لطفاً در تنظیمات سیستم به این برنامه اجازه ایجاد میانبر در صفحه اصلی را بدهید، سپس دوباره تلاش کنید</string>
     <string name="module_shortcut_permission_tip_default">لطفاً مجوزهای لانچر را بررسی کرده و اجازه ایجاد میانبر در صفحه اصلی را بدهید، سپس دوباره تلاش کنید</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">تأیید بازیابی ماژول</string>
-    <string name="restore_confirm_message">این عمل همه ماژول‌های موجود را بازنویسی می‌کند. ادامه می‌دهید؟</string>
     <string name="confirm">تأیید</string>
     <string name="cancel">لغو</string>
-    <!-- Backup related -->
-    <string name="backup_success">پشتیبان‌گیری موفق بود (tar.gz)</string>
-    <string name="backup_failed">پشتیبان‌گیری ناموفق بود: %1$s</string>
-    <string name="backup_modules">از ماژول ها بک آپ بگیرید</string>
-    <string name="restore_modules">بازیابی ماژول ها</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">ماژول‌ها با موفقیت بازیابی شدند، راه‌اندازی مجدد لازم است</string>
-    <string name="restore_failed">بازیابی ناموفق بود: %1$s</string>
-    <string name="restart_now">اکنون راه‌اندازی مجدد کن</string>
-    <string name="unknown_error">خطای ناشناخته</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">دستور اجرا نشد: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">لیست مجاز با موفقیت پشتیبان گیری شد</string>
     <string name="allowlist_backup_failed">پشتیبان گیری از لیست مجاز ناموفق بود: %1$s</string>

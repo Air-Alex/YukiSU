@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Vă rugăm să permiteți acestei aplicații să creeze comenzi rapide pe ecranul principal în setările MIUI, apoi încercați din nou</string>
     <string name="module_shortcut_permission_tip_oppo">Vă rugăm să permiteți acestei aplicații să creeze comenzi rapide pe ecranul principal în setările sistemului, apoi încercați din nou</string>
     <string name="module_shortcut_permission_tip_default">Vă rugăm să verificați permisiunile lansatorului și să permiteți crearea de comenzi rapide pe ecranul principal, apoi încercați din nou</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Confirmă restaurarea modulului</string>
-    <string name="restore_confirm_message">Această operațiune va suprascrie toate modulele existente. Continuați?</string>
     <string name="confirm">Confirmă</string>
     <string name="cancel">Anulează</string>
-    <!-- Backup related -->
-    <string name="backup_success">Copie de rezervă reușită (tar.gz)</string>
-    <string name="backup_failed">Copia de rezervă a eșuat: %1$s</string>
-    <string name="backup_modules">Faceți backup pentru module</string>
-    <string name="restore_modules">Restaurați modulele</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Module restaurate cu succes, este necesară repornirea</string>
-    <string name="restore_failed">Restaurarea a eșuat: %1$s</string>
-    <string name="restart_now">Repornește acum</string>
-    <string name="unknown_error">Eroare necunoscută</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Eșuarea executării comenzii: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">S-a făcut o copie de rezervă a listei de permise</string>
     <string name="allowlist_backup_failed">Nu s-a făcut backup listei permise: %1$s</string>

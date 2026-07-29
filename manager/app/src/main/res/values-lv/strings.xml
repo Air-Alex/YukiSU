@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Lūdzu, atļaujiet šai lietotnei izveidot sākuma ekrāna saīsnes MIUI iestatījumos, pēc tam mēģiniet vēlreiz</string>
     <string name="module_shortcut_permission_tip_oppo">Lūdzu, atļaujiet šai lietotnei izveidot sākuma ekrāna saīsnes sistēmas iestatījumos, pēc tam mēģiniet vēlreiz</string>
     <string name="module_shortcut_permission_tip_default">Lūdzu, pārbaudiet palaidēja atļaujas un atļaujiet sākuma ekrāna saīsņu izveidi, pēc tam mēģiniet vēlreiz</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Apstipriniet moduļa atjaunošanu</string>
-    <string name="restore_confirm_message">Šī darbība pārrakstīs visus esošos moduļus. Vai turpināt?</string>
     <string name="confirm">Apstiprināt</string>
     <string name="cancel">Atcelt</string>
-    <!-- Backup related -->
-    <string name="backup_success">Dublēšana veiksmīga (tar.gz)</string>
-    <string name="backup_failed">Dublēšana neizdevās: %1$s</string>
-    <string name="backup_modules">Dublējiet moduļus</string>
-    <string name="restore_modules">Atjaunot moduļus</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduļi veiksmīgi atjaunoti, nepieciešama restartēšana</string>
-    <string name="restore_failed">Atjaunošana neizdevās: %1$s</string>
-    <string name="restart_now">Restartēt tagad</string>
-    <string name="unknown_error">Nezināma kļūda</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Neizdevās izpildīt komandu: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Atļauju saraksts ir veiksmīgi dublēts</string>
     <string name="allowlist_backup_failed">Neizdevās dublēt atļauju sarakstu: %1$s</string>

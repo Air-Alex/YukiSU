@@ -11,9 +11,6 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateContentSize
@@ -23,16 +20,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.items
@@ -55,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -95,7 +86,6 @@ import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
-import com.anatdx.yukisu.ui.util.module.ModuleModify
 import com.anatdx.yukisu.ui.util.module.ModuleUtils
 import com.anatdx.yukisu.ui.util.module.Shortcut
 import com.anatdx.yukisu.ui.viewmodel.ModuleRuntimeKind
@@ -107,12 +97,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
-
-data class ModuleBottomSheetMenuItem(
-    val icon: ImageVector,
-    val titleRes: Int,
-    val onClick: () -> Unit
-)
 
 private data class ModuleDownloadUiState(
     val moduleName: String,
@@ -253,9 +237,6 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
         }
     }
 
-    val backupLauncher = ModuleModify.rememberModuleBackupLauncher(context, snackBarHost)
-    val restoreLauncher = ModuleModify.rememberModuleRestoreLauncher(context, snackBarHost)
-
     // 快捷方式图片选择器
     val pickShortcutIconLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -352,33 +333,6 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
     val webUILauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { viewModel.fetchModuleList() }
-
-    val bottomSheetMenuItems = remember {
-        listOf(
-            ModuleBottomSheetMenuItem(
-                icon = Icons.Outlined.Save,
-                titleRes = R.string.backup_modules,
-                onClick = {
-                    backupLauncher.launch(ModuleModify.createBackupIntent())
-                    scope.launch {
-                        bottomSheetState.hide()
-                        showBottomSheet = false
-                    }
-                }
-            ),
-            ModuleBottomSheetMenuItem(
-                icon = Icons.Outlined.RestoreFromTrash,
-                titleRes = R.string.restore_modules,
-                onClick = {
-                    restoreLauncher.launch(ModuleModify.createRestoreIntent())
-                    scope.launch {
-                        bottomSheetState.hide()
-                        showBottomSheet = false
-                    }
-                }
-            )
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -572,7 +526,6 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                 }
             ) {
                 ModuleBottomSheetContent(
-                    menuItems = bottomSheetMenuItems,
                     viewModel = viewModel,
                     prefs = prefs,
                     scope = scope,
@@ -769,7 +722,6 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModuleBottomSheetContent(
-    menuItems: List<ModuleBottomSheetMenuItem>,
     viewModel: ModuleViewModel,
     prefs: android.content.SharedPreferences,
     scope: kotlinx.coroutines.CoroutineScope,
@@ -781,33 +733,7 @@ private fun ModuleBottomSheetContent(
             .fillMaxWidth()
             .padding(bottom = 24.dp)
     ) {
-        // 标题
-        Text(
-            text = stringResource(R.string.menu_options),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-        )
-
-        // 菜单选项网格
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(menuItems) { menuItem ->
-                ModuleBottomSheetMenuItemView(
-                    menuItem = menuItem
-                )
-            }
-        }
-
         // 排序选项
-        Spacer(modifier = Modifier.height(24.dp))
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
-
         Text(
             text = stringResource(R.string.sort_options),
             style = MaterialTheme.typography.titleMedium,
@@ -871,59 +797,6 @@ private fun ModuleBottomSheetContent(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ModuleBottomSheetMenuItemView(menuItem: ModuleBottomSheetMenuItem) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "menuItemScale"
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .scale(scale)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null
-            ) { menuItem.onClick() }
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Surface(
-            modifier = Modifier.size(48.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        ) {
-            Box(
-                contentAlignment = Alignment.Center
-            ) {
-                YukiIcon(
-                    imageVector = menuItem.icon,
-                    contentDescription = stringResource(menuItem.titleRes),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = stringResource(menuItem.titleRes),
-            style = MaterialTheme.typography.labelSmall,
-            textAlign = TextAlign.Center,
-            maxLines = 2
-        )
     }
 }
 

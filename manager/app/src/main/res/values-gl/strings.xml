@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Permite que esta aplicación cree atallos na pantalla de inicio nos axustes de MIUI e téntao de novo</string>
     <string name="module_shortcut_permission_tip_oppo">Permite que esta aplicación cree atallos na pantalla de inicio nos axustes do sistema e téntao de novo</string>
     <string name="module_shortcut_permission_tip_default">Comproba os permisos do launcher e permite a creación de atallos na pantalla de inicio, despois téntao de novo</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Confirmar a restauración do módulo</string>
-    <string name="restore_confirm_message">Esta operación sobrescribirá todos os módulos existentes. Continuar?</string>
     <string name="confirm">Confirmar</string>
     <string name="cancel">Cancelar</string>
-    <!-- Backup related -->
-    <string name="backup_success">Copia de seguranza correcta (tar.gz)</string>
-    <string name="backup_failed">Erro na copia de seguranza: %1$s</string>
-    <string name="backup_modules">Copia de seguranza de módulos</string>
-    <string name="restore_modules">Restaurar módulos</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Módulos restaurados correctamente, é necesario reiniciar</string>
-    <string name="restore_failed">Erro na restauración: %1$s</string>
-    <string name="restart_now">Reiniciar agora</string>
-    <string name="unknown_error">Erro descoñecido</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Erro na execución do comando: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Copia de seguranza rematada</string>
     <string name="allowlist_backup_failed">Erro na copia da lista de permitidos: %1$s</string>

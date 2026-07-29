@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Bitte erlaube dieser App in den MIUI-Einstellungen das Erstellen von Startbildschirm-Verknüpfungen und versuche es erneut</string>
     <string name="module_shortcut_permission_tip_oppo">Bitte erlaube dieser App in den Systemeinstellungen das Erstellen von Startbildschirm-Verknüpfungen und versuche es erneut</string>
     <string name="module_shortcut_permission_tip_default">Bitte prüfe die Launcher-Berechtigungen und erlaube das Erstellen von Startbildschirm-Verknüpfungen, dann versuche es erneut</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Modul-Wiederherstellung bestätigen</string>
-    <string name="restore_confirm_message">Diese Operation wird alle vorhandenen Module überschreiben. Fortfahren?</string>
     <string name="confirm">Bestätigen</string>
     <string name="cancel">Abbrechen</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sicherung erfolgreich (tar.gz)</string>
-    <string name="backup_failed">Sicherung fehlgeschlagen: %1$s</string>
-    <string name="backup_modules">sicherungsmodule</string>
-    <string name="restore_modules">wiederherstellen</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Module erfolgreich wiederhergestellt, Neustart erforderlich</string>
-    <string name="restore_failed">Wiederherstellung fehlgeschlagen: %1$s</string>
-    <string name="restart_now">Jetzt Neustarten</string>
-    <string name="unknown_error">Ein unbekannter Fehler ist aufgetreten</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Befehlsausführung fehlgeschlagen: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Sicherung erfolgreich erlaubt</string>
     <string name="allowlist_backup_failed">Sicherung der erlaubten Liste fehlgeschlagen: %1$s</string>

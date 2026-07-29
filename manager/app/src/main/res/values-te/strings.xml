@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">దయచేసి MIUI సెట్టింగ్‌లలో ఈ యాప్‌కు హోమ్ స్క్రీన్ షార్ట్‌కట్‌లను సృష్టించడానికి అనుమతి ఇవ్వండి, తర్వాత మళ్ళీ ప్రయత్నించండి</string>
     <string name="module_shortcut_permission_tip_oppo">దయచేసి సిస్టమ్ సెట్టింగ్‌లలో ఈ యాప్‌కు హోమ్ స్క్రీన్ షార్ట్‌కట్‌లను సృష్టించడానికి అనుమతి ఇవ్వండి, తర్వాత మళ్ళీ ప్రయత్నించండి</string>
     <string name="module_shortcut_permission_tip_default">దయచేసి లాంచర్ అనుమతులను తనిఖీ చేయండి మరియు హోమ్ స్క్రీన్ షార్ట్‌కట్‌లను సృష్టించడానికి అనుమతి ఇవ్వండి, తర్వాత మళ్ళీ ప్రయత్నించండి</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">మాడ్యూల్ పునరుద్ధరణను నిర్ధారించండి</string>
-    <string name="restore_confirm_message">ఈ ఆపరేషన్ అన్ని ప్రస్తుత మాడ్యూల్‌లను ఓవర్‌రైట్ చేస్తుంది. కొనసాగించాలా?</string>
     <string name="confirm">నిర్ధారించండి</string>
     <string name="cancel">రద్దు చేయండి</string>
-    <!-- Backup related -->
-    <string name="backup_success">బ్యాకప్ విజయవంతం (tar.gz)</string>
-    <string name="backup_failed">బ్యాకప్ విఫలమైంది: %1$s</string>
-    <string name="backup_modules">మాడ్యూల్‌లను బ్యాకప్ చేయండి</string>
-    <string name="restore_modules">మాడ్యూల్‌లను పునరుద్ధరించండి</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">మాడ్యూల్‌లు విజయవంతంగా పునరుద్ధరించబడ్డాయి, రీస్టార్ట్ అవసరం</string>
-    <string name="restore_failed">పునరుద్ధరణ విఫలమైంది: %1$s</string>
-    <string name="restart_now">ఇప్పుడు రీస్టార్ట్ చేయండి</string>
-    <string name="unknown_error">తెలియని లోపం</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">కమాండ్ అమలు విఫలమైంది: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">బ్యాకప్ పూర్తయింది</string>
     <string name="allowlist_backup_failed">అనుమతి జాబితా బ్యాకప్ విఫలమైంది: %1$s</string>

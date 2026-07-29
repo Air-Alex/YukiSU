@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Разрешите этому приложению создавать ярлыки на рабочем столе в настройках MIUI, затем повторите попытку</string>
     <string name="module_shortcut_permission_tip_oppo">Разрешите этому приложению создавать ярлыки на рабочем столе в настройках системы, затем повторите попытку</string>
     <string name="module_shortcut_permission_tip_default">Проверьте разрешения лаунчера и разрешите создание ярлыков на рабочем столе, затем повторите попытку</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Подтвердите восстановление модуля</string>
-    <string name="restore_confirm_message">Эта операция перезапишет все существующие модули. Продолжить?</string>
     <string name="confirm">Подтвердить</string>
     <string name="cancel">Отмена</string>
-    <!-- Backup related -->
-    <string name="backup_success">Резервная копия создана успешно</string>
-    <string name="backup_failed">Ошибка резервного копирования: %1$s</string>
-    <string name="backup_modules">Резервное копирование модулей</string>
-    <string name="restore_modules">Восстановить модули</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Модули восстановлены, требуется перезагрузка</string>
-    <string name="restore_failed">Ошибка восстановления: %1$s</string>
-    <string name="restart_now">Перезапустить сейчас</string>
-    <string name="unknown_error">Неизвестная ошибка</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Выполнение команды не удалось: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Резервная копия создана успешно</string>
     <string name="allowlist_backup_failed">Ошибка резервного копирования списка: %1$s</string>

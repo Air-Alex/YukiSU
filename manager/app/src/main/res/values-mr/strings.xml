@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">कृपया MIUI सेटिंग्जमध्ये या अॅपला होम स्क्रीन शॉर्टकट तयार करण्याची परवानगी द्या, नंतर पुन्हा प्रयत्न करा</string>
     <string name="module_shortcut_permission_tip_oppo">कृपया सिस्टम सेटिंग्जमध्ये या अॅपला होम स्क्रीन शॉर्टकट तयार करण्याची परवानगी द्या, नंतर पुन्हा प्रयत्न करा</string>
     <string name="module_shortcut_permission_tip_default">कृपया लाँचर परवानग्या तपासा आणि होम स्क्रीन शॉर्टकट तयार करण्याची परवानगी द्या, नंतर पुन्हा प्रयत्न करा</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">मॉड्यूल पुनर्संचयन निश्चित करा</string>
-    <string name="restore_confirm_message">ही क्रिया सर्व विद्यमान मॉड्यूल अधिलिखित करेल. पुढे जायचे?</string>
     <string name="confirm">पुष्टी करा</string>
     <string name="cancel">रद्द करा</string>
-    <!-- Backup related -->
-    <string name="backup_success">बॅकअप यशस्वी (tar.gz)</string>
-    <string name="backup_failed">बॅकअप अयशस्वी: %1$s</string>
-    <string name="backup_modules">मॉड्यूल्सचा बॅकअप घ्या</string>
-    <string name="restore_modules">मॉड्यूल पुनर्संचयित करा</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">मॉड्यूल यशस्वीरित्या पुनर्संचयित केले, रीस्टार्ट आवश्यक</string>
-    <string name="restore_failed">पुनर्संचयन अयशस्वी: %1$s</string>
-    <string name="restart_now">आता रीस्टार्ट करा</string>
-    <string name="unknown_error">अज्ञात त्रुटी</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">कमांड कार्यान्वित करण्यात अयशस्वी: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">अनुमती यादीचा यशस्वीरित्या बॅकअप घेतला</string>
     <string name="allowlist_backup_failed">अनुमती यादीचा बॅकअप घेण्यात अयशस्वी: %1$s</string>

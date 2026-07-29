@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">يرجى السماح لهذا التطبيق بإنشاء اختصارات الشاشة الرئيسية في إعدادات MIUI، ثم أعد المحاولة</string>
     <string name="module_shortcut_permission_tip_oppo">يرجى السماح لهذا التطبيق بإنشاء اختصارات الشاشة الرئيسية في إعدادات النظام، ثم أعد المحاولة</string>
     <string name="module_shortcut_permission_tip_default">يرجى التحقق من أذونات المشغّل والسماح بإنشاء اختصارات الشاشة الرئيسية، ثم أعد المحاولة</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">تأكيد استعادة الوحدة</string>
-    <string name="restore_confirm_message">هذه العملية سوف تستبدل جميع الوحدات الموجودة. هل تريد المتابعة؟</string>
     <string name="confirm">تأكيد</string>
     <string name="cancel">إلغاء</string>
-    <!-- Backup related -->
-    <string name="backup_success">النسخ الاحتياطي ناجح (tar.gz)</string>
-    <string name="backup_failed">فشل النسخ الاحتياطي: %1$s</string>
-    <string name="backup_modules">وحدات النسخ الاحتياطي</string>
-    <string name="restore_modules">استعادة الوحدات</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">تم استعادة الوحدات بنجاح, إعادة التشغيل مطلوبة</string>
-    <string name="restore_failed">فشل الاستعادة: %1$s</string>
-    <string name="restart_now">أعد تشغيل التطبيق الآن</string>
-    <string name="unknown_error">خطأ غير معروف</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">فشل تنفيذ الأوامر: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">السماح بالنسخ الاحتياطي للقائمة بنجاح</string>
     <string name="allowlist_backup_failed">فشل النسخ الاحتياطي لقائمة السماح: %1$s</string>

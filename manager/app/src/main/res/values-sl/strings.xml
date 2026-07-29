@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Dovolite tej aplikaciji ustvarjanje bližnjic na začetnem zaslonu v nastavitvah MIUI, nato poskusite znova</string>
     <string name="module_shortcut_permission_tip_oppo">Dovolite tej aplikaciji ustvarjanje bližnjic na začetnem zaslonu v sistemskih nastavitvah, nato poskusite znova</string>
     <string name="module_shortcut_permission_tip_default">Preverite dovoljenja zaganjalnika in dovolite ustvarjanje bližnjic na začetnem zaslonu, nato poskusite znova</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Potrdi obnovitev modula</string>
-    <string name="restore_confirm_message">To dejanje bo prepisalo vse obstoječe module. Nadaljujem?</string>
     <string name="confirm">Potrdi</string>
     <string name="cancel">Prekliči</string>
-    <!-- Backup related -->
-    <string name="backup_success">Varnostna kopija uspešna (tar.gz)</string>
-    <string name="backup_failed">Varnostna kopija ni uspela: %1$s</string>
-    <string name="backup_modules">Varnostno kopirajte module</string>
-    <string name="restore_modules">Obnovi module</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduli uspešno obnovljeni, potreben je ponovni zagon</string>
-    <string name="restore_failed">Obnovitev ni uspela: %1$s</string>
-    <string name="restart_now">Znova zaženi zdaj</string>
-    <string name="unknown_error">Neznana napaka</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Izvedba ukaza ni uspela: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Seznam dovoljenih je uspešno varnostno kopiran</string>
     <string name="allowlist_backup_failed">Varnostno kopiranje seznama dovoljenih ni uspelo: %1$s</string>

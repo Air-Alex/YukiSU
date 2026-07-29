@@ -170,23 +170,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Permita que este aplicativo crie atalhos na tela inicial nas configurações da MIUI e tente novamente</string>
     <string name="module_shortcut_permission_tip_oppo">Permita que este aplicativo crie atalhos na tela inicial nas configurações do sistema e tente novamente</string>
     <string name="module_shortcut_permission_tip_default">Verifique as permissões do launcher e permita a criação de atalhos na tela inicial, depois tente novamente</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Confirmar restauração do módulo</string>
-    <string name="restore_confirm_message">Esta operação substituirá todos os módulos existentes. Continuar?</string>
     <string name="confirm">Confirmar</string>
     <string name="cancel">Cancelar</string>
-    <!-- Backup related -->
-    <string name="backup_success">Backup bem-sucedido (tar.gz)</string>
-    <string name="backup_failed">Falha no backup: %1$s</string>
-    <string name="backup_modules">Backup de módulos</string>
-    <string name="restore_modules">Restaurar módulos</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Módulos restaurados com sucesso, é necessário reiniciar</string>
-    <string name="restore_failed">Falha na restauração: %1$s</string>
-    <string name="restart_now">Reiniciar agora</string>
-    <string name="unknown_error">Erro desconhecido</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Falha ao executar o comando: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Lista de permissões salva com sucesso</string>
     <string name="allowlist_backup_failed">Falha ao fazer backup da lista de permissões: %1$s</string>

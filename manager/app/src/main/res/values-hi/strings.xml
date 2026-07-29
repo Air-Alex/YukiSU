@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">कृपया MIUI सेटिंग्स में इस ऐप को होम स्क्रीन शॉर्टकट बनाने की अनुमति दें, फिर पुनः प्रयास करें</string>
     <string name="module_shortcut_permission_tip_oppo">कृपया सिस्टम सेटिंग्स में इस ऐप को होम स्क्रीन शॉर्टकट बनाने की अनुमति दें, फिर पुनः प्रयास करें</string>
     <string name="module_shortcut_permission_tip_default">कृपया लॉन्चर अनुमतियां जांचें और होम स्क्रीन शॉर्टकट बनाने की अनुमति दें, फिर पुनः प्रयास करें</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">मॉड्यूल पुनर्स्थापना की पुष्टि करें</string>
-    <string name="restore_confirm_message">यह ऑपरेशन सभी मौजूदा मॉड्यूल को अधिलेखित कर देगा। जारी रखें?</string>
     <string name="confirm">पुष्टि करें</string>
     <string name="cancel">रद्द करें</string>
-    <!-- Backup related -->
-    <string name="backup_success">बैकअप सफल (tar.gz)</string>
-    <string name="backup_failed">बैकअप विफल: %1$s</string>
-    <string name="backup_modules">मॉड्यूल का बैकअप लें</string>
-    <string name="restore_modules">मॉड्यूल पुनर्स्थापित करें</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">मॉड्यूल सफलतापूर्वक पुनर्स्थापित किए गए, पुनः आरंभ आवश्यक है</string>
-    <string name="restore_failed">पुनर्स्थापना विफल: %1$s</string>
-    <string name="restart_now">अभी पुनः आरंभ करें</string>
-    <string name="unknown_error">अज्ञात त्रुटि</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">कमांड निष्पादित करने में विफल: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">अनुमति सूची का सफलतापूर्वक बैकअप लिया गया</string>
     <string name="allowlist_backup_failed">अनुमति सूची का बैकअप लेने में विफल: %1$s</string>

@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Dopustite ovoj aplikaciji stvaranje prečaca na početnom zaslonu u MIUI postavkama, zatim pokušajte ponovno</string>
     <string name="module_shortcut_permission_tip_oppo">Dopustite ovoj aplikaciji stvaranje prečaca na početnom zaslonu u postavkama sustava, zatim pokušajte ponovno</string>
     <string name="module_shortcut_permission_tip_default">Provjerite dopuštenja pokretača i dopustite stvaranje prečaca na početnom zaslonu, zatim pokušajte ponovno</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Potvrdi vraćanje modula</string>
-    <string name="restore_confirm_message">Ova će operacija prebrisati sve postojeće module. Nastaviti?</string>
     <string name="confirm">Potvrdi</string>
     <string name="cancel">Odustani</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sigurnosna kopija uspješna (tar.gz)</string>
-    <string name="backup_failed">Sigurnosna kopija nije uspjela: %1$s</string>
-    <string name="backup_modules">Sigurnosno kopiraj module</string>
-    <string name="restore_modules">Vraćanje modula</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduli uspješno vraćeni, potrebno je ponovno pokretanje</string>
-    <string name="restore_failed">Vraćanje nije uspjelo: %1$s</string>
-    <string name="restart_now">Ponovno pokreni sada</string>
-    <string name="unknown_error">Nepoznata pogreška</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Izvršenje naredbe nije uspjelo: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Popis dopuštenih uspješno je sigurnosno kopiran</string>
     <string name="allowlist_backup_failed">Sigurnosno kopiranje popisa dopuštenih nije uspjelo: %1$s</string>

@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Palun lubage sellel rakendusel luua avakuva otseteid MIUI seadetes, seejärel proovige uuesti</string>
     <string name="module_shortcut_permission_tip_oppo">Palun lubage sellel rakendusel luua avakuva otseteid süsteemiseadetes, seejärel proovige uuesti</string>
     <string name="module_shortcut_permission_tip_default">Palun kontrollige käivitaja õigusi ja lubage avakuva otseteede loomine, seejärel proovige uuesti</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Kinnita mooduli taastamine</string>
-    <string name="restore_confirm_message">See toiming kirjutab üle kõik olemasolevad moodulid. Kas jätkata?</string>
     <string name="confirm">Kinnita</string>
     <string name="cancel">Tühista</string>
-    <!-- Backup related -->
-    <string name="backup_success">Varundamine õnnestus (tar.gz)</string>
-    <string name="backup_failed">Varundamine ebaõnnestus: %1$s</string>
-    <string name="backup_modules">Varundage moodulid</string>
-    <string name="restore_modules">Taastage moodulid</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moodulid edukalt taastatud, vajalik on taaskäivitus</string>
-    <string name="restore_failed">Taastamine ebaõnnestus: %1$s</string>
-    <string name="restart_now">Taaskäivita kohe</string>
-    <string name="unknown_error">Tundmatu viga</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Käsu täitmine nurjus: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Lubade loendi varundamine õnnestus</string>
     <string name="allowlist_backup_failed">Lubatud loendi varundamine ebaõnnestus: %1$s</string>

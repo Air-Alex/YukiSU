@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Дозвольте цьому застосунку створювати ярлики на головному екрані в налаштуваннях MIUI, а потім повторіть спробу</string>
     <string name="module_shortcut_permission_tip_oppo">Дозвольте цьому застосунку створювати ярлики на головному екрані в налаштуваннях системи, а потім повторіть спробу</string>
     <string name="module_shortcut_permission_tip_default">Перевірте дозволи лаунчера й дозвольте створення ярликів на головному екрані, а потім повторіть спробу</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Підтвердити відновлення модулів</string>
-    <string name="restore_confirm_message">Ця операція перезапише всі існуючі модулі. Продовжити?</string>
     <string name="confirm">Підтвердити</string>
     <string name="cancel">Скасувати</string>
-    <!-- Backup related -->
-    <string name="backup_success">Резервне копіювання успішне (tar.gz)</string>
-    <string name="backup_failed">Не вдалося створити резервну копію: %1$s</string>
-    <string name="backup_modules">резервне копіювання модулів</string>
-    <string name="restore_modules">відновлення модулів</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Модулі успішно відновлено, потрібне перезавантаження</string>
-    <string name="restore_failed">Не вдалося відновити: %1$s</string>
-    <string name="restart_now">Перезавантажити зараз</string>
-    <string name="unknown_error">Невідома помилка</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Не вдалося виконати команду: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Резервне копіювання білого списку успішне</string>
     <string name="allowlist_backup_failed">Не вдалося створити резервну копію білого списку: %1$s</string>

@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Leiskite šiai programai kurti pradžios ekrano nuorodas MIUI parametruose, tada bandykite dar kartą</string>
     <string name="module_shortcut_permission_tip_oppo">Leiskite šiai programai kurti pradžios ekrano nuorodas sistemos parametruose, tada bandykite dar kartą</string>
     <string name="module_shortcut_permission_tip_default">Patikrinkite paleidyklės leidimus ir leiskite kurti pradžios ekrano nuorodas, tada bandykite dar kartą</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Patvirtinti modulio atkūrimą</string>
-    <string name="restore_confirm_message">Šis veiksmas perrašys visus esamus modulius. Tęsti?</string>
     <string name="confirm">Patvirtinti</string>
     <string name="cancel">Atšaukti</string>
-    <!-- Backup related -->
-    <string name="backup_success">Atsarginė kopija sėkminga (tar.gz)</string>
-    <string name="backup_failed">Atsarginė kopija nepavyko: %1$s</string>
-    <string name="backup_modules">Atsarginės modulių kopijos</string>
-    <string name="restore_modules">Atkurti modulius</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">Moduliai sėkmingai atkurti, reikia paleisti iš naujo</string>
-    <string name="restore_failed">Atkūrimas nepavyko: %1$s</string>
-    <string name="restart_now">Paleisti iš naujo dabar</string>
-    <string name="unknown_error">Nežinoma klaida</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Nepavyko vykdyti komandos: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Leidžiamų sąrašo atsarginė kopija sėkmingai sukurta</string>
     <string name="allowlist_backup_failed">Nepavyko sukurti atsarginės leidimų sąrašo kopijos: %1$s</string>

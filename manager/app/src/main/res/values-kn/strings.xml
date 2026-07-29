@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">ದಯವಿಟ್ಟು MIUI ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಈ ಆ್ಯಪ್‌ಗೆ ಹೋಮ್ ಸ್ಕ್ರೀನ್ ಶಾರ್ಟ್‌ಕಟ್‌ಗಳನ್ನು ರಚಿಸಲು ಅನುಮತಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ</string>
     <string name="module_shortcut_permission_tip_oppo">ದಯವಿಟ್ಟು ಸಿಸ್ಟಂ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಈ ಆ್ಯಪ್‌ಗೆ ಹೋಮ್ ಸ್ಕ್ರೀನ್ ಶಾರ್ಟ್‌ಕಟ್‌ಗಳನ್ನು ರಚಿಸಲು ಅನುಮತಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ</string>
     <string name="module_shortcut_permission_tip_default">ದಯವಿಟ್ಟು ಲಾಂಚರ್ ಅನುಮತಿಗಳನ್ನು ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಹೋಮ್ ಸ್ಕ್ರೀನ್ ಶಾರ್ಟ್‌ಕಟ್‌ಗಳನ್ನು ರಚಿಸಲು ಅನುಮತಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">ಮಾಡ್ಯೂಲ್ ಮರುಸ್ಥಾಪನೆ ಖಚಿತಪಡಿಸಿ</string>
-    <string name="restore_confirm_message">ಈ ಕಾರ್ಯಾಚರಣೆಯು ಎಲ್ಲಾ ಅಸ್ತಿತ್ವದಲ್ಲಿರುವ ಮಾಡ್ಯೂಲ್‌ಗಳನ್ನು ಮೇಲ್ಬರಹ ಮಾಡುತ್ತದೆ. ಮುಂದುವರಿಯುವುದೇ?</string>
     <string name="confirm">ಖಚಿತಪಡಿಸಿ</string>
     <string name="cancel">ರದ್ದುಮಾಡಿ</string>
-    <!-- Backup related -->
-    <string name="backup_success">ಬ್ಯಾಕಪ್ ಯಶಸ್ವಿ (tar.gz)</string>
-    <string name="backup_failed">ಬ್ಯಾಕಪ್ ವಿಫಲವಾಗಿದೆ: %1$s</string>
-    <string name="backup_modules">ಮಾಡ್ಯೂಲ್‌ಗಳನ್ನು ಬ್ಯಾಕಪ್ ಮಾಡಿ</string>
-    <string name="restore_modules">ಮಾಡ್ಯೂಲ್ಗಳನ್ನು ಮರುಸ್ಥಾಪಿಸಿ</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">ಮಾಡ್ಯೂಲ್‌ಗಳನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಮರುಸ್ಥಾಪಿಸಲಾಗಿದೆ, ಮರುಪ್ರಾರಂಭ ಅಗತ್ಯವಿದೆ</string>
-    <string name="restore_failed">ಮರುಸ್ಥಾಪನೆ ವಿಫಲವಾಗಿದೆ: %1$s</string>
-    <string name="restart_now">ಈಗ ಮರುಪ್ರಾರಂಭಿಸಿ</string>
-    <string name="unknown_error">ಅಜ್ಞಾತ ದೋಷ</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">ಆಜ್ಞೆಯನ್ನು ಕಾರ್ಯಗತಗೊಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">ಅನುಮತಿಸುವ ಪಟ್ಟಿಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಬ್ಯಾಕಪ್ ಮಾಡಲಾಗಿದೆ</string>
     <string name="allowlist_backup_failed">ಅನುಮತಿ ಪಟ್ಟಿಯನ್ನು ಬ್ಯಾಕಪ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ: %1$s</string>

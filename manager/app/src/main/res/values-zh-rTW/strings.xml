@@ -179,23 +179,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">請在 MIUI 設定中為本應用開啟桌面捷徑權限後重試</string>
     <string name="module_shortcut_permission_tip_oppo">請在系統設定中為本應用開啟桌面捷徑權限後重試</string>
     <string name="module_shortcut_permission_tip_default">請檢查啟動器權限，允許本應用建立桌面捷徑後重試</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">確定還原模組</string>
-    <string name="restore_confirm_message">此操作將覆蓋所有現有模組，是否繼續？</string>
     <string name="confirm">確定</string>
     <string name="cancel">取消</string>
-    <!-- Backup related -->
-    <string name="backup_success">備份成功 (tar.gz)</string>
-    <string name="backup_failed">備份失敗：%1$s</string>
-    <string name="backup_modules">備份模組</string>
-    <string name="restore_modules">還原模組</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">模組已成功還原，需重新啟動生效</string>
-    <string name="restore_failed">還原失敗：%1$s</string>
-    <string name="restart_now">立即重新啟動</string>
-    <string name="unknown_error">未知錯誤</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">命令執行失敗：%1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">應用程式清單備份成功</string>
     <string name="allowlist_backup_failed">應用程式清單備份失敗：%1$s</string>

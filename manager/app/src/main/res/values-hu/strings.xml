@@ -168,23 +168,8 @@
     <string name="module_shortcut_permission_tip_xiaomi">Kérjük, engedélyezze ennek az alkalmazásnak a kezdőképernyő-parancsikonok létrehozását a MIUI beállításaiban, majd próbálja újra</string>
     <string name="module_shortcut_permission_tip_oppo">Kérjük, engedélyezze ennek az alkalmazásnak a kezdőképernyő-parancsikonok létrehozását a rendszerbeállításokban, majd próbálja újra</string>
     <string name="module_shortcut_permission_tip_default">Kérjük, ellenőrizze az indító engedélyeit, és engedélyezze a kezdőképernyő-parancsikonok létrehozását, majd próbálja újra</string>
-    <!-- Restore related -->
-    <string name="restore_confirm_title">Modul visszaállításának megerősítése</string>
-    <string name="restore_confirm_message">Ez a művelet felülír minden meglévő modult. Folytatja?</string>
     <string name="confirm">Megerősítés</string>
     <string name="cancel">Mégse</string>
-    <!-- Backup related -->
-    <string name="backup_success">Sikeres biztonsági mentés (tar.gz)</string>
-    <string name="backup_failed">A biztonsági mentés sikertelen: %1$s</string>
-    <string name="backup_modules">Készítsen biztonsági másolatot a modulokról</string>
-    <string name="restore_modules">Modulok visszaállítása</string>
-    <!-- Restore related messages -->
-    <string name="restore_success">A modulok sikeresen visszaállítva, újraindítás szükséges</string>
-    <string name="restore_failed">A visszaállítás sikertelen: %1$s</string>
-    <string name="restart_now">Újraindítás most</string>
-    <string name="unknown_error">Ismeretlen hiba</string>
-    <!-- Command related -->
-    <string name="command_execution_failed">Nem sikerült végrehajtani a parancsot: %1$s</string>
     <!-- Allowlist related -->
     <string name="allowlist_backup_success">Az engedélyezési lista biztonsági mentése sikeresen megtörtént</string>
     <string name="allowlist_backup_failed">Nem sikerült biztonsági másolatot készíteni az engedélyezési listáról: %1$s</string>
