@@ -20,6 +20,7 @@ bool is_safe_mode();
 
 // Process utilities
 bool switch_mnt_ns(pid_t pid);
+void detach_process_group(bool use_init_pgrp);
 void switch_cgroups();
 void umask(mode_t mask);
 

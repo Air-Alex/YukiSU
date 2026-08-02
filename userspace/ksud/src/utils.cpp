@@ -197,6 +197,19 @@ bool switch_mnt_ns(pid_t pid) {
     return true;
 }
 
+void detach_process_group(bool use_init_pgrp) {
+    if (use_init_pgrp) {
+        if (set_init_pgrp() == 0) {
+            return;
+        }
+        LOGW("Failed to switch to init process group, falling back to a private group");
+    }
+
+    if (setpgid(0, 0) != 0) {
+        LOGW("Failed to detach process group: %s", strerror(errno));
+    }
+}
+
 namespace {
 void switch_cgroup(const char* grp, pid_t pid) {
     const std::string path = std::string(grp) + "/cgroup.procs";

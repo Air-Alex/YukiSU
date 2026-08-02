@@ -10,12 +10,14 @@
 #include "metamodule.hpp"
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cerrno>
 #include <climits>
 #include <cstdlib>
 #include <cstring>
@@ -536,10 +538,6 @@ void apply_common_script_env(const CommonScriptEnv& env, const char* module_id,
 std::string get_metamodule_id() {
     return get_metamodule_id_impl();
 }
-
-// Forward declaration for run_script (defined below); used by module_run_action,
-// exec_module_scripts, exec_common_scripts
-int run_script(const std::string& script, bool block, const std::string& module_id = "");
 
 int regenerate_preinit_rc() {
     const std::filesystem::path preinit_dir = preinit_ksu_dir();
@@ -1136,7 +1134,8 @@ int handle_updated_modules() {
     return 0;
 }
 
-int run_script(const std::string& script, bool block, const std::string& module_id) {
+int run_script(const std::string& script, bool block, const std::string& module_id,
+               const char* extra_env_name, const char* extra_env_value) {
     if (!file_exists(script))
         return 0;
 
@@ -1163,34 +1162,92 @@ int run_script(const std::string& script, bool block, const std::string& module_
     const char* script_path = script.c_str();
     const char* script_dir_path = script_dir.c_str();
     const char* module_id_cstr = module_id.c_str();
+    const char* extra_env_name_cstr = extra_env_name;
+    const char* extra_env_value_cstr = extra_env_value;
+
+    // Rust's Command::spawn waits for pre_exec and exec through an internal
+    // CLOEXEC error pipe. Mirror that behavior: the parent must not return to
+    // init until the child has detached, switched cgroups, and entered exec.
+    int exec_status_pipe[2] = {-1, -1};
+    if (pipe2(exec_status_pipe, O_CLOEXEC) != 0) {
+        LOGE("Failed to create exec status pipe for script %s: %s", script.c_str(),
+             strerror(errno));
+        return -1;
+    }
 
     const pid_t pid = fork();
     if (pid == 0) {
         // Child process
-        setsid();
+        close(exec_status_pipe[0]);
 
-        // Switch cgroups to escape from parent cgroup (like Rust version)
+        // Match upstream's Command::pre_exec setup.
+        detach_process_group(true);
         switch_cgroups();
 
         // Change to script directory (like Rust version)
-        chdir(script_dir_path);
+        if (chdir(script_dir_path) != 0) {
+            const int child_errno = errno;
+            ssize_t ignored;
+            do {
+                ignored = write(exec_status_pipe[1], &child_errno, sizeof(child_errno));
+            } while (ignored < 0 && errno == EINTR);
+            _exit(127);
+        }
 
         // Set environment variables (matching Rust version's get_common_script_envs)
         apply_common_script_env(common_env, module_id_cstr, true);
+        if (extra_env_name_cstr != nullptr && extra_env_value_cstr != nullptr) {
+            setenv(extra_env_name_cstr, extra_env_value_cstr, 1);
+        }
 
         // Execute with busybox sh
         execl(busybox_path, "sh", script_path, nullptr);
+
+        const int child_errno = errno;
+        ssize_t ignored;
+        do {
+            ignored = write(exec_status_pipe[1], &child_errno, sizeof(child_errno));
+        } while (ignored < 0 && errno == EINTR);
         _exit(127);
     }
 
+    close(exec_status_pipe[1]);
+
     if (pid < 0) {
+        close(exec_status_pipe[0]);
         LOGE("Failed to fork for script: %s", script.c_str());
+        return -1;
+    }
+
+    int child_errno = 0;
+    ssize_t received;
+    do {
+        received = read(exec_status_pipe[0], &child_errno, sizeof(child_errno));
+    } while (received < 0 && errno == EINTR);
+    close(exec_status_pipe[0]);
+
+    if (received > 0) {
+        int ignored_status;
+        while (waitpid(pid, &ignored_status, 0) < 0 && errno == EINTR) {
+        }
+        LOGE("Failed to exec script %s: %s", script.c_str(), strerror(child_errno));
+        return -1;
+    }
+    if (received < 0) {
+        LOGE("Failed to receive exec status for script %s: %s", script.c_str(), strerror(errno));
         return -1;
     }
 
     if (block) {
         int status;
-        waitpid(pid, &status, 0);
+        pid_t waited;
+        do {
+            waited = waitpid(pid, &status, 0);
+        } while (waited < 0 && errno == EINTR);
+        if (waited < 0) {
+            LOGE("Failed to wait for script %s: %s", script.c_str(), strerror(errno));
+            return -1;
+        }
         return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     }
 

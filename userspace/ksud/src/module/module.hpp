@@ -32,6 +32,8 @@ int handle_updated_modules();
 int regenerate_preinit_rc();
 
 // Script execution
+int run_script(const std::string& script, bool block, const std::string& module_id = "",
+               const char* extra_env_name = nullptr, const char* extra_env_value = nullptr);
 int exec_stage_script(const std::string& stage, bool block);
 int exec_common_scripts(const std::string& stage_dir, bool block);
 int load_sepolicy_rule();
