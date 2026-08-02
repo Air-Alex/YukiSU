@@ -18,8 +18,10 @@ kernelsu-objs += hook/tp_marker.o
 
 ifeq ($(CONFIG_ARM64),y)
   kernelsu-objs += hook/arm64/patch_memory.o hook/arm64/syscall_hook.o
-else
+else ifneq ($(filter y m,$(CONFIG_KSU)),)
+ifeq ($(filter clean mrproper distclean,$(MAKECMDGOALS)),)
   $(error YukiSU supports ARM64 kernels only)
+endif
 endif
 kernelsu-objs += hook/setuid_hook.o
 kernelsu-objs += feature/kernel_umount.o
@@ -76,10 +78,10 @@ ccflags-y += -DCONFIG_KSU_DEBUG=1
 endif
 endif
 
-# SuperKey Support - enabled by default unless explicitly disabled
+# SuperKey support is enabled by default unless explicitly disabled.
 # To disable: make ... CONFIG_KSU_SUPERKEY=n
 ifneq ($(CONFIG_KSU_DISABLE_MANAGER),y)
-ifeq ($(CONFIG_KSU_SUPERKEY), y)
+ifeq ($(CONFIG_KSU_SUPERKEY),y)
 kernelsu-objs += manager/superkey.o
 ccflags-y += -DCONFIG_KSU_SUPERKEY
 ifneq ($(KSU_SUPERKEY),)
@@ -88,9 +90,9 @@ endif
 endif
 endif
 
-ccflags-y += -Wno-strict-prototypes
-ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable -Wno-missing-braces
-ccflags-y += -Wno-int-to-pointer-cast -Wno-declaration-after-statement
+ccflags-y += -Wno-strict-prototypes -Wno-declaration-after-statement
+ccflags-y += -Wno-unused-function -Wno-unused-variable -Wno-missing-braces
+ccflags-y += -Wno-int-to-pointer-cast
 
 ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
 ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
@@ -112,7 +114,6 @@ REPO_FALLBACK_BRANCH := main
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 CURL_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin curl
 
-KDIR := $(KDIR)
 MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
 KSU_GITHUB_VERSION := $(shell $(CURL_BIN) -s "https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
@@ -132,8 +133,15 @@ KSU_VERSION_API := $(shell cd $(KSU_SRC) 2>/dev/null && $(GIT_BIN) describe --ta
 
 LOCAL_GIT_EXISTS := $(shell test -e $(KSU_SRC)/../.git && echo 1 || echo 0)
 
+# Mark builds made from uncommitted KernelSU sources. Limit the status check to
+# the kernel module and its shared UAPI so unrelated changes elsewhere in the
+# enclosing repository do not change the LKM version string.
+ifeq ($(LOCAL_GIT_EXISTS),1)
+  KSU_GIT_DIRTY_SUFFIX := $(shell cd $(KSU_SRC) 2>/dev/null && GIT_OPTIONAL_LOCKS=0 $(GIT_BIN) -c core.autocrlf=true status --porcelain --untracked-files=normal -- . ../uapi 2>/dev/null | grep -q . && printf '%s' '-nc')
+endif
+
 define get_ksu_version_full
-v$1-$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD)@$(REPO_NAME)
+v$1-$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD)$(KSU_GIT_DIRTY_SUFFIX)@$(REPO_NAME)
 endef
 
 # Keep the numeric kernel version tied to the checked-out revision, just like the
@@ -175,21 +183,6 @@ ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
 ccflags-y += -DKSU_VERSION_FULL=\"$(KSU_VERSION_FULL)\"
 
 $(info -- YukiSU: SuperKey allows the manager app to authenticate using a password instead of APK signature verification. Use Superkey instead of custom signature verification.)
-
-KERNEL_VERSION := $(VERSION).$(PATCHLEVEL)
-KERNEL_TYPE := Non-GKI
-# Check for GKI 2.0 (5.10+ or 6.x+)
-ifneq ($(shell test \( $(VERSION) -ge 5 -a $(PATCHLEVEL) -ge 10 \) -o $(VERSION) -ge 6; echo $$?),0)
-# Check for GKI 1.0 (5.4)
-ifeq ($(shell test $(VERSION)-$(PATCHLEVEL) = 5-4; echo $$?),0)
-KERNEL_TYPE := GKI 1.0
-endif
-else
-KERNEL_TYPE := GKI 2.0
-endif
-$(info -- KERNEL_VERSION: $(KERNEL_VERSION))
-$(info -- KERNEL_TYPE: $(KERNEL_TYPE))
-
 
 # SELinux drivers check
 ifeq ($(shell grep -q "current_sid(void)" $(srctree)/security/selinux/include/objsec.h; echo $$?),0)
@@ -247,9 +240,6 @@ endif
 ifeq ($(shell grep -q "struct proc_ops " $(srctree)/include/linux/proc_fs.h; echo $$?),0)
 ccflags-y += -DKSU_COMPAT_HAS_PROC_OPS
 endif
-
-
-
 ifdef KSU_MANAGER_PACKAGE
 ccflags-y += -DKSU_MANAGER_PACKAGE=\"$(KSU_MANAGER_PACKAGE)\"
 $(info -- YukiSU Manager package name: $(KSU_MANAGER_PACKAGE))
