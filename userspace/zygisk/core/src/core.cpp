@@ -461,6 +461,13 @@ void load_modules_impl(JNIEnv *env) {
   close(sock);
   LOGI("zygiskd reports %u module(s)", count);
 
+  // Arm the temporary module-load policy before receiving the first module
+  // image. On policies without the memfd_file class, SCM_RIGHTS reception of
+  // zygiskd's read-only memfd requires temporary tmpfs:file access for the
+  // SCM_RIGHTS handoff plus fstat() and the read-only source mapping.
+  if (count > 0)
+    (void)arm_module_load_policy(0);
+
   for (uint32_t i = 0; i < count; ++i) {
     int s = connect_zygiskd();
     if (s < 0)
@@ -486,10 +493,6 @@ void load_modules_impl(JNIEnv *env) {
     close(lib_fd);
     if (mfd >= 0) {
       const bool use_system_tls = image_has_tls(mfd);
-      // Anonymous executable PT_LOAD mappings need execmem while this forked
-      // child is still in the zygote domain. The same lease is restored after
-      // all module pre-specialize callbacks.
-      (void)arm_module_load_policy(static_cast<int>(i));
       if (!use_system_tls && g_yuki_dlopen != nullptr &&
           g_yuki_dlsym != nullptr && g_yuki_dlclose != nullptr) {
         handle = g_yuki_dlopen(mfd, "");

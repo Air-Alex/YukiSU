@@ -89,6 +89,14 @@ static const char *ksu_tmpfs_hook_perms[] = {
     "read", "write", "open", "getattr", "map", "execute",
 };
 
+/* Read-only SCM_RIGHTS handoff and source mapping from su-domain zygiskd. */
+static const char *ksu_tmpfs_receive_perms[] = {
+    "read",
+    "open",
+    "getattr",
+    "map",
+};
+
 static const char *ksu_process_execmem_perms[] = {
     "execmem",
 };
@@ -254,7 +262,9 @@ static bool ksu_apply_process_av(struct policydb *db, const char *src, u32 av,
 }
 
 static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
-					  bool include_dir, bool include_tmpfs,
+					  bool include_dir,
+					  const char *const *tmpfs_perms,
+					  int tmpfs_perm_count,
 					  struct ksu_file_load_policy *state)
 {
 	struct selinux_policy *pol, *old_pol;
@@ -333,11 +343,12 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 		dir_add_av = dir_required_av & ~dir_direct_av;
 	}
 
-	tmpfs_type = include_tmpfs ? ksu_type_value_by_name(db, "tmpfs") : 0;
+	tmpfs_type = tmpfs_perms && tmpfs_perm_count > 0
+			 ? ksu_type_value_by_name(db, "tmpfs")
+			 : 0;
 	if (tmpfs_type) {
 		tmpfs_required_av =
-		    ksu_required_av(cls, ksu_tmpfs_hook_perms,
-				    ARRAY_SIZE(ksu_tmpfs_hook_perms));
+		    ksu_required_av(cls, tmpfs_perms, tmpfs_perm_count);
 		tmpfs_direct_av = ksu_direct_allowed_av(db, scontext->type,
 							tmpfs_type, cls->value);
 		tmpfs_add_av = tmpfs_required_av & ~tmpfs_direct_av;
@@ -369,8 +380,7 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 	}
 	if (tmpfs_add_av &&
 	    !ksu_apply_file_av(db, src_name, "tmpfs", tmpfs_add_av, true,
-			       ksu_tmpfs_hook_perms,
-			       ARRAY_SIZE(ksu_tmpfs_hook_perms))) {
+			       tmpfs_perms, tmpfs_perm_count)) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
@@ -402,8 +412,9 @@ out_unlock:
 int ksu_file_load_policy_allow_current(struct file *file,
 				       struct ksu_file_load_policy *state)
 {
-	return ksu_file_load_policy_allow_sid(file, current_sid(), false, true,
-					      state);
+	return ksu_file_load_policy_allow_sid(
+	    file, current_sid(), false, ksu_tmpfs_hook_perms,
+	    ARRAY_SIZE(ksu_tmpfs_hook_perms), state);
 }
 
 static u32 ksu_file_load_policy_cred_sid(const struct cred *cred)
@@ -431,7 +442,9 @@ int ksu_file_load_policy_allow_cred(struct file *file, const struct cred *cred,
 
 	if (!sid)
 		return -EINVAL;
-	return ksu_file_load_policy_allow_sid(file, sid, true, false, state);
+	return ksu_file_load_policy_allow_sid(
+	    file, sid, true, ksu_tmpfs_receive_perms,
+	    ARRAY_SIZE(ksu_tmpfs_receive_perms), state);
 }
 
 static int
