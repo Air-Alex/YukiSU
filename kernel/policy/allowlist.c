@@ -1,7 +1,6 @@
 #include <linux/capability.h>
 #include <linux/compiler.h>
 #include <linux/err.h>
-#include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/gfp.h>
 #include <linux/hashtable.h>
@@ -351,7 +350,6 @@ bool __ksu_is_allow_uid(uid_t uid)
 
 	return false;
 }
-EXPORT_SYMBOL(__ksu_is_allow_uid);
 
 bool __ksu_is_allow_uid_for_current(uid_t uid)
 {
@@ -361,7 +359,6 @@ bool __ksu_is_allow_uid_for_current(uid_t uid)
 	}
 	return __ksu_is_allow_uid(uid);
 }
-EXPORT_SYMBOL(__ksu_is_allow_uid_for_current);
 
 bool ksu_uid_should_umount(uid_t uid)
 {
