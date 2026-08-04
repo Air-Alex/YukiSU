@@ -19,12 +19,18 @@ int ensure_yukizygisk(bool ignore_if_exist) {
         const char* dest;
     };
     static const Payload payload[] = {
-        {"libzygisk.so", ZCORE_PATH},
-        {"libyukizncore.so", ZNCORE_PATH},
-        {"libyukilinker.so", ZYUKILINKER_PATH},
+        {"libzygisk64.so", ZCORE64_PATH},           {"libzygisk32.so", ZCORE32_PATH},
+        {"libyukizncore64.so", ZNCORE64_PATH},      {"libyukizncore32.so", ZNCORE32_PATH},
+        {"libyukilinker64.so", ZYUKILINKER64_PATH}, {"libyukilinker32.so", ZYUKILINKER32_PATH},
+    };
+    static constexpr const char* legacy_payload[] = {
+        "/data/adb/ksu/lib/yukizygisk/libzygisk.so",
+        "/data/adb/ksu/lib/yukizygisk/libyukizncore.so",
+        "/data/adb/ksu/lib/yukizygisk/libyukilinker.so",
     };
 
     bool embedded = false;
+    int result = 0;
     for (const auto& p : payload) {
         const uint8_t* data = nullptr;
         size_t size = 0;
@@ -46,19 +52,31 @@ int ensure_yukizygisk(bool ignore_if_exist) {
         const uint8_t* data = nullptr;
         size_t size = 0;
         if (!get_asset(p.asset, data, size)) {
+            LOGE("yukizygisk: embedded payload missing: %s", p.asset);
+            result = 1;
             continue;
         }
 
         (void)ignore_if_exist;
         if (!copy_asset_to_file(p.asset, p.dest)) {
             LOGE("yukizygisk: failed to stage %s", p.dest);
+            result = 1;
             continue;
         }
         chmod(p.dest, 0644);
         lsetfilecon(p.dest, SYSTEM_LIB_CON);
         LOGI("yukizygisk: staged %s", p.dest);
     }
-    return 0;
+    if (result == 0) {
+        for (const char* path : legacy_payload) {
+            std::error_code ec;
+            if (!std::filesystem::remove(path, ec) && ec) {
+                LOGW("yukizygisk: failed to remove legacy payload %s: %s", path,
+                     ec.message().c_str());
+            }
+        }
+    }
+    return result;
 }
 
 }  // namespace ksud

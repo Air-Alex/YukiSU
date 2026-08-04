@@ -45,10 +45,15 @@ constexpr const char* LIBADBROOT_PATH = "/data/adb/ksu/lib/libadbroot.so";
 // Private to ksu's lib dir to avoid colliding with other zygisk implementations
 // under /data/adb/zygisk.
 constexpr const char* YUKIZYGISK_DIR = "/data/adb/ksu/lib/yukizygisk/";
-constexpr const char* ZCORE_PATH = "/data/adb/ksu/lib/yukizygisk/libzygisk.so";
-constexpr const char* ZNCORE_PATH = "/data/adb/ksu/lib/yukizygisk/libyukizncore.so";
+constexpr const char* ZCORE64_PATH = "/data/adb/ksu/lib/yukizygisk/libzygisk64.so";
+constexpr const char* ZCORE32_PATH = "/data/adb/ksu/lib/yukizygisk/libzygisk32.so";
+constexpr const char* ZNCORE64_PATH = "/data/adb/ksu/lib/yukizygisk/libyukizncore64.so";
+constexpr const char* ZNCORE32_PATH = "/data/adb/ksu/lib/yukizygisk/libyukizncore32.so";
 // Split-out anonymous module loader; core dlopen's it (fd brokered by zygiskd).
-constexpr const char* ZYUKILINKER_PATH = "/data/adb/ksu/lib/yukizygisk/libyukilinker.so";
+constexpr const char* ZYUKILINKER64_PATH = "/data/adb/ksu/lib/yukizygisk/libyukilinker64.so";
+constexpr const char* ZYUKILINKER32_PATH = "/data/adb/ksu/lib/yukizygisk/libyukilinker32.so";
+constexpr const char* ZYGISKD64_PATH = "/data/adb/ksu/bin/zygiskd64";
+constexpr const char* ZYGISKD32_PATH = "/data/adb/ksu/bin/zygiskd32";
 // Runtime config, kept apart from the binary payload dir so the manager can
 // rewrite it freely. zygiskd parses it and brokers it to core.
 constexpr const char* YZCONFIG_DIR = "/data/adb/ksu/yukizygisk/";

@@ -111,16 +111,15 @@ void run_stage(const std::string& stage, bool block) {
     exec_stage_script(stage, block);
 }
 
-// Launch zygiskd detached.
-int spawn_zygiskd() {
+int spawn_zygiskd_process(const char* path, const char* label) {
     int ready_pipe[2] = {-1, -1};
     if (pipe(ready_pipe) != 0) {
-        LOGW("Failed to create zygiskd ready pipe: %s", strerror(errno));
+        LOGW("Failed to create %s ready pipe: %s", label, strerror(errno));
     }
 
     pid_t const pid = fork();
     if (pid < 0) {
-        LOGE("Failed to fork zygiskd launcher: %s", strerror(errno));
+        LOGE("Failed to fork %s launcher: %s", label, strerror(errno));
         if (ready_pipe[0] >= 0)
             close(ready_pipe[0]);
         if (ready_pipe[1] >= 0)
@@ -132,7 +131,7 @@ int spawn_zygiskd() {
             close(ready_pipe[0]);
 
         if (setpgid(0, 0) != 0) {
-            LOGW("Failed to detach zygiskd process group: %s", strerror(errno));
+            LOGW("Failed to detach %s process group: %s", label, strerror(errno));
         }
         switch_cgroups();
 
@@ -167,13 +166,9 @@ int spawn_zygiskd() {
             setenv("YUKIZYGISK_READY_FD", fd_env, 1);
         }
 
-        char* const argv[] = {const_cast<char*>(DAEMON_PATH), const_cast<char*>("zygiskd"),
-                              nullptr};
-        execv(DAEMON_PATH, argv);
+        char* const argv[] = {const_cast<char*>(path), nullptr};
+        execv(path, argv);
 
-        char* const fallback_argv[] = {const_cast<char*>("ksud"), const_cast<char*>("zygiskd"),
-                                       nullptr};
-        execv("/proc/self/exe", fallback_argv);
         if (ready_pipe[1] >= 0) {
             const char fail = '0';
             write(ready_pipe[1], &fail, 1);
@@ -187,7 +182,7 @@ int spawn_zygiskd() {
 
     int status = 0;
     if (waitpid(pid, &status, 0) < 0) {
-        LOGW("waitpid for zygiskd launcher failed: %s", strerror(errno));
+        LOGW("waitpid for %s launcher failed: %s", label, strerror(errno));
     }
 
     if (ready_pipe[0] >= 0) {
@@ -198,13 +193,51 @@ int spawn_zygiskd() {
         char ready = '0';
 
         if (pr > 0 && read(ready_pipe[0], &ready, 1) == 1 && ready == '1') {
-            LOGI("zygiskd reported ready");
+            LOGI("%s reported ready", label);
         } else {
-            LOGW("zygiskd did not report ready before zygote exec (poll=%d, byte=%c)", pr, ready);
+            LOGW("%s did not report ready before zygote exec (poll=%d, byte=%c)", label, pr, ready);
         }
         close(ready_pipe[0]);
     }
     return 0;
+}
+
+bool has_zygote32() {
+    const auto zygote = getprop("ro.zygote");
+    if (zygote) {
+        return zygote->find("32") != std::string::npos;
+    }
+    return access("/system/bin/app_process32", X_OK) == 0;
+}
+
+// Launch the ABI daemons required by the configured zygotes.
+int spawn_zygiskd() {
+    int result = 0;
+    struct Daemon {
+        const char* path;
+        const char* label;
+        bool enabled;
+    };
+    const Daemon daemons[] = {
+        {ZYGISKD64_PATH, "zygiskd64", true},
+        {ZYGISKD32_PATH, "zygiskd32", has_zygote32()},
+    };
+
+    for (const auto& daemon : daemons) {
+        if (!daemon.enabled) {
+            LOGI("No 32-bit zygote configured; skipping %s", daemon.label);
+            continue;
+        }
+        if (access(daemon.path, X_OK) != 0) {
+            LOGW("%s is unavailable at %s", daemon.label, daemon.path);
+            result = -1;
+            continue;
+        }
+        if (spawn_zygiskd_process(daemon.path, daemon.label) != 0) {
+            result = -1;
+        }
+    }
+    return result;
 }
 
 bool yukizygisk_feature_enabled() {

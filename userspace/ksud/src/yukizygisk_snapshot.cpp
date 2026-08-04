@@ -37,9 +37,12 @@ using yukizygisk::native::NativeModule;
 constexpr const char* kSnapshotDirName = "yukizygisk";
 constexpr const char* kManifestName = "native_snapshot.bin";
 constexpr const char* kModulesDirName = "modules";
-constexpr const char* kLoaderName = "libyukilinker.so";
-constexpr const char* kNativeCoreName = "libyukizncore.so";
+constexpr const char* kLoader64Name = "libyukilinker64.so";
+constexpr const char* kLoader32Name = "libyukilinker32.so";
+constexpr const char* kNativeCore64Name = "libyukizncore64.so";
+constexpr const char* kNativeCore32Name = "libyukizncore32.so";
 constexpr const char* kSystemLinker64 = "/system/bin/linker64";
+constexpr const char* kSystemLinker32 = "/system/bin/linker";
 constexpr const char* kMetadataFileCon = "u:object_r:metadata_file:s0";
 
 fs::path preinit_ksu_dir() {
@@ -101,7 +104,7 @@ bool stage_asset_or_file(const char* asset, const fs::path& fallback, const fs::
     return true;
 }
 
-uint64_t resolve_linker_sym(const char* path, const char* want) {
+uint64_t resolve_linker_sym64(const char* path, const char* want) {
     int const fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0)
         return 0;
@@ -157,13 +160,77 @@ uint64_t resolve_linker_sym(const char* path, const char* want) {
     return result;
 }
 
-uint64_t resolve_first(const char* const* cands, size_t n) {
+uint64_t resolve_linker_sym32(const char* path, const char* want) {
+    int const fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return 0;
+
+    struct stat st{};
+    if (fstat(fd, &st) != 0 || st.st_size < static_cast<off_t>(sizeof(Elf32_Ehdr))) {
+        close(fd);
+        return 0;
+    }
+
+    void* map = mmap(nullptr, static_cast<size_t>(st.st_size), PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (map == MAP_FAILED)
+        return 0;
+
+    const auto* base = static_cast<const uint8_t*>(map);
+    const auto* eh = reinterpret_cast<const Elf32_Ehdr*>(base);
+    uint64_t result = 0;
+    if (memcmp(eh->e_ident, ELFMAG, SELFMAG) == 0 && eh->e_ident[EI_CLASS] == ELFCLASS32 &&
+        eh->e_shoff > 0 && eh->e_shnum > 0) {
+        size_t const file_size = static_cast<size_t>(st.st_size);
+        size_t const sh_size = static_cast<size_t>(eh->e_shnum) * sizeof(Elf32_Shdr);
+        if (eh->e_shentsize == sizeof(Elf32_Shdr) &&
+            range_ok(static_cast<size_t>(eh->e_shoff), sh_size, file_size)) {
+            const auto* sh = reinterpret_cast<const Elf32_Shdr*>(base + eh->e_shoff);
+            for (int i = 0; i < eh->e_shnum && result == 0; i++) {
+                if (sh[i].sh_type != SHT_DYNSYM || sh[i].sh_link >= eh->e_shnum)
+                    continue;
+                if (!range_ok(sh[i].sh_offset, sh[i].sh_size, file_size))
+                    continue;
+                const Elf32_Shdr& str_sh = sh[sh[i].sh_link];
+                if (!range_ok(str_sh.sh_offset, str_sh.sh_size, file_size))
+                    continue;
+                const auto* syms = reinterpret_cast<const Elf32_Sym*>(base + sh[i].sh_offset);
+                const char* strs = reinterpret_cast<const char*>(base + str_sh.sh_offset);
+                size_t const n = sh[i].sh_size / sizeof(Elf32_Sym);
+                for (size_t j = 0; j < n; j++) {
+                    if (string_table_equals(strs, str_sh.sh_size, syms[j].st_name, want)) {
+                        result = syms[j].st_value;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    munmap(map, static_cast<size_t>(st.st_size));
+    return result;
+}
+
+uint64_t resolve_first(const char* path, bool compat, const char* const* cands, size_t n) {
     for (size_t i = 0; i < n; ++i) {
-        uint64_t const off = resolve_linker_sym(kSystemLinker64, cands[i]);
+        uint64_t const off =
+            compat ? resolve_linker_sym32(path, cands[i]) : resolve_linker_sym64(path, cands[i]);
         if (off != 0)
             return off;
     }
     return 0;
+}
+
+int elf_class(const fs::path& path) {
+    unsigned char ident[EI_NIDENT]{};
+    int const fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return ELFCLASSNONE;
+    ssize_t const n = read(fd, ident, sizeof(ident));
+    close(fd);
+    if (n != static_cast<ssize_t>(sizeof(ident)) || memcmp(ident, ELFMAG, SELFMAG) != 0 ||
+        ident[EI_DATA] != ELFDATA2LSB)
+        return ELFCLASSNONE;
+    return ident[EI_CLASS];
 }
 
 std::vector<std::pair<std::string, fs::path>> collect_active_module_roots() {
@@ -213,6 +280,9 @@ std::vector<NativeModule> scan_early_native_modules() {
                 continue;
             if (m.lib_path.size() >= YZ_NATIVE_MODULE_PATH_MAX)
                 continue;
+            int const module_class = elf_class(m.lib_path);
+            if (module_class != ELFCLASS32 && module_class != ELFCLASS64)
+                continue;
             out.push_back(std::move(m));
             if (out.size() >= YZ_NATIVE_TARGET_MAX)
                 return out;
@@ -250,6 +320,8 @@ bool stage_module_entry(const NativeModule& m, size_t idx, const fs::path& modul
 
     *entry = {};
     entry->target_type = m.target_type;
+    entry->flags = elf_class(m.lib_path) == ELFCLASS32 ? YZ_EARLY_NATIVE_ENTRY_ABI32
+                                                       : YZ_EARLY_NATIVE_ENTRY_ABI64;
     fill_cstr(entry->module_id, sizeof(entry->module_id), m.module_id);
     fill_cstr(entry->target, sizeof(entry->target), m.target);
     fill_cstr(entry->lib_path, sizeof(entry->lib_path), dst.string());
@@ -309,13 +381,26 @@ int refresh_yukizygisk_early_snapshot() {
         return 1;
     }
 
-    const fs::path loader_path = snapshot_dir / kLoaderName;
-    const fs::path native_core_path = snapshot_dir / kNativeCoreName;
-    if (!stage_asset_or_file(kLoaderName, ZYUKILINKER_PATH, loader_path) ||
-        !stage_asset_or_file(kNativeCoreName, ZNCORE_PATH, native_core_path)) {
+    const fs::path loader_path = snapshot_dir / kLoader64Name;
+    const fs::path loader32_path = snapshot_dir / kLoader32Name;
+    const fs::path native_core_path = snapshot_dir / kNativeCore64Name;
+    const fs::path native_core32_path = snapshot_dir / kNativeCore32Name;
+    if (!stage_asset_or_file(kLoader64Name, ZYUKILINKER64_PATH, loader_path) ||
+        !stage_asset_or_file(kLoader32Name, ZYUKILINKER32_PATH, loader32_path) ||
+        !stage_asset_or_file(kNativeCore64Name, ZNCORE64_PATH, native_core_path) ||
+        !stage_asset_or_file(kNativeCore32Name, ZNCORE32_PATH, native_core32_path)) {
         clear_yukizygisk_early_snapshot();
         LOGW("yukizygisk early: payload unavailable, snapshot cleared");
         return 1;
+    }
+
+    for (const char* legacy_name : {"libyukilinker.so", "libyukizncore.so"}) {
+        const fs::path legacy_path = snapshot_dir / legacy_name;
+        if (!fs::remove(legacy_path, ec) && ec) {
+            LOGW("yukizygisk early: failed to remove legacy payload %s: %s", legacy_path.c_str(),
+                 ec.message().c_str());
+        }
+        ec.clear();
     }
 
     std::vector<yz_early_native_entry> entries;
@@ -336,8 +421,17 @@ int refresh_yukizygisk_early_snapshot() {
         "dlsym",
     };
 
+    bool has_abi32 = false;
+    bool has_abi64 = false;
+    for (const auto& entry : entries) {
+        has_abi32 = has_abi32 || (entry.flags & YZ_EARLY_NATIVE_ENTRY_ABI32) != 0;
+        has_abi64 = has_abi64 || (entry.flags & YZ_EARLY_NATIVE_ENTRY_ABI64) != 0;
+    }
+
     struct stat linker_stat{};
-    bool const linker_stat_ok = entries.empty() || stat(kSystemLinker64, &linker_stat) == 0;
+    struct stat linker32_stat{};
+    bool const linker_stat_ok = !has_abi64 || stat(kSystemLinker64, &linker_stat) == 0;
+    bool const linker32_stat_ok = !has_abi32 || stat(kSystemLinker32, &linker32_stat) == 0;
 
     yz_early_native_snapshot_header header{};
     header.magic = YZ_EARLY_NATIVE_MAGIC;
@@ -345,13 +439,24 @@ int refresh_yukizygisk_early_snapshot() {
     header.header_size = sizeof(header);
     header.entry_size = sizeof(yz_early_native_entry);
     header.flags = YZ_EARLY_NATIVE_FLAG_ENABLED;
+    if (has_abi32)
+        header.flags |= YZ_EARLY_NATIVE_FLAG_ABI32;
+    if (has_abi64)
+        header.flags |= YZ_EARLY_NATIVE_FLAG_ABI64;
     header.count = static_cast<uint32_t>(entries.size());
-    header.dlopen_offset = entries.empty() ? 0 : resolve_first(kDlopen, 2);
-    header.dlsym_offset = entries.empty() ? 0 : resolve_first(kDlsym, 2);
-    header.linker_size = entries.empty() ? 0 : static_cast<uint64_t>(linker_stat.st_size);
+    header.dlopen_offset = has_abi64 ? resolve_first(kSystemLinker64, false, kDlopen, 2) : 0;
+    header.dlsym_offset = has_abi64 ? resolve_first(kSystemLinker64, false, kDlsym, 2) : 0;
+    header.linker_size = has_abi64 ? static_cast<uint64_t>(linker_stat.st_size) : 0;
+    header.dlopen32_offset = has_abi32 ? resolve_first(kSystemLinker32, true, kDlopen, 2) : 0;
+    header.dlsym32_offset = has_abi32 ? resolve_first(kSystemLinker32, true, kDlsym, 2) : 0;
+    header.linker32_size = has_abi32 ? static_cast<uint64_t>(linker32_stat.st_size) : 0;
 
-    if (!entries.empty() && (!linker_stat_ok || header.dlopen_offset == 0 ||
-                             header.dlsym_offset == 0 || header.linker_size == 0)) {
+    if (!entries.empty() &&
+        (!linker_stat_ok || !linker32_stat_ok ||
+         (has_abi64 &&
+          (header.dlopen_offset == 0 || header.dlsym_offset == 0 || header.linker_size == 0)) ||
+         (has_abi32 && (header.dlopen32_offset == 0 || header.dlsym32_offset == 0 ||
+                        header.linker32_size == 0)))) {
         clear_yukizygisk_early_snapshot();
         LOGW("yukizygisk early: linker offsets unavailable, snapshot cleared");
         return 1;

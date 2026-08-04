@@ -319,14 +319,6 @@ endif()
 
 get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/../.." ABSOLUTE)
 
-# Zygisk daemon (zygiskd), welded into ksud as a multi-call face. Invoked as
-# `ksud zygiskd` or via a `zygiskd` -> ksud symlink. It is first-party
-# userspace code and gets its own checked object target below.
-set(ZYGISKD_DIR ${REPO_ROOT}/userspace/zygisk/daemon)
-if(EXISTS ${ZYGISKD_DIR}/zygiskd.cpp)
-    set(ZYGISKD_AVAILABLE 1)
-endif()
-
 # Include directories (for both object libs and ksud)
 set(KSUD_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/src
@@ -365,10 +357,6 @@ endif()
 if(TOYBOX_READELF_AVAILABLE)
     list(APPEND KSUD_DEFINES TOYBOX_READELF_AVAILABLE=1)
 endif()
-if(ZYGISKD_AVAILABLE)
-    list(APPEND KSUD_DEFINES ZYGISKD_AVAILABLE=1)
-endif()
-
 # Object library: our sources (with clang-tidy when enabled). The Android NDK
 # compilation database supplies the real target sysroot and flags to clang-tidy.
 add_library(ksud_our_objs OBJECT ${KSUD_OUR_SOURCES})
@@ -376,20 +364,6 @@ target_include_directories(ksud_our_objs PRIVATE ${KSUD_INCLUDE_DIRS})
 target_compile_definitions(ksud_our_objs PRIVATE ${KSUD_DEFINES})
 target_compile_features(ksud_our_objs PUBLIC cxx_std_17)
 yukisu_enable_clang_tidy(ksud_our_objs CXX)
-
-set(KSUD_FIRSTPARTY_EXTRA_OBJECTS)
-if(ZYGISKD_AVAILABLE)
-    add_library(ksud_zygiskd_objs OBJECT ${ZYGISKD_DIR}/zygiskd.cpp)
-    target_include_directories(ksud_zygiskd_objs PRIVATE ${KSUD_INCLUDE_DIRS})
-    target_compile_definitions(ksud_zygiskd_objs PRIVATE ${KSUD_DEFINES})
-    target_compile_features(ksud_zygiskd_objs PUBLIC cxx_std_17)
-    set(_KSUD_CLANG_TIDY_CONFIG "${YUKISU_CLANG_TIDY_CONFIG}")
-    set(YUKISU_CLANG_TIDY_CONFIG "${ZYGISKD_DIR}/../.clang-tidy")
-    yukisu_enable_clang_tidy(ksud_zygiskd_objs CXX)
-    set(YUKISU_CLANG_TIDY_CONFIG "${_KSUD_CLANG_TIDY_CONFIG}")
-    list(APPEND KSUD_FIRSTPARTY_EXTRA_OBJECTS
-        $<TARGET_OBJECTS:ksud_zygiskd_objs>)
-endif()
 
 # Generated compressed asset bytes are compiled into ksud, but are not useful
 # clang-tidy input. Keep them separate from the hand-written first-party code.
@@ -408,7 +382,6 @@ endif()
 # Executable: link object libs
 add_executable(ksud
     $<TARGET_OBJECTS:ksud_our_objs>
-    ${KSUD_FIRSTPARTY_EXTRA_OBJECTS}
     $<TARGET_OBJECTS:ksud_generated_objs>
     $<TARGET_OBJECTS:ksud_thirdparty_objs>
 )
@@ -416,10 +389,6 @@ add_executable(ksud
 target_compile_definitions(ksud PRIVATE ${KSUD_DEFINES})
 if(TOYBOX_READELF_AVAILABLE)
     target_link_libraries(ksud PRIVATE readelf_toybox)
-endif()
-if(ZYGISKD_AVAILABLE)
-    # zygiskd (welded in) logs via liblog's __android_log_print
-    target_link_libraries(ksud PRIVATE log)
 endif()
 if(NDK_BUSYBOX_AVAILABLE)
     target_compile_definitions(ksud PRIVATE NDK_BUSYBOX_AVAILABLE=1)

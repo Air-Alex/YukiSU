@@ -19,10 +19,6 @@ extern "C" int busybox_main(int argc, char** argv);
 #if defined(TOYBOX_READELF_AVAILABLE) && TOYBOX_READELF_AVAILABLE
 extern "C" int yukisu_toybox_main(int argc, char** argv);
 #endif  // #if defined(TOYBOX_READELF_AVAILABLE) &&...
-#if defined(ZYGISKD_AVAILABLE) && ZYGISKD_AVAILABLE
-extern "C" int zygiskd_main(int argc, char** argv);
-#endif  // #if defined(ZYGISKD_AVAILABLE) && ZYGIS...
-
 namespace {
 const char* path_basename(const char* path) {
     const char* base = path;
@@ -79,13 +75,6 @@ int main(int argc, char** argv) {
             return r;
     }
 #endif  // #if defined(MKBOOTFS_ALONE_AVAILABLE) ...
-#if defined(ZYGISKD_AVAILABLE) && ZYGISKD_AVAILABLE
-    {
-        const int r = dispatch("zygiskd", zygiskd_main);
-        if (r >= 0)
-            return r;
-    }
-#endif  // #if defined(ZYGISKD_AVAILABLE) && ZYGIS...
 #if defined(TOYBOX_READELF_AVAILABLE) && TOYBOX_READELF_AVAILABLE
     {
         const int r = dispatch("readelf", yukisu_toybox_main);
@@ -105,7 +94,7 @@ int main(int argc, char** argv) {
     if (base && base[0] && std::strcmp(base, "ksud") != 0 && std::strcmp(base, "magiskboot") != 0 &&
         std::strcmp(base, "bootctl") != 0 && std::strcmp(base, "resetprop") != 0 &&
         std::strcmp(base, "mkbootfs") != 0 && std::strcmp(base, "su") != 0 &&
-        std::strcmp(base, "zygiskd") != 0 && std::strstr(base, ".so") == nullptr) {
+        std::strstr(base, ".so") == nullptr) {
         return busybox_main(argc, argv);
     }
 #endif  // #if defined(NDK_BUSYBOX_AVAILABLE) && N...
