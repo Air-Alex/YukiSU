@@ -47,6 +47,8 @@ inline bool parse_native_module_line(const std::string &module_id,
                                      const std::string &base,
                                      const std::string &line,
                                      NativeModule *out) {
+  if (module_id.size() >= YZ_NATIVE_MODULE_ID_MAX)
+    return false;
   std::string text = trim_copy(line);
   if (text.empty() || text[0] == '#')
     return false;

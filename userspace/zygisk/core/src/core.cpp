@@ -188,6 +188,7 @@ enum class ZdRequest : uint8_t {
   PatchText = 11,
   ReportZygote = 12,
   RestoreLoadPolicy = 17,
+  GetRuntimeGeneration = 21,
 };
 #if defined(__LP64__)
 constexpr char kZygiskdSocket[] = "zygiskd64";
@@ -203,6 +204,18 @@ bool read_all(int fd, void *buf, size_t n) {
       return false;
     p += r;
     n -= static_cast<size_t>(r);
+  }
+  return true;
+}
+
+bool write_all(int fd, const void *buf, size_t n) {
+  const auto *p = static_cast<const uint8_t *>(buf);
+  while (n > 0) {
+    ssize_t w = write(fd, p, n);
+    if (w <= 0)
+      return false;
+    p += w;
+    n -= static_cast<size_t>(w);
   }
   return true;
 }
@@ -350,13 +363,29 @@ void zd_load_config() {
   close(s);
 }
 
-void zd_report_zygote() {
+uint32_t zd_get_runtime_generation(uint8_t kind) {
+  int s = connect_zygiskd();
+  if (s < 0)
+    return 0;
+  const uint8_t req = static_cast<uint8_t>(ZdRequest::GetRuntimeGeneration);
+  uint32_t generation = 0;
+  if (!write_all(s, &req, sizeof(req)) || !write_all(s, &kind, sizeof(kind)) ||
+      !read_all(s, &generation, sizeof(generation)))
+    generation = 0;
+  close(s);
+  return generation;
+}
+
+void zd_report_zygote(uint32_t generation) {
+  if (generation == 0)
+    return;
   int s = connect_zygiskd();
   if (s < 0)
     return;
-  uint8_t req = static_cast<uint8_t>(ZdRequest::ReportZygote);
+  const uint8_t req = static_cast<uint8_t>(ZdRequest::ReportZygote);
   uint8_t ack = 0;
-  if (write(s, &req, 1) == 1)
+  if (write_all(s, &req, sizeof(req)) &&
+      write_all(s, &generation, sizeof(generation)))
     (void)read_all(s, &ack, sizeof(ack));
   close(s);
 }
@@ -726,9 +755,11 @@ static void core_start(const char *self_path) {
   g_yuki_dlopen = yuki_core_dlopen_memfd;
   g_yuki_dlsym = yuki_core_dlsym;
   g_yuki_dlclose = yuki_core_dlclose;
-  zd_report_zygote();
+  const uint32_t runtime_generation =
+      zd_get_runtime_generation(YZ_RUNTIME_KIND_ZYGOTE);
   LOGI("core start, self=%s", self_path ? self_path : "(null)");
-  zygisk_hook_bootstrap(self_path);
+  if (zygisk_hook_bootstrap(self_path))
+    zd_report_zygote(runtime_generation);
   zd_restore_load_policy();
 }
 

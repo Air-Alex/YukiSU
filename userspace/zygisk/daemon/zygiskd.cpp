@@ -25,7 +25,7 @@
 #include <link.h>
 #include <pthread.h>
 
-#include <cctype>
+#include <algorithm>
 #include <cerrno>
 #include <climits>
 #include <cstddef>
@@ -781,36 +781,6 @@ uint64_t g_inject_count = 0;
 std::deque<uint32_t> g_recent_appids;
 constexpr size_t kRecentMax = 16;
 
-struct ZygoteRecord {
-  uint32_t pid;
-  std::string name;
-  std::string abi;
-};
-
-std::deque<ZygoteRecord> g_zygotes;
-constexpr size_t kZygoteMax = 8;
-
-struct ZygoteMonitorRecord {
-  uint32_t pid;
-  std::string name;
-  std::string abi;
-  std::string state;
-};
-
-struct NativeInjectionRecord {
-  uint32_t pid;
-  uint64_t start_time;
-  std::string process;
-  std::string module_id;
-  std::string target_type;
-  std::string target;
-  std::string abi;
-  bool has_companion;
-};
-
-std::deque<NativeInjectionRecord> g_native_injections;
-constexpr size_t kNativeInjectionMax = 16;
-
 void record_injection(uint32_t appid) {
   ++g_inject_count;
   for (auto it = g_recent_appids.begin(); it != g_recent_appids.end(); ++it)
@@ -823,268 +793,185 @@ void record_injection(uint32_t appid) {
     g_recent_appids.pop_back();
 }
 
-bool is_zygote_process_name(const std::string &name) {
-  return name == "zygote" || name == "zygote32" || name == "zygote64";
-}
-
-bool parse_zygote_cmdline(pid_t pid, std::string *socket_name,
-                          std::string *abi_list = nullptr) {
-  char path[64];
-  (void)snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0)
-    return false;
-
-  char buf[4096];
-  ssize_t n = read(fd, buf, sizeof(buf));
-  close(fd);
-  if (n <= 0)
-    return false;
-
-  bool found = false;
-  std::string first_arg;
-  std::string sock;
-  std::string abi;
-  size_t off = 0;
-  const size_t bytes_read = static_cast<size_t>(n);
-  while (off != bytes_read) {
-    const char *arg = buf + off;
-    size_t len = strnlen(arg, bytes_read - off);
-    if (len == 0) {
-      ++off;
-      continue;
-    }
-    if (first_arg.empty())
-      first_arg.assign(arg, len);
-    if (strcmp(arg, "-Xzygote") == 0) {
-      found = true;
-    } else {
-      constexpr char kSocketPrefix[] = "--socket-name=";
-      constexpr size_t kSocketPrefixLen = sizeof(kSocketPrefix) - 1;
-      if (len >= kSocketPrefixLen &&
-          strncmp(arg, kSocketPrefix, kSocketPrefixLen) == 0)
-        sock.assign(arg + kSocketPrefixLen, len - kSocketPrefixLen);
-      constexpr char kAbiPrefix[] = "--abi-list=";
-      constexpr size_t kAbiPrefixLen = sizeof(kAbiPrefix) - 1;
-      if (len >= kAbiPrefixLen && strncmp(arg, kAbiPrefix, kAbiPrefixLen) == 0)
-        abi.assign(arg + kAbiPrefixLen, len - kAbiPrefixLen);
-    }
-    off += len + 1;
-  }
-
-  if (!found && is_zygote_process_name(first_arg)) {
-    found = true;
-    if (sock.empty())
-      sock = first_arg;
-  }
-
-  if (socket_name != nullptr)
-    *socket_name = sock.empty() ? "zygote" : sock;
-  if (abi_list != nullptr)
-    *abi_list = std::move(abi);
-  return found;
-}
-
-std::string read_proc_exe(pid_t pid) {
-  char path[64];
-  (void)snprintf(path, sizeof(path), "/proc/%d/exe", pid);
-  char buf[PATH_MAX];
-  ssize_t n = readlink(path, buf, sizeof(buf) - 1);
-  if (n <= 0)
-    return {};
-  buf[n] = '\0';
-  return buf;
-}
-
-std::string zygote_abi(pid_t pid, const std::string &abi_list) {
-  if (!abi_list.empty())
-    return abi_list;
-  std::string exe = read_proc_exe(pid);
-  if (exe.find("32") != std::string::npos)
-    return "armeabi-v7a";
-  if (exe.find("64") != std::string::npos)
-    return kAbi;
-  return "unknown";
-}
-
-bool is_zygote_injected(uint32_t pid, const std::string &name,
-                        const std::string &abi) {
-  for (const auto &z : g_zygotes)
-    if (z.pid == pid || (z.name == name && z.abi == abi))
-      return true;
-  return false;
-}
-
-std::vector<ZygoteMonitorRecord> scan_zygote_monitor() {
-  std::vector<ZygoteMonitorRecord> out;
-  DIR *d = opendir("/proc");
-  if (d == nullptr)
-    return out;
-
-  while (dirent *e = readdir(d)) {
-    if (!std::isdigit(static_cast<unsigned char>(e->d_name[0])))
-      continue;
-    char *end = nullptr;
-    long pid_long = strtol(e->d_name, &end, 10);
-    if (end == e->d_name || *end != '\0' || pid_long <= 0 ||
-        pid_long > INT32_MAX)
-      continue;
-    pid_t pid = static_cast<pid_t>(pid_long);
-    std::string name;
-    std::string abi_list;
-    if (!parse_zygote_cmdline(pid, &name, &abi_list))
-      continue;
-    std::string abi = zygote_abi(pid, abi_list);
-    std::string state = "failed";
-    if (g_safemode.active)
-      state = "crashed";
-    else if (is_zygote_injected(static_cast<uint32_t>(pid), name, abi))
-      state = "injected";
-    out.push_back(ZygoteMonitorRecord{
-        static_cast<uint32_t>(pid),
-        std::move(name),
-        std::move(abi),
-        std::move(state),
-    });
-  }
-  closedir(d);
-  return out;
-}
-
-void record_zygote(pid_t pid) {
-  std::string name;
-  if (!parse_zygote_cmdline(pid, &name))
-    name = "zygote";
-
-  for (auto it = g_zygotes.begin(); it != g_zygotes.end(); ++it) {
-    if ((pid >= 0 && it->pid == static_cast<uint32_t>(pid)) ||
-        (it->name == name && it->abi == kAbi)) {
-      g_zygotes.erase(it);
-      break;
-    }
-  }
-  g_zygotes.push_front(
-      ZygoteRecord{static_cast<uint32_t>(pid), std::move(name), kAbi});
-  if (g_zygotes.size() > kZygoteMax)
-    g_zygotes.pop_back();
-  DLOGI("zygote injected: pid=%d name=%s abi=%s", pid,
-        g_zygotes.front().name.c_str(), g_zygotes.front().abi.c_str());
-}
-
-std::string read_proc_comm(pid_t pid) {
-  char path[64];
-  (void)snprintf(path, sizeof(path), "/proc/%d/comm", pid);
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0)
-    return {};
-
-  char buf[128];
-  ssize_t n = read(fd, buf, sizeof(buf) - 1);
-  close(fd);
-  if (n <= 0)
-    return {};
-  buf[n] = '\0';
-  std::string comm = yukizygisk::native::trim_copy(buf);
-  return comm;
-}
-
-uint64_t read_proc_start_time(pid_t pid) {
-  char path[64];
-  (void)snprintf(path, sizeof(path), "/proc/%d/stat", pid);
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0)
-    return 0;
-
-  char buf[4096];
-  ssize_t n = read(fd, buf, sizeof(buf) - 1);
-  close(fd);
-  if (n <= 0)
-    return 0;
-  buf[n] = '\0';
-
-  char *rparen = strrchr(buf, ')');
-  if (rparen == nullptr)
-    return 0;
-
-  char *p = rparen + 1;
-  for (int field = 3; field <= 22; ++field) {
-    while (*p == ' ')
-      ++p;
-    if (*p == '\0')
-      return 0;
-    char *end = p;
-    while (*end != '\0' && *end != ' ')
-      ++end;
-    if (field == 22)
-      return strtoull(p, nullptr, 10);
-    p = end;
-  }
-  return 0;
-}
-
-bool native_injection_alive(const NativeInjectionRecord &record) {
-  if (record.pid == 0)
-    return false;
-  uint64_t start_time = read_proc_start_time(static_cast<pid_t>(record.pid));
-  if (start_time == 0)
-    return false;
-  if (record.start_time != 0)
-    return start_time == record.start_time;
-
-  std::string process = read_proc_comm(static_cast<pid_t>(record.pid));
-  return !process.empty() && process == record.process;
-}
-
-void prune_dead_native_injections() {
-  for (auto it = g_native_injections.begin();
-       it != g_native_injections.end();) {
-    if (native_injection_alive(*it)) {
-      ++it;
-    } else {
-      DLOGI("native injection monitor: prune dead pid=%u process=%s module=%s",
-            it->pid, it->process.c_str(), it->module_id.c_str());
-      it = g_native_injections.erase(it);
-    }
-  }
-}
-
 const char *native_target_type_name(uint8_t type) {
   return type == YZ_NATIVE_TARGET_PATH ? "path" : "name";
 }
 
-void record_native_injection(pid_t pid, uint32_t idx) {
-  if (idx >= g_native_modules.size())
-    return;
+#if defined(__LP64__)
+constexpr uint8_t kRuntimeAbi = YZ_RUNTIME_ABI_64;
+#else
+constexpr uint8_t kRuntimeAbi = YZ_RUNTIME_ABI_32;
+#endif
 
-  const NativeModule &m = g_native_modules[idx];
-  std::string process = read_proc_comm(pid);
-  if (process.empty())
-    process = m.target;
-  std::string target_type = native_target_type_name(m.target_type);
+struct RuntimeSnapshot {
+  bool safe_mode = false;
+  uint32_t zygote_crashes = 0;
+  std::string safe_mode_zygote;
+  std::vector<yz_runtime_record> records;
+};
 
-  for (auto it = g_native_injections.begin(); it != g_native_injections.end();
-       ++it) {
-    if (pid >= 0 && it->pid == static_cast<uint32_t>(pid) &&
-        it->module_id == m.module_id) {
-      g_native_injections.erase(it);
-      break;
+struct NativeInjectionView {
+  uint32_t pid;
+  std::string process;
+  std::string module_id;
+  std::string target_type;
+  std::string target;
+  std::string abi;
+  std::string state;
+  bool has_companion;
+};
+
+template <size_t N> std::string runtime_string(const char (&value)[N]) {
+  return std::string(value, strnlen(value, N));
+}
+
+const char *runtime_abi_name(uint8_t abi) {
+  switch (abi) {
+  case YZ_RUNTIME_ABI_32:
+    return "armeabi-v7a";
+  case YZ_RUNTIME_ABI_64:
+    return "arm64-v8a";
+  default:
+    return "unknown";
+  }
+}
+
+const char *runtime_state_name(uint8_t state) {
+  switch (state) {
+  case YZ_RUNTIME_STATE_INJECTED:
+    return "injected";
+  case YZ_RUNTIME_STATE_SAFEMODE:
+    return "crashed";
+  case YZ_RUNTIME_STATE_EXITED:
+    return nullptr;
+  case YZ_RUNTIME_STATE_DETECTED:
+  case YZ_RUNTIME_STATE_REDIRECTED:
+  case YZ_RUNTIME_STATE_FAILED:
+  default:
+    return "failed";
+  }
+}
+
+RuntimeSnapshot query_runtime_snapshot() {
+  RuntimeSnapshot snapshot;
+  snapshot.records.resize(YZ_RUNTIME_RECORD_MAX);
+
+  yz_runtime_query_cmd cmd{};
+  cmd.capacity = static_cast<uint32_t>(snapshot.records.size());
+  cmd.entries = static_cast<__aligned_u64>(
+      reinterpret_cast<uintptr_t>(snapshot.records.data()));
+  if (ksud::ksuctl(KSU_IOCTL_YZ_GET_RUNTIME, &cmd) != 0) {
+    snapshot.records.clear();
+    return snapshot;
+  }
+
+  if (cmd.count < snapshot.records.size())
+    snapshot.records.resize(cmd.count);
+  snapshot.safe_mode = cmd.safe_mode != 0;
+  snapshot.zygote_crashes = cmd.zygote_crashes;
+  cmd.safe_mode_zygote[sizeof(cmd.safe_mode_zygote) - 1] = '\0';
+  snapshot.safe_mode_zygote = cmd.safe_mode_zygote;
+  return snapshot;
+}
+
+bool report_runtime(pid_t pid, uint8_t kind, uint32_t generation,
+                    const char *module_id = nullptr) {
+  if (pid <= 0 || generation == 0)
+    return false;
+
+  yz_runtime_report_cmd cmd{};
+  cmd.pid = static_cast<uint32_t>(pid);
+  cmd.generation = generation;
+  cmd.kind = kind;
+  if (module_id != nullptr)
+    (void)snprintf(cmd.module_id, sizeof(cmd.module_id), "%s", module_id);
+  return ksud::ksuctl(KSU_IOCTL_YZ_REPORT_RUNTIME, &cmd) == 0;
+}
+
+uint32_t runtime_generation(pid_t pid, uint8_t kind) {
+  if (pid <= 0 ||
+      (kind != YZ_RUNTIME_KIND_ZYGOTE && kind != YZ_RUNTIME_KIND_NATIVE))
+    return 0;
+
+  const RuntimeSnapshot snapshot = query_runtime_snapshot();
+  uint32_t generation = 0;
+  for (const auto &record : snapshot.records) {
+    if (record.pid != static_cast<uint32_t>(pid) || record.kind != kind ||
+        record.abi != kRuntimeAbi || record.module_id[0] != '\0' ||
+        (record.state != YZ_RUNTIME_STATE_REDIRECTED &&
+         record.state != YZ_RUNTIME_STATE_INJECTED))
+      continue;
+    generation = std::max(generation, record.generation);
+  }
+  return generation;
+}
+
+const yz_runtime_record *find_native_ready(const RuntimeSnapshot &snapshot,
+                                           uint32_t pid, uint32_t generation,
+                                           const std::string &module_id) {
+  for (const auto &record : snapshot.records) {
+    if (record.kind != YZ_RUNTIME_KIND_NATIVE || record.abi != kRuntimeAbi ||
+        record.pid != pid || record.generation != generation ||
+        runtime_string(record.module_id) != module_id ||
+        record.state == YZ_RUNTIME_STATE_EXITED)
+      continue;
+    return &record;
+  }
+  return nullptr;
+}
+
+std::vector<NativeInjectionView>
+build_native_injection_views(const RuntimeSnapshot &snapshot) {
+  std::vector<NativeInjectionView> views;
+  for (const auto &base : snapshot.records) {
+    if (base.kind != YZ_RUNTIME_KIND_NATIVE || base.abi != kRuntimeAbi ||
+        base.state == YZ_RUNTIME_STATE_EXITED || base.module_id[0] != '\0')
+      continue;
+
+    const std::string target = runtime_string(base.target);
+    for (const auto &module : g_native_modules) {
+      if (module.target_type != base.target_type || module.target != target)
+        continue;
+
+      const yz_runtime_record *ready = find_native_ready(
+          snapshot, base.pid, base.generation, module.module_id);
+      const char *state = ready != nullptr ? runtime_state_name(ready->state)
+                          : base.state == YZ_RUNTIME_STATE_SAFEMODE ? "crashed"
+                                                                    : "failed";
+      if (state == nullptr)
+        continue;
+      views.push_back(NativeInjectionView{
+          base.pid,
+          runtime_string(base.process),
+          module.module_id,
+          native_target_type_name(base.target_type),
+          target,
+          runtime_abi_name(base.abi),
+          state,
+          module.has_companion,
+      });
     }
   }
-  g_native_injections.push_front(NativeInjectionRecord{
-      static_cast<uint32_t>(pid),
-      read_proc_start_time(pid),
-      std::move(process),
-      m.module_id,
-      std::move(target_type),
-      m.target,
-      kAbi,
-      m.has_companion,
-  });
-  if (g_native_injections.size() > kNativeInjectionMax)
-    g_native_injections.pop_back();
-  DLOGI("native injection: pid=%d process=%s module=%s target=%s=%s", pid,
-        g_native_injections.front().process.c_str(), m.module_id.c_str(),
-        native_target_type_name(m.target_type), m.target.c_str());
+  return views;
+}
+
+const char *native_module_state(const std::string &module_id,
+                                const std::vector<NativeInjectionView> &views) {
+  bool injected = false;
+  bool failed = false;
+  for (const auto &view : views) {
+    if (view.module_id != module_id)
+      continue;
+    if (view.state == "crashed")
+      return "crashed";
+    if (view.state == "failed")
+      failed = true;
+    else if (view.state == "injected")
+      injected = true;
+  }
+  if (failed)
+    return "failed";
+  return injected ? "injected" : "failed";
 }
 
 void json_append_escaped(std::string &out, const std::string &s) {
@@ -1119,18 +1006,20 @@ void json_append_escaped(std::string &out, const std::string &s) {
 
 /* Compact status JSON for the manager. */
 std::string build_status_json() {
-  refresh_safemode_status();
-  prune_dead_native_injections();
+  const RuntimeSnapshot runtime = query_runtime_snapshot();
+  const std::vector<NativeInjectionView> native_injections =
+      build_native_injection_views(runtime);
 
   std::string s = "{\"count\":";
   s += std::to_string(g_inject_count);
   s += ",\"safe_mode\":";
-  s += g_safemode.active ? "true" : "false";
+  s += runtime.safe_mode ? "true" : "false";
   s += ",\"zygote_crashes\":";
-  s += std::to_string(g_safemode.zygote_crashes);
+  s += std::to_string(runtime.zygote_crashes);
   s += ",\"safe_mode_zygote\":\"";
-  json_append_escaped(s,
-                      g_safemode.zygote.empty() ? "zygote" : g_safemode.zygote);
+  json_append_escaped(s, runtime.safe_mode_zygote.empty()
+                             ? "zygote"
+                             : runtime.safe_mode_zygote);
   s += "\"";
   s += ",\"yukilinker\":";
   s += g_yz_config.yukilinker ? "true" : "false";
@@ -1148,32 +1037,50 @@ std::string build_status_json() {
   }
   s += "],\"zygotes\":[";
   first = true;
-  for (const auto &z : g_zygotes) {
+  for (const auto &record : runtime.records) {
+    if (record.kind != YZ_RUNTIME_KIND_ZYGOTE || record.abi != kRuntimeAbi ||
+        record.state != YZ_RUNTIME_STATE_INJECTED)
+      continue;
+    const std::string target = runtime_string(record.target);
     if (!first)
       s += ',';
     first = false;
     s += "{\"pid\":";
-    s += std::to_string(z.pid);
+    s += std::to_string(record.pid);
     s += ",\"name\":\"";
-    json_append_escaped(s, z.name);
+    json_append_escaped(s, target);
+    s += "\",\"target\":\"";
+    json_append_escaped(s, target);
+    s += "\",\"process\":\"";
+    json_append_escaped(s, runtime_string(record.process));
     s += "\",\"abi\":\"";
-    json_append_escaped(s, z.abi);
+    json_append_escaped(s, runtime_abi_name(record.abi));
     s += "\"}";
   }
   s += "],\"zygote_monitor\":[";
   first = true;
-  for (const auto &z : scan_zygote_monitor()) {
+  for (const auto &record : runtime.records) {
+    if (record.kind != YZ_RUNTIME_KIND_ZYGOTE || record.abi != kRuntimeAbi)
+      continue;
+    const char *state = runtime_state_name(record.state);
+    if (state == nullptr)
+      continue;
+    const std::string target = runtime_string(record.target);
     if (!first)
       s += ',';
     first = false;
     s += "{\"pid\":";
-    s += std::to_string(z.pid);
+    s += std::to_string(record.pid);
     s += ",\"name\":\"";
-    json_append_escaped(s, z.name);
+    json_append_escaped(s, target);
+    s += "\",\"target\":\"";
+    json_append_escaped(s, target);
+    s += "\",\"process\":\"";
+    json_append_escaped(s, runtime_string(record.process));
     s += "\",\"abi\":\"";
-    json_append_escaped(s, z.abi);
+    json_append_escaped(s, runtime_abi_name(record.abi));
     s += "\",\"state\":\"";
-    json_append_escaped(s, z.state);
+    json_append_escaped(s, state);
     s += "\"}";
   }
   s += "],\"modules\":[";
@@ -1201,19 +1108,13 @@ std::string build_status_json() {
     s += "\",\"companion\":";
     s += m.has_companion ? "true" : "false";
     s += ",\"state\":\"";
-    bool loaded = false;
-    for (const auto &n : g_native_injections)
-      if (n.module_id == m.module_id) {
-        loaded = true;
-        break;
-      }
-    s += (loaded && !g_safemode.active) ? "injected" : "failed";
+    s += native_module_state(m.module_id, native_injections);
     s += "\"";
     s += "}";
   }
   s += "],\"native_injections\":[";
   first = true;
-  for (const auto &n : g_native_injections) {
+  for (const auto &n : native_injections) {
     if (!first)
       s += ',';
     first = false;
@@ -1231,7 +1132,9 @@ std::string build_status_json() {
     json_append_escaped(s, n.abi);
     s += "\",\"companion\":";
     s += n.has_companion ? "true" : "false";
-    s += ",\"state\":\"injected\"";
+    s += ",\"state\":\"";
+    json_append_escaped(s, n.state);
+    s += "\"";
     s += "}";
   }
   s += "]}";
@@ -1435,13 +1338,25 @@ void handle_client(int client) {
   case zygiskd::Request::ReportZygote: {
     struct ucred cr{};
     socklen_t crlen = sizeof(cr);
+    uint32_t generation = 0;
     uint8_t ok = 0;
-    if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
-        cr.pid > 0) {
-      record_zygote(cr.pid);
-      ok = 1;
-    }
+    if (read_exact(client, &generation, sizeof(generation)) &&
+        getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
+        cr.pid > 0)
+      ok = report_runtime(cr.pid, YZ_RUNTIME_KIND_ZYGOTE, generation) ? 1 : 0;
     write_exact(client, &ok, sizeof(ok));
+    break;
+  }
+  case zygiskd::Request::GetRuntimeGeneration: {
+    struct ucred cr{};
+    socklen_t crlen = sizeof(cr);
+    uint8_t kind = 0;
+    uint32_t generation = 0;
+    if (read_exact(client, &kind, sizeof(kind)) &&
+        getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
+        cr.pid > 0)
+      generation = runtime_generation(cr.pid, kind);
+    write_exact(client, &generation, sizeof(generation));
     break;
   }
   case zygiskd::Request::GetNativeModuleCount: {
@@ -1522,13 +1437,16 @@ void handle_client(int client) {
     struct ucred cr{};
     socklen_t crlen = sizeof(cr);
     uint32_t idx = 0;
+    uint32_t generation = 0;
     uint8_t ok = 0;
     if (read_exact(client, &idx, sizeof(idx)) &&
+        read_exact(client, &generation, sizeof(generation)) &&
         getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
-        cr.pid > 0 && idx < g_native_modules.size()) {
-      record_native_injection(cr.pid, idx);
-      ok = 1;
-    }
+        cr.pid > 0 && idx < g_native_modules.size())
+      ok = report_runtime(cr.pid, YZ_RUNTIME_KIND_NATIVE, generation,
+                          g_native_modules[idx].module_id.c_str())
+               ? 1
+               : 0;
     write_exact(client, &ok, sizeof(ok));
     break;
   }

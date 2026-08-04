@@ -24,6 +24,7 @@ enum class Request : uint8_t {
   ConnectNativeCompanion = 16,
   RestoreNativeLoadPolicy = 17,
   ReportNativeInjection = 18,
+  GetRuntimeGeneration = 21,
 };
 
 inline constexpr uint32_t kNativeModuleNameMax = 64;

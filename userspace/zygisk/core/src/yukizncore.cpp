@@ -94,6 +94,7 @@ enum class ZdRequest : uint8_t {
   ConnectNativeCompanion = 16,
   RestoreNativeLoadPolicy = 17,
   ReportNativeInjection = 18,
+  GetRuntimeGeneration = 21,
 };
 
 struct ModuleHandle {
@@ -127,6 +128,7 @@ struct ZnSymbolResolver {
 std::vector<InlineHookRecord> g_inline_hooks;
 std::vector<ModuleHandle *> g_loaded_modules;
 yz_config g_yz_config{};
+uint32_t g_runtime_generation = 0;
 uintptr_t g_loader_base = 0;
 uintptr_t g_self_base = 0;
 size_t g_self_size = 0;
@@ -282,7 +284,26 @@ bool request_native_info(uint32_t idx, zygiskd::NativeModuleInfo *info) {
   return ok;
 }
 
+uint32_t request_runtime_generation() {
+  int sock = connect_zygiskd();
+  if (sock < 0)
+    return 0;
+  const uint8_t op = static_cast<uint8_t>(ZdRequest::GetRuntimeGeneration);
+  const uint8_t kind = YZ_RUNTIME_KIND_NATIVE;
+  uint32_t generation = 0;
+  if (!write_all(sock, &op, sizeof(op)) ||
+      !write_all(sock, &kind, sizeof(kind)) ||
+      !read_all(sock, &generation, sizeof(generation)))
+    generation = 0;
+  close(sock);
+  return generation;
+}
+
 bool report_native_injection(uint32_t idx) {
+  if (g_runtime_generation == 0)
+    g_runtime_generation = request_runtime_generation();
+  if (g_runtime_generation == 0)
+    return false;
   int sock = connect_zygiskd();
   if (sock < 0) {
     LOGE("native injection report: zygiskd unavailable idx=%u", idx);
@@ -290,8 +311,10 @@ bool report_native_injection(uint32_t idx) {
   }
   uint8_t op = static_cast<uint8_t>(ZdRequest::ReportNativeInjection);
   uint8_t ok = 0;
-  bool sent = write_all(sock, &op, 1) && write_all(sock, &idx, sizeof(idx)) &&
-              read_all(sock, &ok, sizeof(ok));
+  bool sent =
+      write_all(sock, &op, 1) && write_all(sock, &idx, sizeof(idx)) &&
+      write_all(sock, &g_runtime_generation, sizeof(g_runtime_generation)) &&
+      read_all(sock, &ok, sizeof(ok));
   close(sock);
   if (!sent)
     LOGE("native injection report: request failed idx=%u", idx);
@@ -1177,6 +1200,7 @@ bool rebind_self_dl_iterate_slot(uintptr_t load_bias) {
 
 void core_start() {
   run_ctors_once();
+  g_runtime_generation = request_runtime_generation();
   load_config();
   load_early_modules();
   load_matching_modules();

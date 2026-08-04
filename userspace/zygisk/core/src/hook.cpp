@@ -587,29 +587,30 @@ void yz_drop_runtime_header_pages() {
 }
 
 /* Install the early strdup hook. */
-void zygisk_hook_bootstrap(const char *self_path) {
+bool zygisk_hook_bootstrap(const char *self_path) {
   ZLOGI("hook bootstrap, self=%s", self_path ? self_path : "(null)");
 
   dev_t dev = 0;
   ino_t inode = 0;
   if (!find_libandroid_runtime(dev, inode)) {
     ZLOGE("libandroid_runtime.so not mapped yet; cannot bootstrap");
-    return;
+    return false;
   }
 
   if (!lsplt::RegisterHook(dev, inode, "strdup",
                            reinterpret_cast<void *>(new_strdup),
                            reinterpret_cast<void **>(&g_strdup.original))) {
     ZLOGE("RegisterHook(strdup) failed");
-    return;
+    return false;
   }
   if (!lsplt::CommitHook()) {
     ZLOGE("CommitHook failed");
-    return;
+    return false;
   }
 
   ZLOGI("lifecycle bootstrap armed on libandroid_runtime (dev=%u,%u inode=%lu)",
         major(dev), minor(dev), static_cast<unsigned long>(inode));
+  return true;
 }
 
 void zygisk_hook_jni_methods(JNIEnv *env, const char *cls,

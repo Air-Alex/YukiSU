@@ -5,7 +5,7 @@
 #include "zygisk.hpp"
 
 /* Early lifecycle hook. */
-void zygisk_hook_bootstrap(const char *self_path);
+bool zygisk_hook_bootstrap(const char *self_path);
 
 /* 0=inject, 1=inject+umount, 2=skip+umount. */
 int zygisk_inject_decision(int uid);
