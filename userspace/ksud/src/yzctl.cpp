@@ -442,7 +442,6 @@ json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInven
         entry["pid"] = number(record.pid);
         entry["name"] = json::Value(target);
         entry["target"] = json::Value(target);
-        entry["process"] = json::Value(bounded_string(record.process));
         entry["abi"] = json::Value(abi_name(record.abi));
         entry["state"] = json::Value(state);
         root["zygote_monitor"].push_back(entry);

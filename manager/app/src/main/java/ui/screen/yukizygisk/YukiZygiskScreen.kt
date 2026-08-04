@@ -157,7 +157,6 @@ private fun parseMonitorState(value: String): MonitorState = when (value) {
 private data class ZygoteMonitorEntry(
     val pid: Int,
     val name: String,
-    val process: String,
     val abi: String,
     val state: MonitorState,
 )
@@ -198,6 +197,9 @@ private data class NativeModuleMonitorEntry(
     val state: MonitorState,
 )
 
+private fun nativeProcessDisplayName(value: String): String =
+    value.substringAfterLast('/').ifBlank { value }
+
 private data class YzStatus(
     val enabled: Boolean,
     val count: Int,
@@ -219,8 +221,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
             val z = a.getJSONObject(i)
             ZygoteMonitorEntry(
                 pid = z.optInt("pid", 0),
-                name = z.optString("name", "zygote"),
-                process = z.optString("process", ""),
+                name = z.optString("target").ifBlank { z.optString("name", "zygote") },
                 abi = z.optString("abi", "unknown"),
                 state = MonitorState.Injected,
             )
@@ -232,8 +233,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
             val z = a.getJSONObject(i)
             ZygoteMonitorEntry(
                 pid = z.optInt("pid", 0),
-                name = z.optString("name", "zygote"),
-                process = z.optString("process", ""),
+                name = z.optString("target").ifBlank { z.optString("name", "zygote") },
                 abi = z.optString("abi", "unknown"),
                 state = parseMonitorState(z.optString("state", "failed")),
             )
@@ -538,7 +538,9 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                             }
                             NativeProcessEntry(
                                 pid = first.pid,
-                                process = first.process.ifEmpty { first.target },
+                                process = nativeProcessDisplayName(
+                                    first.process.ifEmpty { first.target }
+                                ),
                                 abi = first.abi,
                                 modules = rows.map { it.module }.distinct(),
                                 state = state,
@@ -693,16 +695,12 @@ private fun ZygoteMonitorRow(zygote: ZygoteMonitorEntry, onStatusClick: () -> Un
             )
         },
         supportingContent = {
-            val detail = stringResource(
-                R.string.yukizygisk_zygote_detail,
-                zygote.abi,
-                zygote.pid,
-            )
             Text(
-                zygote.process
-                    .takeIf { it.isNotBlank() && it != zygote.name }
-                    ?.let { "$it · $detail" }
-                    ?: detail,
+                stringResource(
+                    R.string.yukizygisk_zygote_detail,
+                    zygote.abi,
+                    zygote.pid,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
