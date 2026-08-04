@@ -22,6 +22,7 @@
 
 #include <dlfcn.h>
 #include <elf.h>
+#include <link.h>
 #include <pthread.h>
 
 #include <cctype>
@@ -81,7 +82,15 @@ namespace {
 #define MFD_ALLOW_SEALING 0x0002U
 #endif // #ifndef MFD_ALLOW_SEALING
 
+#if defined(__LP64__)
 constexpr char kAbi[] = "arm64-v8a";
+constexpr char kLinkerPath[] = "/system/bin/linker64";
+constexpr int kSetDlopenRequest = KSU_IOCTL_YZ_SET_DLOPEN;
+#else
+constexpr char kAbi[] = "armeabi-v7a";
+constexpr char kLinkerPath[] = "/system/bin/linker";
+constexpr int kSetDlopenRequest = KSU_IOCTL_YZ_SET_DLOPEN32;
+#endif // #if defined(__LP64__)
 
 constexpr char kModulesDir[] = "/data/adb/modules";
 
@@ -95,6 +104,7 @@ std::vector<Module> g_modules;
 using NativeModule = yukizygisk::native::NativeModule;
 
 std::vector<NativeModule> g_native_modules;
+std::vector<NativeModule> g_native_targets;
 
 struct SafemodeStatus {
   bool active = false;
@@ -189,11 +199,34 @@ std::vector<NativeModule> scan_native_modules() {
   return mods;
 }
 
+int native_module_elf_class(const std::string &path) {
+  unsigned char ident[EI_NIDENT]{};
+  int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+  if (fd < 0)
+    return ELFCLASSNONE;
+  ssize_t n = read(fd, ident, sizeof(ident));
+  close(fd);
+  if (n != static_cast<ssize_t>(sizeof(ident)) ||
+      memcmp(ident, ELFMAG, SELFMAG) != 0 || ident[EI_DATA] != ELFDATA2LSB)
+    return ELFCLASSNONE;
+  return ident[EI_CLASS];
+}
+
 void publish_native_targets() {
   yz_native_targets_cmd cmd{};
-  for (const auto &m : g_native_modules) {
+  for (const auto &m : g_native_targets) {
     if (cmd.count >= YZ_NATIVE_TARGET_MAX)
       break;
+    bool duplicate = false;
+    for (uint32_t i = 0; i < cmd.count; ++i) {
+      if (cmd.targets[i].type == m.target_type &&
+          strcmp(cmd.targets[i].value, m.target.c_str()) == 0) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate)
+      continue;
     yz_native_target &t = cmd.targets[cmd.count++];
     t.type = m.target_type;
     (void)snprintf(t.value, sizeof(t.value), "%s", m.target.c_str());
@@ -209,8 +242,21 @@ void publish_native_targets() {
 
 void rescan_modules() {
   g_modules = scan_modules();
-  g_native_modules = scan_native_modules();
+  std::vector<NativeModule> scanned = scan_native_modules();
+  g_native_targets.clear();
+  g_native_modules.clear();
+  constexpr int kElfClass = sizeof(void *) == 8 ? ELFCLASS64 : ELFCLASS32;
+  for (const auto &module : scanned) {
+    int module_class = native_module_elf_class(module.lib_path);
+    if (module_class != ELFCLASS32 && module_class != ELFCLASS64)
+      continue;
+    g_native_targets.push_back(module);
+    if (module_class == kElfClass)
+      g_native_modules.push_back(module);
+  }
+#if defined(__LP64__)
   publish_native_targets();
+#endif // #if defined(__LP64__)
   DLOGI("found %zu zygisk module(s), %zu native module(s) for %s",
         g_modules.size(), g_native_modules.size(), kAbi);
 }
@@ -418,7 +464,7 @@ void *companion_thread(void *p) {
     }
     closedir(fdd);
   }
-  void *h = dlopen(lib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+  void *h = dlopen(lib_path.c_str(), RTLD_NOW);
   auto fn = h ? reinterpret_cast<companion_entry_fn>(
                     dlsym(h, "zygisk_companion_entry"))
               : nullptr;
@@ -525,7 +571,7 @@ void *native_companion_thread(void *p) {
     closedir(fdd);
   }
 
-  void *h = dlopen(lib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+  void *h = dlopen(lib_path.c_str(), RTLD_NOW);
   auto *mod = h ? reinterpret_cast<ZygiskNextCompanionModule *>(
                       dlsym(h, "zn_companion_module"))
                 : nullptr;
@@ -861,10 +907,6 @@ std::string zygote_abi(pid_t pid, const std::string &abi_list) {
   return "unknown";
 }
 
-bool is_32bit_abi(const std::string &abi) {
-  return !abi.empty() && abi.find("64") == std::string::npos;
-}
-
 bool is_zygote_injected(uint32_t pid, const std::string &name,
                         const std::string &abi) {
   for (const auto &z : g_zygotes)
@@ -894,11 +936,7 @@ std::vector<ZygoteMonitorRecord> scan_zygote_monitor() {
       continue;
     std::string abi = zygote_abi(pid, abi_list);
     std::string state = "failed";
-    if (is_32bit_abi(abi)) {
-      // Keep zygote32 visible in the Manager status, but do not treat it as
-      // injected until a real 32-bit YukiZygisk payload exists.
-      state = "unsupported32";
-    } else if (g_safemode.active)
+    if (g_safemode.active)
       state = "crashed";
     else if (is_zygote_injected(static_cast<uint32_t>(pid), name, abi))
       state = "injected";
@@ -1582,7 +1620,7 @@ uint64_t resolve_linker_sym(const char *path, const char *want) {
     return 0;
   struct stat st{};
   if (fstat(fd, &st) < 0 || st.st_size < 0 ||
-      static_cast<uint64_t>(st.st_size) < sizeof(Elf64_Ehdr)) {
+      static_cast<uint64_t>(st.st_size) < sizeof(ElfW(Ehdr))) {
     close(fd);
     return 0;
   }
@@ -1592,19 +1630,20 @@ uint64_t resolve_linker_sym(const char *path, const char *want) {
     return 0;
 
   const auto *base = static_cast<const uint8_t *>(map);
-  const auto *eh = reinterpret_cast<const Elf64_Ehdr *>(base);
+  const auto *eh = reinterpret_cast<const ElfW(Ehdr) *>(base);
   uint64_t result = 0;
   if (memcmp(eh->e_ident, ELFMAG, SELFMAG) == 0 &&
-      eh->e_ident[EI_CLASS] == ELFCLASS64) {
-    const auto *sh = reinterpret_cast<const Elf64_Shdr *>(base + eh->e_shoff);
+      eh->e_ident[EI_CLASS] ==
+          (sizeof(void *) == 8 ? ELFCLASS64 : ELFCLASS32)) {
+    const auto *sh = reinterpret_cast<const ElfW(Shdr) *>(base + eh->e_shoff);
     for (size_t i = 0; i < eh->e_shnum && !result; i++) {
       if (sh[i].sh_type != SHT_DYNSYM)
         continue;
       const auto *syms =
-          reinterpret_cast<const Elf64_Sym *>(base + sh[i].sh_offset);
+          reinterpret_cast<const ElfW(Sym) *>(base + sh[i].sh_offset);
       const char *strs =
           reinterpret_cast<const char *>(base + sh[sh[i].sh_link].sh_offset);
-      size_t n = sh[i].sh_size / sizeof(Elf64_Sym);
+      size_t n = sh[i].sh_size / sizeof(ElfW(Sym));
       for (size_t j = 0; j < n; j++) {
         if (strcmp(strs + syms[j].st_name, want) == 0) {
           result = syms[j].st_value;
@@ -1619,7 +1658,7 @@ uint64_t resolve_linker_sym(const char *path, const char *want) {
 
 uint64_t resolve_first(const char *const *cands, size_t n, const char **hit) {
   for (size_t i = 0; i < n; ++i) {
-    uint64_t off = resolve_linker_sym("/system/bin/linker64", cands[i]);
+    uint64_t off = resolve_linker_sym(kLinkerPath, cands[i]);
     if (off) {
       if (hit)
         *hit = cands[i];
@@ -1652,8 +1691,8 @@ bool send_dlopen_offset() {
     return false;
   }
 
-  int ret = ksud::ksuctl(KSU_IOCTL_YZ_SET_DLOPEN, &cmd);
-  DLOGI("linker dlopen '%s'=0x%llx dlsym '%s'=0x%llx -> kernel ret=%d",
+  int ret = ksud::ksuctl(kSetDlopenRequest, &cmd);
+  DLOGI("%s dlopen '%s'=0x%llx dlsym '%s'=0x%llx -> kernel ret=%d", kLinkerPath,
         dlopen_name, (unsigned long long)cmd.dlopen_offset, dlsym_name,
         (unsigned long long)cmd.dlsym_offset, ret);
   return ret == 0;

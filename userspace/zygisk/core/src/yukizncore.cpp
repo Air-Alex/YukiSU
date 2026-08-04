@@ -371,7 +371,7 @@ bool find_library_map(const char *path, void *base_addr, lsplt::MapInfo *out,
   }
 
   std::string want = path != nullptr ? path : "";
-  if (want == "linker64") {
+  if (want == "linker" || want == "linker64") {
     void *linker_base = reinterpret_cast<void *>(getauxval(AT_BASE));
     if (linker_base != nullptr && map_from_base(linker_base, out)) {
       *load_base = out->start - out->offset;
@@ -403,8 +403,10 @@ bool elf_image_ok(const uint8_t *image, size_t file_size,
     return false;
   const auto *eh = reinterpret_cast<const ElfW(Ehdr) *>(image);
   if (memcmp(eh->e_ident, ELFMAG, SELFMAG) != 0 ||
-      eh->e_ident[EI_CLASS] != ELFCLASS64 || eh->e_shoff == 0 ||
-      eh->e_shnum == 0 || eh->e_shentsize != sizeof(ElfW(Shdr)))
+      eh->e_ident[EI_CLASS] !=
+          (sizeof(void *) == 8 ? ELFCLASS64 : ELFCLASS32) ||
+      eh->e_shoff == 0 || eh->e_shnum == 0 ||
+      eh->e_shentsize != sizeof(ElfW(Shdr)))
     return false;
   uint64_t table_size = static_cast<uint64_t>(eh->e_shnum) *
                         static_cast<uint64_t>(eh->e_shentsize);
@@ -613,7 +615,7 @@ int api_inline_hook(void *target, void *addr, void **original) {
 
   InlineHookRecord rec{};
   rec.target = target;
-  void *orig = yuki::ihook::install(target, addr, &rec.hook);
+  void *orig = yuki::ihook::install(target, addr, &rec.hook, true);
   if (orig == nullptr) {
     LOGE("inline hook: install failed target=%p handler=%p", target, addr);
     return kFailed;
@@ -632,7 +634,8 @@ int api_inline_unhook(void *target) {
   for (auto it = g_inline_hooks.begin(); it != g_inline_hooks.end(); ++it) {
     if (it->target != target)
       continue;
-    yuki::ihook::uninstall(&it->hook);
+    if (!yuki::ihook::uninstall(&it->hook))
+      return kFailed;
     g_inline_hooks.erase(it);
     return kSuccess;
   }
@@ -786,12 +789,12 @@ bool load_native_module_from_fd(const zygiskd::NativeModuleInfo &info,
     ext.flags = ANDROID_DLEXT_USE_LIBRARY_FD | ANDROID_DLEXT_FORCE_LOAD;
     ext.library_fd = lib_fd;
     dlerror();
-    so = android_dlopen_ext(lib_name.c_str(), RTLD_NOW | RTLD_LOCAL, &ext);
+    so = android_dlopen_ext(lib_name.c_str(), RTLD_NOW, &ext);
     const char *name_err = dlerror();
     std::string name_error = name_err != nullptr ? name_err : "";
     if (so == nullptr) {
       dlerror();
-      so = android_dlopen_ext(lib_path.c_str(), RTLD_NOW | RTLD_LOCAL, &ext);
+      so = android_dlopen_ext(lib_path.c_str(), RTLD_NOW, &ext);
     }
     const char *path_err = dlerror();
     std::string path_error = path_err != nullptr ? path_err : "";
@@ -1058,6 +1061,18 @@ void run_ctors_once() {
 #ifndef R_AARCH64_JUMP_SLOT
 #define R_AARCH64_JUMP_SLOT 1026
 #endif // #ifndef R_AARCH64_JUMP_SLOT
+#ifndef R_ARM_GLOB_DAT
+#define R_ARM_GLOB_DAT 21
+#endif // #ifndef R_ARM_GLOB_DAT
+#ifndef R_ARM_JUMP_SLOT
+#define R_ARM_JUMP_SLOT 22
+#endif // #ifndef R_ARM_JUMP_SLOT
+
+#if defined(__LP64__)
+using SelfRelocation = ElfW(Rela);
+#else
+using SelfRelocation = ElfW(Rel);
+#endif // #if defined(__LP64__)
 
 extern "C" const ElfW(Dyn) _DYNAMIC[];
 
@@ -1083,8 +1098,8 @@ bool rebind_self_dl_iterate_slot(uintptr_t load_bias) {
 
   const ElfW(Sym) *symtab = nullptr;
   const char *strtab = nullptr;
-  const ElfW(Rela) *jmprel = nullptr;
-  const ElfW(Rela) *rela = nullptr;
+  const SelfRelocation *jmprel = nullptr;
+  const SelfRelocation *rel = nullptr;
   size_t pltrelsz = 0;
   size_t relasz = 0;
   for (const ElfW(Dyn) *d = self_dynamic_table(load_bias); d->d_tag != DT_NULL;
@@ -1097,15 +1112,24 @@ bool rebind_self_dl_iterate_slot(uintptr_t load_bias) {
       strtab = reinterpret_cast<const char *>(load_bias + d->d_un.d_ptr);
       break;
     case DT_JMPREL:
-      jmprel = reinterpret_cast<const ElfW(Rela) *>(load_bias + d->d_un.d_ptr);
+      jmprel =
+          reinterpret_cast<const SelfRelocation *>(load_bias + d->d_un.d_ptr);
       break;
     case DT_PLTRELSZ:
       pltrelsz = d->d_un.d_val;
       break;
+#if defined(__LP64__)
     case DT_RELA:
-      rela = reinterpret_cast<const ElfW(Rela) *>(load_bias + d->d_un.d_ptr);
+#else
+    case DT_REL:
+#endif // #if defined(__LP64__)
+      rel = reinterpret_cast<const SelfRelocation *>(load_bias + d->d_un.d_ptr);
       break;
+#if defined(__LP64__)
     case DT_RELASZ:
+#else
+    case DT_RELSZ:
+#endif // #if defined(__LP64__)
       relasz = d->d_un.d_val;
       break;
     default:
@@ -1117,12 +1141,19 @@ bool rebind_self_dl_iterate_slot(uintptr_t load_bias) {
 
   const long pg = getpagesize();
   bool safe = true;
-  auto patch = [&](const ElfW(Rela) * r, size_t count) {
+  auto patch = [&](const SelfRelocation *r, size_t count) {
     for (size_t i = 0; i < count; ++i) {
+#if defined(__LP64__)
       uint32_t type = ELF64_R_TYPE(r[i].r_info);
       if (type != R_AARCH64_JUMP_SLOT && type != R_AARCH64_GLOB_DAT)
         continue;
       uint32_t si = ELF64_R_SYM(r[i].r_info);
+#else
+      uint32_t type = ELF32_R_TYPE(r[i].r_info);
+      if (type != R_ARM_JUMP_SLOT && type != R_ARM_GLOB_DAT)
+        continue;
+      uint32_t si = ELF32_R_SYM(r[i].r_info);
+#endif // #if defined(__LP64__)
       if (strcmp(strtab + symtab[si].st_name, "dl_iterate_phdr") != 0)
         continue;
       if (sysfn == nullptr) {
@@ -1138,9 +1169,9 @@ bool rebind_self_dl_iterate_slot(uintptr_t load_bias) {
     }
   };
   if (jmprel != nullptr)
-    patch(jmprel, pltrelsz / sizeof(ElfW(Rela)));
-  if (rela != nullptr)
-    patch(rela, relasz / sizeof(ElfW(Rela)));
+    patch(jmprel, pltrelsz / sizeof(SelfRelocation));
+  if (rel != nullptr)
+    patch(rel, relasz / sizeof(SelfRelocation));
   return safe;
 }
 

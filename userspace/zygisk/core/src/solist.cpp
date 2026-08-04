@@ -32,7 +32,7 @@ yz_klog(const char *fmt, ...);
   } while (0)
 #define SLOGI(...) SLOGE(__VA_ARGS__)
 
-constexpr size_t kSoinfoNextOff = 40;
+constexpr size_t kSoinfoNextOff = 5 * sizeof(void *);
 constexpr int kMaxWalk = 2000; /* guard against a wrong offset / cyclic list */
 /* Android bionic CFI shadow format. */
 constexpr uintptr_t kCfiShadowGranularity = 18;
@@ -77,7 +77,7 @@ public:
   uintptr_t find(const char *prefix) const {
     const size_t plen = strlen(prefix);
     for (size_t i = 0; i < sym_cnt_; ++i) {
-      const Elf64_Sym &s = symtab_[i];
+      const ElfW(Sym) &s = symtab_[i];
       if (s.st_name == 0 || s.st_value == 0)
         continue;
       const char *name = strtab_ + s.st_name;
@@ -96,7 +96,12 @@ private:
       return false;
     char line[512];
     while (fgets(line, sizeof(line), fp) != nullptr) {
+#if defined(__LP64__)
       if (strstr(line, "/linker64") == nullptr)
+#else
+      if (strstr(line, "/linker") == nullptr ||
+          strstr(line, "/linker64") != nullptr)
+#endif // #if defined(__LP64__)
         continue;
       unsigned long start = 0;
       if (sscanf(line, "%lx-", &start) != 1)
@@ -124,7 +129,7 @@ private:
       return false;
     struct stat st{};
     if (fstat(fd, &st) != 0 || st.st_size < 0 ||
-        static_cast<uint64_t>(st.st_size) < sizeof(Elf64_Ehdr)) {
+        static_cast<uint64_t>(st.st_size) < sizeof(ElfW(Ehdr))) {
       close(fd);
       return false;
     }
@@ -135,19 +140,20 @@ private:
       return false;
 
     const auto *base = static_cast<const uint8_t *>(map_);
-    const auto *eh = reinterpret_cast<const Elf64_Ehdr *>(base);
+    const auto *eh = reinterpret_cast<const ElfW(Ehdr) *>(base);
     if (memcmp(eh->e_ident, ELFMAG, SELFMAG) != 0 ||
-        eh->e_ident[EI_CLASS] != ELFCLASS64)
+        eh->e_ident[EI_CLASS] !=
+            (sizeof(void *) == 8 ? ELFCLASS64 : ELFCLASS32))
       return false;
 
-    const auto *sh = reinterpret_cast<const Elf64_Shdr *>(base + eh->e_shoff);
+    const auto *sh = reinterpret_cast<const ElfW(Shdr) *>(base + eh->e_shoff);
     for (size_t i = 0; i < eh->e_shnum; ++i) {
       if (sh[i].sh_type != SHT_SYMTAB)
         continue;
       if (sh[i].sh_link >= eh->e_shnum)
         return false;
-      symtab_ = reinterpret_cast<const Elf64_Sym *>(base + sh[i].sh_offset);
-      sym_cnt_ = sh[i].sh_size / sizeof(Elf64_Sym);
+      symtab_ = reinterpret_cast<const ElfW(Sym) *>(base + sh[i].sh_offset);
+      sym_cnt_ = sh[i].sh_size / sizeof(ElfW(Sym));
       strtab_ =
           reinterpret_cast<const char *>(base + sh[sh[i].sh_link].sh_offset);
       return true;
@@ -159,7 +165,7 @@ private:
   char path_[256] = {};
   void *map_ = MAP_FAILED;
   size_t map_sz_ = 0;
-  const Elf64_Sym *symtab_ = nullptr;
+  const ElfW(Sym) *symtab_ = nullptr;
   const char *strtab_ = nullptr;
   size_t sym_cnt_ = 0;
 };
@@ -176,8 +182,8 @@ inline void soinfo_set_next(void *si, void *next) {
 /* Runtime soinfo unload glue. */
 size_t g_size_off = 0, g_next_off = 0, g_ctor_off = 0;
 void (*g_soinfo_unload)(void *) = nullptr;
-uint64_t *g_load_counter = nullptr;
-uint64_t *g_unload_counter = nullptr;
+size_t *g_load_counter = nullptr;
+size_t *g_unload_counter = nullptr;
 realpath_fn g_realpath_u = nullptr;
 realpath_fn g_soname_u = nullptr;
 guard_fn g_pdg_ctor_u = nullptr, g_pdg_dtor_u = nullptr;
@@ -265,9 +271,9 @@ bool u_init() {
   uintptr_t vdso_var = syms.find("__dl__ZL4vdso");
   g_soinfo_unload = reinterpret_cast<void (*)(void *)>(
       syms.find("__dl__ZL13soinfo_unloadP6soinfo"));
-  g_load_counter = reinterpret_cast<uint64_t *>(
-      syms.find("__dl__ZL21g_module_load_counter"));
-  g_unload_counter = reinterpret_cast<uint64_t *>(
+  g_load_counter =
+      reinterpret_cast<size_t *>(syms.find("__dl__ZL21g_module_load_counter"));
+  g_unload_counter = reinterpret_cast<size_t *>(
       syms.find("__dl__ZL23g_module_unload_counter"));
   g_realpath_u = reinterpret_cast<realpath_fn>(
       syms.find("__dl__ZNK6soinfo12get_realpathEv"));
@@ -326,7 +332,7 @@ bool u_init() {
 int hide_from_solist(const char *path_substr) {
   LinkerSyms syms;
   if (!syms.init()) {
-    SLOGE("solist: cannot resolve linker64 .symtab; skip hiding");
+    SLOGE("solist: cannot resolve linker .symtab; skip hiding");
     return 0;
   }
 
@@ -508,7 +514,7 @@ bool find_cfi_shadow(CfiShadowRange *out) {
   while (fgets(line, sizeof(line), fp) != nullptr) {
     if (strstr(line, "[anon:cfi shadow]") == nullptr)
       continue;
-    uintptr_t start = 0, end = 0;
+    unsigned long start = 0, end = 0;
     char perms[5] = {};
     if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) != 3)
       continue;
@@ -628,7 +634,7 @@ int spoof_virtual_maps(const char *path_substr, bool private_only) {
   while (nr < 64 && fgets(line, sizeof(line), fp) != nullptr) {
     if (strstr(line, path_substr) == nullptr)
       continue;
-    uintptr_t start = 0, end = 0;
+    unsigned long start = 0, end = 0;
     char perms[5] = {};
     if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) != 3)
       continue;
@@ -659,7 +665,7 @@ int spoof_fd_maps(int fd, bool private_only) {
     return 0;
   char line[512];
   while (nr < 64 && fgets(line, sizeof(line), fp) != nullptr) {
-    uintptr_t start = 0, end = 0;
+    unsigned long start = 0, end = 0;
     unsigned int dev_major = 0, dev_minor = 0;
     unsigned long inode = 0;
     char perms[5] = {};
@@ -690,7 +696,7 @@ int name_anonymous_exec() {
   char line[512];
   int n = 0;
   while (fgets(line, sizeof(line), fp) != nullptr) {
-    uintptr_t start = 0, end = 0;
+    unsigned long start = 0, end = 0;
     char perms[5] = {};
     int path_off = 0;
     if (sscanf(line, "%lx-%lx %4s %*s %*s %*s %n", &start, &end, perms,

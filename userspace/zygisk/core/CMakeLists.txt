@@ -1,4 +1,4 @@
-# libzygisk.so -- the Zygisk core (see src/core.cpp).
+# libzygisk64.so / libzygisk32.so -- the Zygisk core (see src/core.cpp).
 # Standalone NDK CMake build, like userspace/su.
 
 cmake_minimum_required(VERSION 3.14)
@@ -20,24 +20,26 @@ set(YUKISU_CLANG_TIDY_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/../.clang-tidy")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/ClangTidy.cmake")
 
-if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
-    # zygote32 support is reserved, but has no implementation yet.  Build
-    # inert DSOs with the normal names so the armv7 artifact contract stays
-    # stable without accidentally shipping the arm64-only implementation.
-    message(STATUS "Building empty YukiZygisk armv7 placeholders")
-    foreach(target zygisk yukizncore yukilinker)
-        add_library(${target} SHARED src/armv7_placeholder.c)
-        set_target_properties(${target} PROPERTIES PREFIX "lib" OUTPUT_NAME ${target})
-        target_compile_options(${target} PRIVATE
-            -Os -ffunction-sections -fdata-sections -fvisibility=hidden
-            -fno-stack-protector)
-        target_link_options(${target} PRIVATE -Wl,--gc-sections -Wl,--strip-all)
-        yukisu_enable_clang_tidy(${target} C)
-    endforeach()
-elseif(NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+if(NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a" AND
+   NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
     message(FATAL_ERROR
-        "YukiZygisk supports Android arm64-v8a and reserved armeabi-v7a only")
+        "YukiZygisk supports Android arm64-v8a and armeabi-v7a only")
+endif()
+
+set(YUKILINKER_ARCH_SOURCES)
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    set(YUKIZYGISK_ABI_SUFFIX 64)
+    list(APPEND YUKILINKER_ARCH_SOURCES src/yukilinker_tlsdesc.S)
 else()
+    set(YUKIZYGISK_ABI_SUFFIX 32)
+endif()
+
+# Remove outputs left by builds from before filenames became ABI-explicit.
+file(REMOVE
+    "${CMAKE_CURRENT_BINARY_DIR}/libzygisk.so"
+    "${CMAKE_CURRENT_BINARY_DIR}/libyukilinker.so"
+    "${CMAKE_CURRENT_BINARY_DIR}/libyukizncore.so")
+
 # Vendored PLT-hook engine (LGPL-3.0). Static only -- we ship no extra .so.
 set(LSPLT_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 add_subdirectory(
@@ -55,14 +57,16 @@ add_library(zygisk SHARED
     # its own copy -- the separate libyukilinker first stage is then unloaded
     # right after handoff (zygisk_finalize_loader) instead of lingering.
     src/yukilinker.cpp
-    src/yukilinker_tlsdesc.S
+    ${YUKILINKER_ARCH_SOURCES}
     # synchronous self-unmap: capture-stub template + tail-call munmap.
     src/self_unmap.S
     # solist unlink and maps hiding helpers.
     src/solist.cpp
 )
-# -> libzygisk.so
-set_target_properties(zygisk PROPERTIES PREFIX "lib" OUTPUT_NAME zygisk)
+# Keep target names stable while making both ELF filenames and SONAMEs explicit.
+set_target_properties(zygisk PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "zygisk${YUKIZYGISK_ABI_SUFFIX}")
 
 # The public ABI contract (zygisk.hpp) lives in ../include.
 target_include_directories(zygisk PRIVATE
@@ -100,14 +104,16 @@ yukisu_enable_clang_tidy(zygisk CXX)
 add_library(yukizncore SHARED
     src/yukizncore.cpp
     src/yukilinker.cpp
-    src/yukilinker_tlsdesc.S
+    ${YUKILINKER_ARCH_SOURCES}
     src/self_unmap.S
     src/solist.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz/xz_dec_lzma2.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz/xz_dec_stream.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz/xz_dec_bcj.c
 )
-set_target_properties(yukizncore PROPERTIES PREFIX "lib" OUTPUT_NAME yukizncore)
+set_target_properties(yukizncore PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "yukizncore${YUKIZYGISK_ABI_SUFFIX}")
 target_include_directories(yukizncore PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../daemon
@@ -133,13 +139,16 @@ target_link_options(yukizncore PRIVATE -Wl,--gc-sections -Wl,--strip-all
 # The C sources on this target are vendored BusyBox/XZ; check our C++ only.
 yukisu_enable_clang_tidy(yukizncore CXX)
 
-# libyukilinker.so -- the anonymous in-memory module loader, split into its own
+# libyukilinker64.so / libyukilinker32.so -- the anonymous in-memory module
+# loader, split into its own
 # .so that core dlopen+dlsym's at runtime (exports yuki_dlopen_memfd/dlsym/
 # dlclose). Same source as compiled-in; no lsplt/solist deps.
 add_library(yukilinker SHARED
     src/yukilinker.cpp
-    src/yukilinker_tlsdesc.S)
-set_target_properties(yukilinker PROPERTIES PREFIX "lib" OUTPUT_NAME yukilinker)
+    ${YUKILINKER_ARCH_SOURCES})
+set_target_properties(yukilinker PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "yukilinker${YUKIZYGISK_ABI_SUFFIX}")
 target_include_directories(yukilinker PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../..)  # repo root
@@ -157,7 +166,6 @@ target_compile_definitions(yukilinker PRIVATE YUKILINKER_BOOTSTRAP=1)
 target_link_libraries(yukilinker PRIVATE dl)
 target_link_options(yukilinker PRIVATE -Wl,--gc-sections -Wl,--strip-all)
 yukisu_enable_clang_tidy(yukilinker CXX)
-endif()
 
 find_program(LLVM_STRIP NAMES llvm-strip)
 if(LLVM_STRIP)

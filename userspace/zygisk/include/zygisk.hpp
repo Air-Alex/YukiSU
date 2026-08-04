@@ -14,8 +14,9 @@
 
 // This is the public API for Zygisk modules. It is the cross-implementation
 // ABI contract: a module is compiled against this header and must run on any
-// conforming Zygisk implementation. Our core (libzygisk.so) provides the
-// matching api_table defined at the bottom. Distributed under its original
+// conforming Zygisk implementation. Our core
+// (libzygisk64.so/libzygisk32.so) provides the matching api_table defined at
+// the bottom. Distributed under its original
 // permissive (ISC) terms above -- this is the one file we reuse verbatim,
 // precisely because it is the shared interface and must stay byte-compatible.
 //
