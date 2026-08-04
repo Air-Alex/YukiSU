@@ -1071,6 +1071,16 @@ static int do_yz_set_dlopen(void __user *arg)
 	return 0;
 }
 
+static int do_yz_set_dlopen32(void __user *arg)
+{
+	struct yz_dlopen_cmd cmd;
+
+	if (copy_from_user(&cmd, arg, sizeof(cmd)))
+		return -EFAULT;
+	ksu_zygote_probe_set_dlopen32_off(cmd.dlopen_offset, cmd.dlsym_offset);
+	return 0;
+}
+
 static int do_yz_reload(void __user *arg)
 {
 	(void)arg;
@@ -1529,6 +1539,10 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_YZ_SET_DLOPEN,
      .name = "YZ_SET_DLOPEN",
      .handler = do_yz_set_dlopen,
+     .perm_check = only_root},
+    {.cmd = KSU_IOCTL_YZ_SET_DLOPEN32,
+     .name = "YZ_SET_DLOPEN32",
+     .handler = do_yz_set_dlopen32,
      .perm_check = only_root},
     {.cmd = KSU_IOCTL_YZ_SET_YUKILINKER,
      .name = "YZ_SET_YUKILINKER",

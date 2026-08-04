@@ -11,6 +11,7 @@ struct cred;
 void ksu_zygote_probe_init(void);
 void ksu_zygote_probe_exit(void);
 void ksu_zygote_probe_set_dlopen_off(u64 dlopen_off, u64 dlsym_off);
+void ksu_zygote_probe_set_dlopen32_off(u64 dlopen_off, u64 dlsym_off);
 void ksu_zygote_probe_set_yukilinker(bool enabled);
 int ksu_zygote_probe_set_native_targets(
     const struct yz_native_targets_cmd *cmd);

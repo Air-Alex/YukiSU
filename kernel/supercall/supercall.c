@@ -1,6 +1,7 @@
 #include <asm/unistd.h>
 #include <linux/anon_inodes.h>
 #include <linux/capability.h>
+#include <linux/compat.h>
 #include <linux/cred.h>
 #include <linux/err.h>
 #include <linux/fdtable.h>
@@ -467,6 +468,14 @@ static long anon_ksu_ioctl(struct file *filp, unsigned int cmd,
 	return ksu_supercall_handle_ioctl(cmd, (void __user *)arg);
 }
 
+#ifdef CONFIG_COMPAT
+static long anon_ksu_compat_ioctl(struct file *filp, unsigned int cmd,
+				  unsigned long arg)
+{
+	return ksu_supercall_handle_ioctl(cmd, compat_ptr(arg));
+}
+#endif
+
 // File release handler
 static int anon_ksu_release(struct inode *inode, struct file *filp)
 {
@@ -478,6 +487,9 @@ static int anon_ksu_release(struct inode *inode, struct file *filp)
 static const struct file_operations anon_ksu_fops = {
     .owner = THIS_MODULE,
     .unlocked_ioctl = anon_ksu_ioctl,
+#ifdef CONFIG_COMPAT
+    .compat_ioctl = anon_ksu_compat_ioctl,
+#endif
     .release = anon_ksu_release,
 };
 
