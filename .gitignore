@@ -13,5 +13,7 @@ local.properties
 # ksud build artifacts
 userspace/ksud/build-android/
 build_ksud/
+userspace/zygisk/core/build-armv7/
+userspace/zygisk/daemon/build-armv7/
 
 out/

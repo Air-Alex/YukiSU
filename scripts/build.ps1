@@ -73,8 +73,8 @@ function Assert-SafeBuildDirectory {
     if (-not $fullPath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to clean a build directory outside the repository: $fullPath"
     }
-    if ((Split-Path -Leaf $fullPath) -ne 'build') {
-        throw "Refusing to clean a directory not named 'build': $fullPath"
+    if ((Split-Path -Leaf $fullPath) -notmatch '^build(?:-[A-Za-z0-9._-]+)?$') {
+        throw "Refusing to clean a directory not named like 'build': $fullPath"
     }
 }
 
@@ -174,10 +174,12 @@ function Build-CMakeProject {
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][string]$SourceDirectory,
         [int]$AndroidApi = 26,
+        [string]$AndroidAbi = $script:AndroidAbi,
+        [string]$BuildDirectoryName = 'build',
         [switch]$NeedsPython
     )
 
-    $buildDirectory = Join-Path $SourceDirectory 'build'
+    $buildDirectory = Join-Path $SourceDirectory $BuildDirectoryName
     Write-Host ">>> Build $Name ..." -ForegroundColor Cyan
     if ($script:CleanBuild) {
         Reset-BuildDirectory $buildDirectory
@@ -192,7 +194,7 @@ function Build-CMakeProject {
         '-G', 'Ninja',
         "-DCMAKE_TOOLCHAIN_FILE=$script:NdkToolchainFile",
         "-DCMAKE_MAKE_PROGRAM=$script:NinjaExe",
-        "-DANDROID_ABI=$script:AndroidAbi",
+        "-DANDROID_ABI=$AndroidAbi",
         "-DANDROID_PLATFORM=android-$AndroidApi",
         '-DCMAKE_BUILD_TYPE=Release',
         '-DYUKISU_ENABLE_CLANG_TIDY=OFF'
@@ -406,11 +408,19 @@ try {
     $ksuinitDirectory = Join-Path $script:RepoRoot 'userspace\ksuinit'
     $suDirectory = Join-Path $script:RepoRoot 'userspace\su'
     $zygiskDirectory = Join-Path $script:RepoRoot 'userspace\zygisk\core'
+    $zygiskDaemonDirectory = Join-Path $script:RepoRoot 'userspace\zygisk\daemon'
     $ksudDirectory = Join-Path $script:RepoRoot 'userspace\ksud'
     $assetsDirectory = Join-Path $ksudDirectory 'assets'
     New-Item -ItemType Directory -Path $assetsDirectory -Force | Out-Null
 
-    foreach ($generatedAsset in @('ksuinit', 'su', 'libzygisk.so', 'libyukilinker.so', 'libyukizncore.so')) {
+    $generatedAssets = @(
+        'ksuinit', 'su', 'zygiskd64', 'zygiskd32',
+        'libzygisk64.so', 'libzygisk32.so',
+        'libyukilinker64.so', 'libyukilinker32.so',
+        'libyukizncore64.so', 'libyukizncore32.so',
+        'libzygisk.so', 'libyukilinker.so', 'libyukizncore.so'
+    )
+    foreach ($generatedAsset in $generatedAssets) {
         $assetPath = Join-Path $assetsDirectory $generatedAsset
         if (Test-Path -LiteralPath $assetPath) { Remove-Item -LiteralPath $assetPath -Force }
     }
@@ -424,10 +434,20 @@ try {
 
     try {
         Build-CMakeProject -Name 'YukiZygisk payload' -SourceDirectory $zygiskDirectory
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libzygisk.so') -Destination (Join-Path $assetsDirectory 'libzygisk.so')
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukilinker.so') -Destination (Join-Path $assetsDirectory 'libyukilinker.so')
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukizncore.so') -Destination (Join-Path $assetsDirectory 'libyukizncore.so')
-        Write-Host '    staged libzygisk.so + libyukilinker.so + libyukizncore.so'
+        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libzygisk64.so') -Destination (Join-Path $assetsDirectory 'libzygisk64.so')
+        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukilinker64.so') -Destination (Join-Path $assetsDirectory 'libyukilinker64.so')
+        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukizncore64.so') -Destination (Join-Path $assetsDirectory 'libyukizncore64.so')
+        Build-CMakeProject -Name 'zygiskd64' -SourceDirectory $zygiskDaemonDirectory -AndroidApi 28
+        Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build\zygiskd64') -Destination (Join-Path $assetsDirectory 'zygiskd64')
+        Build-CMakeProject -Name 'YukiZygisk armv7 core' -SourceDirectory $zygiskDirectory `
+            -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
+        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libzygisk32.so') -Destination (Join-Path $assetsDirectory 'libzygisk32.so')
+        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukilinker32.so') -Destination (Join-Path $assetsDirectory 'libyukilinker32.so')
+        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukizncore32.so') -Destination (Join-Path $assetsDirectory 'libyukizncore32.so')
+        Build-CMakeProject -Name 'zygiskd32' -SourceDirectory $zygiskDaemonDirectory `
+            -AndroidApi 28 -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
+        Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build-armv7\zygiskd32') -Destination (Join-Path $assetsDirectory 'zygiskd32')
+        Write-Host '    staged arm64/armv7 payloads + zygiskd64/zygiskd32'
     }
     catch {
         Write-Warning "YukiZygisk payload build failed; skipped. $($_.Exception.Message)"

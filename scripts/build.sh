@@ -98,7 +98,7 @@ prepare_build_dir() {
 
 	if [[ "$CLEAN_BUILD" == "true" ]]; then
 		case "$build_dir" in
-		"$REPO_ROOT"/*/build) ;;
+		"$REPO_ROOT"/*/build | "$REPO_ROOT"/*/build-*) ;;
 		*)
 			echo "Refusing to clean unsafe build directory: $build_dir"
 			exit 1
@@ -107,6 +107,35 @@ prepare_build_dir() {
 		rm -rf -- "$build_dir"
 	fi
 	mkdir -p "$build_dir"
+}
+
+build_android_cmake() {
+	local source_dir="$1"
+	local build_dir="$2"
+	local abi="$3"
+	local api="$4"
+	local target
+
+	case "$abi" in
+	arm64-v8a) target="aarch64-linux-android${api}" ;;
+	armeabi-v7a) target="armv7a-linux-androideabi${api}" ;;
+	*)
+		echo "Unsupported Android ABI: $abi"
+		return 1
+		;;
+	esac
+
+	prepare_build_dir "$build_dir"
+	cmake -S "$source_dir" -B "$build_dir" -G Ninja \
+		-DCMAKE_SYSTEM_NAME=Android \
+		-DCMAKE_ANDROID_ARCH_ABI="$abi" \
+		-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+		-DCMAKE_C_COMPILER="$TOOLCHAIN/bin/${target}-clang" \
+		-DCMAKE_CXX_COMPILER="$TOOLCHAIN/bin/${target}-clang++" \
+		-DCMAKE_AR="$TOOLCHAIN/bin/llvm-ar" \
+		-DCMAKE_RANLIB="$TOOLCHAIN/bin/llvm-ranlib" \
+		-DCMAKE_BUILD_TYPE=Release &&
+		cmake --build "$build_dir" --parallel "$MAKE_JOBS"
 }
 
 NDK_HOST=$(detect_ndk_host)
@@ -191,6 +220,13 @@ KSUD_ASSETS="$REPO_ROOT/userspace/ksud/assets"
 mkdir -p "$KSUD_ASSETS"
 mkdir -p "$OUT_DIR"
 find "$KSUD_ASSETS" -maxdepth 1 -type f -name '*.ko' -delete
+rm -f -- "$KSUD_ASSETS/ksuinit" "$KSUD_ASSETS/su" \
+	"$KSUD_ASSETS/zygiskd64" "$KSUD_ASSETS/zygiskd32" \
+	"$KSUD_ASSETS/libzygisk64.so" "$KSUD_ASSETS/libzygisk32.so" \
+	"$KSUD_ASSETS/libyukilinker64.so" "$KSUD_ASSETS/libyukilinker32.so" \
+	"$KSUD_ASSETS/libyukizncore64.so" "$KSUD_ASSETS/libyukizncore32.so" \
+	"$KSUD_ASSETS/libzygisk.so" "$KSUD_ASSETS/libyukilinker.so" \
+	"$KSUD_ASSETS/libyukizncore.so"
 
 if [[ -f "$OUT_DIR/${KMI}_kernelsu.ko" ]]; then
 	cp "$OUT_DIR/${KMI}_kernelsu.ko" "$KSUD_ASSETS/"
@@ -222,19 +258,20 @@ echo "    su staged"
 # YukiZygisk payload.
 echo ">>> Build YukiZygisk payload ..."
 ZCORE_DIR="$REPO_ROOT/userspace/zygisk/core"
-prepare_build_dir "$ZCORE_DIR/build"
-cd "$ZCORE_DIR/build"
-if cmake .. -G Ninja \
-	-DCMAKE_SYSTEM_NAME=Android \
-	-DCMAKE_ANDROID_ARCH_ABI="$ANDROID_ABI" \
-	-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
-	-DCMAKE_C_COMPILER="$CC" \
-	-DCMAKE_CXX_COMPILER="$CXX" \
-	-DCMAKE_BUILD_TYPE=Release && ninja; then
-	cp "$ZCORE_DIR/build/libzygisk.so" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build/libyukilinker.so" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build/libyukizncore.so" "$KSUD_ASSETS/"
-	echo "    staged libzygisk.so + libyukilinker.so + libyukizncore.so"
+ZYGISKD_DIR="$REPO_ROOT/userspace/zygisk/daemon"
+if build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build" arm64-v8a 26 &&
+	build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build" arm64-v8a 28 &&
+	build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build-armv7" armeabi-v7a 26 &&
+	build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build-armv7" armeabi-v7a 28; then
+	cp "$ZCORE_DIR/build/libzygisk64.so" "$KSUD_ASSETS/"
+	cp "$ZCORE_DIR/build/libyukilinker64.so" "$KSUD_ASSETS/"
+	cp "$ZCORE_DIR/build/libyukizncore64.so" "$KSUD_ASSETS/"
+	cp "$ZYGISKD_DIR/build/zygiskd64" "$KSUD_ASSETS/"
+	cp "$ZCORE_DIR/build-armv7/libzygisk32.so" "$KSUD_ASSETS/"
+	cp "$ZCORE_DIR/build-armv7/libyukilinker32.so" "$KSUD_ASSETS/"
+	cp "$ZCORE_DIR/build-armv7/libyukizncore32.so" "$KSUD_ASSETS/"
+	cp "$ZYGISKD_DIR/build-armv7/zygiskd32" "$KSUD_ASSETS/"
+	echo "    staged arm64/armv7 payloads + zygiskd64/zygiskd32"
 else
 	echo "    YukiZygisk payload build failed; skipped"
 fi

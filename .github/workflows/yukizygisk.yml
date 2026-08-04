@@ -5,7 +5,7 @@ on:
       target:
         required: true
         type: string
-        description: "Target architecture: aarch64 only"
+        description: "Arm64 package target with ARM compat payloads"
       os:
         required: false
         type: string
@@ -42,6 +42,10 @@ jobs:
             aarch64-linux-android|aarch64)
               echo "abi=arm64-v8a" >> "$GITHUB_OUTPUT"
               echo "android_target=aarch64-linux-android26" >> "$GITHUB_OUTPUT"
+              echo "daemon_target=aarch64-linux-android28" >> "$GITHUB_OUTPUT"
+              echo "abi32=armeabi-v7a" >> "$GITHUB_OUTPUT"
+              echo "android_target32=armv7a-linux-androideabi26" >> "$GITHUB_OUTPUT"
+              echo "daemon_target32=armv7a-linux-androideabi28" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "YukiZygisk workflow supports aarch64 only, got: ${{ inputs.target }}"
@@ -52,36 +56,64 @@ jobs:
       - name: Build YukiZygisk payload
         run: |
           set -euo pipefail
-          cd userspace/zygisk/core
-          mkdir -p build
-          cd build
-
+          core_dir="$PWD/userspace/zygisk/core"
+          daemon_dir="$PWD/userspace/zygisk/daemon"
           TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
-          export CC="$TOOLCHAIN/bin/${{ steps.target.outputs.android_target }}-clang"
-          export CXX="$TOOLCHAIN/bin/${{ steps.target.outputs.android_target }}-clang++"
           export AR="$TOOLCHAIN/bin/llvm-ar"
           export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
           export STRIP="$TOOLCHAIN/bin/llvm-strip"
 
-          cmake .. \
-            -G Ninja \
-            -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_ANDROID_ARCH_ABI="${{ steps.target.outputs.abi }}" \
-            -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
-            -DCMAKE_C_COMPILER="$CC" \
-            -DCMAKE_CXX_COMPILER="$CXX" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DYUKISU_ENABLE_CLANG_TIDY=OFF
+          build_payload() {
+            local source_dir="$1"
+            local abi="$2"
+            local android_target="$3"
+            local build_dir="$4"
+            export CC="$TOOLCHAIN/bin/${android_target}-clang"
+            export CXX="$TOOLCHAIN/bin/${android_target}-clang++"
+            cmake -S "$source_dir" -B "$build_dir" \
+              -G Ninja \
+              -DCMAKE_SYSTEM_NAME=Android \
+              -DCMAKE_ANDROID_ARCH_ABI="$abi" \
+              -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+              -DCMAKE_C_COMPILER="$CC" \
+              -DCMAKE_CXX_COMPILER="$CXX" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DYUKISU_ENABLE_CLANG_TIDY=OFF
+            cmake --build "$build_dir"
+          }
 
-          ninja
-          ls -lh libzygisk.so libyukilinker.so libyukizncore.so
-          file libzygisk.so libyukilinker.so libyukizncore.so
+          build_payload "$core_dir" "${{ steps.target.outputs.abi }}" \
+            "${{ steps.target.outputs.android_target }}" "$core_dir/build"
+          build_payload "$daemon_dir" "${{ steps.target.outputs.abi }}" \
+            "${{ steps.target.outputs.daemon_target }}" "$daemon_dir/build"
+          build_payload "$core_dir" "${{ steps.target.outputs.abi32 }}" \
+            "${{ steps.target.outputs.android_target32 }}" "$core_dir/build-armv7"
+          build_payload "$daemon_dir" "${{ steps.target.outputs.abi32 }}" \
+            "${{ steps.target.outputs.daemon_target32 }}" "$daemon_dir/build-armv7"
+
+          dist="$core_dir/dist"
+          rm -rf "$dist"
+          mkdir -p "$dist"
+          cp "$daemon_dir"/build/zygiskd64 \
+            "$daemon_dir"/build-armv7/zygiskd32 \
+            "$core_dir"/build/libzygisk64.so \
+            "$core_dir"/build/libyukilinker64.so \
+            "$core_dir"/build/libyukizncore64.so \
+            "$core_dir"/build-armv7/libzygisk32.so \
+            "$core_dir"/build-armv7/libyukilinker32.so \
+            "$core_dir"/build-armv7/libyukizncore32.so "$dist/"
+          for asset in zygiskd64 zygiskd32 \
+            libzygisk64.so libzygisk32.so \
+            libyukilinker64.so libyukilinker32.so \
+            libyukizncore64.so libyukizncore32.so; do
+            test -s "$dist/$asset"
+          done
+          ls -lh "$dist"/*
+          file "$dist"/*
 
       - name: Upload YukiZygisk artifact
         uses: actions/upload-artifact@v6
         with:
           name: yukizygisk-${{ inputs.target }}
-          path: |
-            userspace/zygisk/core/build/libzygisk.so
-            userspace/zygisk/core/build/libyukilinker.so
-            userspace/zygisk/core/build/libyukizncore.so
+          path: userspace/zygisk/core/dist/*
+          if-no-files-found: error
