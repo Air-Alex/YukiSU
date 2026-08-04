@@ -4,7 +4,7 @@
 
 namespace ksud {
 
-// Ensure BINARY_DIR exists and symlinks (ksud, busybox) are created. Returns 0 on success.
+// Ensure BINARY_DIR and the multi-call symlinks exist. Returns 0 on success.
 int ensure_binaries(bool ignore_if_exist);
 
 }  // namespace ksud

@@ -637,7 +637,7 @@ int install(const std::optional<std::string>& magiskboot_path,
         LOGW("Failed to restore SELinux contexts");
     }
 
-    // Ensure BINARY_DIR and symlinks (ksud, busybox) exist
+    // Ensure BINARY_DIR and multi-call symlinks exist
     if (ensure_binaries(false) != 0) {
         LOGW("Failed to ensure binaries");
     }

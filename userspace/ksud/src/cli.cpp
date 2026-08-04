@@ -5,8 +5,8 @@
 #include "core/feature.hpp"
 #include "core/hide_bootloader.hpp"
 #include "core/ksucalls.hpp"
-#include "core/uts_view.hpp"
 #include "core/restorecon.hpp"
+#include "core/uts_view.hpp"
 #include "debug.hpp"
 #include "defs.hpp"
 #include "dynamic_manager.hpp"
@@ -24,10 +24,9 @@
 #include "sepolicy/sepolicy.hpp"
 #include "su.hpp"
 #include "sulog.hpp"
-#include "uapi/yukizygisk.h"
 #include "umount.hpp"
 #include "utils.hpp"
-#include "yukizygisk_snapshot.hpp"
+#include "yzctl.hpp"
 
 #include <unistd.h>
 #include <algorithm>
@@ -156,6 +155,7 @@ void print_usage() {
     printf("  profile        Manage app profiles\n");
     printf("  feature        Manage kernel features\n");
     printf("  uts-view       Manage UTS identity views\n");
+    printf("  yzctl          Control YukiZygisk and read kernel state\n");
     printf("  dynamic        Manage dynamic manager signatures\n");
     printf("  initrc         Manage init.rc injection\n");
     printf("  sulogd         Run sulog reader daemon\n");
@@ -243,29 +243,8 @@ int cmd_initrc(const std::vector<std::string>& args) {
     return 1;
 }
 
-int cmd_yukizygisk(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("Usage: ksud yukizygisk <reload|refresh-snapshot>\n");
-        return 1;
-    }
-
-    const std::string& subcmd = args[0];
-    if (subcmd == "reload") {
-        // Fires KSU_IOCTL_YZ_RELOAD -> kernel multicasts YZ_EV_RELOAD -> zygiskd
-        // re-reads yzconfig.json. Applies on the next specialize, no reboot.
-        const int rc = ksud::ksuctl(KSU_IOCTL_YZ_RELOAD, nullptr);
-        printf(rc == 0 ? "yzconfig reload signalled\n" : "yzconfig reload failed\n");
-        return rc == 0 ? 0 : 1;
-    }
-
-    if (subcmd == "refresh-snapshot") {
-        const int rc = refresh_yukizygisk_early_snapshot();
-        printf(rc == 0 ? "early snapshot refreshed\n" : "early snapshot refresh failed\n");
-        return rc;
-    }
-
-    printf("Unknown yukizygisk subcommand: %s\n", subcmd.c_str());
-    return 1;
+int cmd_yzctl(const std::vector<std::string>& args) {
+    return yzctl_run(args);
 }
 
 int cmd_feature(const std::vector<std::string>& args) {
@@ -1016,8 +995,8 @@ int cli_run(int argc, char** argv) {
         return cmd_feature(args);
     } else if (cmd == "uts-view") {
         return uts_view_command(args);
-    } else if (cmd == "yukizygisk") {
-        return cmd_yukizygisk(args);
+    } else if (cmd == "yzctl" || cmd == "yukizygisk") {
+        return cmd_yzctl(args);
     } else if (cmd == "dynamic") {
         return cmd_dynamic_manager(args);
     } else if (cmd == "initrc") {

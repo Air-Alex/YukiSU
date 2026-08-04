@@ -1,5 +1,6 @@
 #include <cstring>
 #include "cli.hpp"
+#include "yzctl.hpp"
 
 #if defined(MAGISKBOOT_ALONE_AVAILABLE) && MAGISKBOOT_ALONE_AVAILABLE
 extern int magiskboot_main(int argc, char** argv);
@@ -47,6 +48,12 @@ int main(int argc, char** argv) {
         return -1;
     };
 
+    {
+        const int r = dispatch("yzctl", ksud::yzctl_main);
+        if (r >= 0)
+            return r;
+    }
+
 #if defined(MAGISKBOOT_ALONE_AVAILABLE) && MAGISKBOOT_ALONE_AVAILABLE
     {
         const int r = dispatch("magiskboot", magiskboot_main);
@@ -93,8 +100,8 @@ int main(int argc, char** argv) {
     // Exclude "su": sucompat hijacks root shell to ksud; must not be delegated to busybox.
     if (base && base[0] && std::strcmp(base, "ksud") != 0 && std::strcmp(base, "magiskboot") != 0 &&
         std::strcmp(base, "bootctl") != 0 && std::strcmp(base, "resetprop") != 0 &&
-        std::strcmp(base, "mkbootfs") != 0 && std::strcmp(base, "su") != 0 &&
-        std::strstr(base, ".so") == nullptr) {
+        std::strcmp(base, "mkbootfs") != 0 && std::strcmp(base, "yzctl") != 0 &&
+        std::strcmp(base, "su") != 0 && std::strstr(base, ".so") == nullptr) {
         return busybox_main(argc, argv);
     }
 #endif  // #if defined(NDK_BUSYBOX_AVAILABLE) && N...

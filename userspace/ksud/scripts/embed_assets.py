@@ -251,8 +251,10 @@ int ensure_binaries(bool ignore_if_exist) {
             }
         };
         const std::string busybox_link = std::string(BINARY_DIR) + "busybox";
+        const std::string yzctl_link = std::string(BINARY_DIR) + "yzctl";
         ensure_link(DAEMON_LINK_PATH, "ksud");
         ensure_link(busybox_link.c_str(), "busybox");
+        ensure_link(yzctl_link.c_str(), "yzctl");
     }
     
     return 0;

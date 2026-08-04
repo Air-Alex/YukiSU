@@ -287,6 +287,7 @@ set(KSUD_OUR_SOURCES
     src/su.cpp
     src/init_event.cpp
     src/yukizygisk_snapshot.cpp
+    src/yzctl.cpp
     src/late_load.cpp
     src/umount.cpp
     src/debug.cpp
