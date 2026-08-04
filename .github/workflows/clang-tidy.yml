@@ -96,7 +96,7 @@ jobs:
         include:
           - name: ksud
             source: userspace/ksud
-            targets: ksud_our_objs ksud_zygiskd_objs
+            targets: ksud_our_objs
           - name: ksuinit
             source: userspace/ksuinit
             targets: ksuinit
