@@ -148,40 +148,27 @@ private data class MonitorDialogState(
 )
 
 private fun parseMonitorState(value: String): MonitorState = when (value) {
+    "injected" -> MonitorState.Injected
     "unsupported32" -> MonitorState.Unsupported32
     "crashed" -> MonitorState.Crashed
-    "failed" -> MonitorState.Failed
-    else -> MonitorState.Injected
+    else -> MonitorState.Failed
 }
 
 private fun mergeZygoteMonitorEntries(
-    legacy: List<ZygoteMonitorEntry>,
-    monitored: List<ZygoteMonitorEntry>,
+    primary: List<ZygoteMonitorEntry>,
+    secondary: List<ZygoteMonitorEntry>,
 ): List<ZygoteMonitorEntry> {
-    val merged = monitored.toMutableList()
-    legacy.forEach { injected ->
-        val idx = merged.indexOfFirst {
-            (it.pid != 0 && it.pid == injected.pid) ||
-                (it.name == injected.name && it.abi == injected.abi)
-        }
-        if (idx < 0) {
-            merged += injected
-        } else if (merged[idx].state != MonitorState.Crashed) {
-            val current = merged[idx]
-            merged[idx] = current.copy(
-                pid = current.pid.takeIf { it != 0 } ?: injected.pid,
-                name = current.name.ifEmpty { injected.name },
-                abi = current.abi.takeUnless { it == "unknown" } ?: injected.abi,
-                state = MonitorState.Injected,
-            )
-        }
+    val merged = linkedMapOf<Triple<Int, String, String>, ZygoteMonitorEntry>()
+    (primary + secondary).forEach { entry ->
+        merged[Triple(entry.pid, entry.name, entry.abi)] = entry
     }
-    return merged
+    return merged.values.toList()
 }
 
 private data class ZygoteMonitorEntry(
     val pid: Int,
     val name: String,
+    val process: String,
     val abi: String,
     val state: MonitorState,
 )
@@ -242,9 +229,9 @@ private data class YzStatus(
 )
 
 private fun mergeMonitorState(first: MonitorState, second: MonitorState): MonitorState = when {
-    first == MonitorState.Injected || second == MonitorState.Injected -> MonitorState.Injected
     first == MonitorState.Crashed || second == MonitorState.Crashed -> MonitorState.Crashed
     first == MonitorState.Failed || second == MonitorState.Failed -> MonitorState.Failed
+    first == MonitorState.Injected || second == MonitorState.Injected -> MonitorState.Injected
     else -> MonitorState.Unsupported32
 }
 
@@ -287,12 +274,14 @@ private fun mergeNativeInjections(
     return merged.values.toList()
 }
 
-private fun mergeAbiStatuses(primary: YzStatus, secondary: YzStatus?): YzStatus {
+private fun mergeAbiStatuses(primary: YzStatus?, secondary: YzStatus?): YzStatus? {
+    if (primary == null) return secondary
     if (secondary == null) return primary
-    val secondaryInjected = secondary.zygotes.filter { it.state == MonitorState.Injected }
     return primary.copy(
         count = primary.count + secondary.count,
-        zygotes = mergeZygoteMonitorEntries(secondaryInjected, primary.zygotes),
+        safeMode = primary.safeMode || secondary.safeMode,
+        zygoteCrashes = maxOf(primary.zygoteCrashes, secondary.zygoteCrashes),
+        zygotes = mergeZygoteMonitorEntries(primary.zygotes, secondary.zygotes),
         modules = (primary.modules + secondary.modules).distinct(),
         nativeModules = mergeNativeModules(primary.nativeModules, secondary.nativeModules),
         nativeInjections = mergeNativeInjections(
@@ -313,6 +302,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
             ZygoteMonitorEntry(
                 pid = z.optInt("pid", 0),
                 name = z.optString("name", "zygote"),
+                process = z.optString("process", ""),
                 abi = z.optString("abi", "unknown"),
                 state = MonitorState.Injected,
             )
@@ -325,14 +315,13 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
             ZygoteMonitorEntry(
                 pid = z.optInt("pid", 0),
                 name = z.optString("name", "zygote"),
+                process = z.optString("process", ""),
                 abi = z.optString("abi", "unknown"),
-                state = parseMonitorState(z.optString("state", "injected")),
+                state = parseMonitorState(z.optString("state", "failed")),
             )
         }
     } ?: emptyList()
-    val zygotes =
-        if (monitoredZygoteArray != null && monitoredZygotes.isNotEmpty()) monitoredZygotes
-        else mergeZygoteMonitorEntries(legacyZygotes, monitoredZygotes)
+    val zygotes = if (monitoredZygoteArray != null) monitoredZygotes else legacyZygotes
     val nativeModules = o.optJSONArray("native_modules")?.let { a ->
         (0 until a.length()).map { i ->
             val n = a.getJSONObject(i)
@@ -356,7 +345,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 target = n.optString("target", ""),
                 abi = n.optString("abi", "unknown"),
                 companion = n.optBoolean("companion", false),
-                state = parseMonitorState(n.optString("state", "injected")),
+                state = parseMonitorState(n.optString("state", "failed")),
             )
         }
     } ?: emptyList()
@@ -418,12 +407,12 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     LaunchedEffect(Unit) {
         while (true) {
             val snapshot = withContext(Dispatchers.IO) {
-                val json = runCatching { Natives.yzQueryStatus() }.getOrNull()
-                    ?: return@withContext null
-                val primary = parseYzStatus(json) ?: return@withContext null
+                val primary = runCatching { Natives.yzQueryStatus() }.getOrNull()
+                    ?.let(::parseYzStatus)
                 val secondary = runCatching { Natives.yzQueryStatus32() }.getOrNull()
                     ?.let(::parseYzStatus)
                 val st = mergeAbiStatuses(primary, secondary)
+                    ?: return@withContext null
                 YzSnapshot(
                     count = st.count,
                     safeMode = st.safeMode,
@@ -443,6 +432,15 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 modulesLoadedCount = snapshot.modulesLoadedCount
                 nativeModules = snapshot.nativeModules
                 nativeInjections = snapshot.nativeInjections
+            } else {
+                injectionActive = false
+                injectionCount = 0
+                safeMode = false
+                zygoteCrashes = 0
+                monitoredZygotes = emptyList()
+                modulesLoadedCount = 0
+                nativeModules = emptyList()
+                nativeInjections = emptyList()
             }
             delay(YZ_POLL_INTERVAL_MS)
         }
@@ -778,12 +776,16 @@ private fun ZygoteMonitorRow(zygote: ZygoteMonitorEntry, onStatusClick: () -> Un
             )
         },
         supportingContent = {
+            val detail = stringResource(
+                R.string.yukizygisk_zygote_detail,
+                zygote.abi,
+                zygote.pid,
+            )
             Text(
-                stringResource(
-                    R.string.yukizygisk_zygote_detail,
-                    zygote.abi,
-                    zygote.pid,
-                ),
+                zygote.process
+                    .takeIf { it.isNotBlank() && it != zygote.name }
+                    ?.let { "$it · $detail" }
+                    ?: detail,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
