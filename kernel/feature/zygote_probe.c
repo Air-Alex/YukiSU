@@ -1,10 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- * YukiZygisk AT_ENTRY injector.
- *
- * Author: Anatdx
- */
-
 #include <linux/binfmts.h>
 #include <linux/compat.h>
 #include <linux/compiler.h>

@@ -1,9 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk zygote hook glue.
- *
- * Author: Anatdx
- */
 #pragma once
 
 #include <jni.h>

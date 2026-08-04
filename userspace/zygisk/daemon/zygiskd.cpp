@@ -1,10 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk daemon.
- *
- * Author: Anatdx
- */
-
 #include "zygiskd.hpp"
 #include "native_modules.hpp"
 #include "uapi/yukizygisk.h"

@@ -1,8 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * YukiZygisk - kernel <-> zygiskd netlink channel (lifecycle event push).
- *
- * Author: Anatdx
  */
 
 #include <linux/netlink.h>

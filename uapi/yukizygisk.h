@@ -1,9 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- * YukiZygisk UAPI.
- *
- * Author: Anatdx
- */
 #ifndef _UAPI_YUKIZYGISK_H
 #define _UAPI_YUKIZYGISK_H
 

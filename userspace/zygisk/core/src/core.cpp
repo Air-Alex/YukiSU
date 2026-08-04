@@ -1,10 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk core.
- *
- * Author: Anatdx
- */
-
 #include "hook.hpp"
 #include "log.hpp"
 #include "solist.hpp"

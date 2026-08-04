@@ -1,7 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * Shared ZN native module manifest helpers.
- */
 #pragma once
 
 #include "uapi/yukizygisk.h"

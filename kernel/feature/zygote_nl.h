@@ -1,8 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * YukiZygisk - kernel <-> zygiskd netlink channel.
- *
- * Author: Anatdx
  */
 #ifndef __KSU_H_ZYGOTE_NL
 #define __KSU_H_ZYGOTE_NL

@@ -1,9 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * YukiZygisk - kernel-side orchestrator: per-app process lifecycle state
  * machine.
- *
- * Author: Anatdx
  */
 #ifndef __KSU_H_ZYGOTE_ORCH
 #define __KSU_H_ZYGOTE_ORCH

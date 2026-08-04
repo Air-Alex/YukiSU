@@ -1,9 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * YukiZygisk - kernel-side orchestrator: per-app process lifecycle state
  * machine.
- *
- * Author: Anatdx
  */
 
 #include <linux/cred.h>

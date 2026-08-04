@@ -1,8 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * YukiZygisk - kernel control plane: zygiskd -> kernel handoff + fd brokering.
- *
- * Author: Anatdx
  */
 #ifndef __KSU_H_ZYGOTE_CTL
 #define __KSU_H_ZYGOTE_CTL

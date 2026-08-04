@@ -1,9 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk solist/maps helpers.
- *
- * Author: Anatdx
- */
 #pragma once
 
 #include <cstdint>

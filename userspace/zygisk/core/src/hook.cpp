@@ -1,10 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk zygote lifecycle hooks.
- *
- * Author: Anatdx
- */
-
 #include <lsplt.hpp>
 
 #include <jni.h>

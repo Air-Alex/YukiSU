@@ -1,9 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk AArch64 inline hook.
- *
- * Author: Anatdx
- */
 #pragma once
 
 #include <sys/mman.h>

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * YukiZygisk - kernel control plane: zygiskd -> kernel handoff + fd brokering,
  * plus in-context delivery (push) of the brokered fds into the target.
@@ -8,8 +7,6 @@
  * queues a task_work on the target. That work runs in the target's OWN context
  * on its next return to userspace, so installing the files is just the ordinary
  * "install into current" primitive -- no freeze, no cross-process fd surgery.
- *
- * Author: Anatdx
  */
 
 #include <linux/file.h>

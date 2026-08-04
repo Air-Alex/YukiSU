@@ -1,10 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk solist/maps helpers.
- *
- * Author: Anatdx
- */
-
 #include "solist.hpp"
 
 #include <elf.h>

@@ -1,10 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk self-unmap helpers.
- *
- * Author: Anatdx
- */
-
   .bss
   .align 4
   .globl g_yz_ret_ctx

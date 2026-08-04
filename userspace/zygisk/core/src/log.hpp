@@ -1,9 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk logging.
- *
- * Author: Anatdx
- */
 #pragma once
 
 extern "C" __attribute__((weak, format(printf, 1, 2))) void

@@ -1,9 +1,3 @@
-/* SPDX-License-Identifier: GPL-3.0 */
-/*
- * YukiZygisk manager panel.
- *
- * Author: Anatdx
- */
 package ui.screen.yukizygisk
 
 import androidx.compose.foundation.background
