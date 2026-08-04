@@ -3,6 +3,7 @@
 #include <linux/compiler.h>
 #include <linux/cred.h>
 #include <linux/printk.h>
+#include <linux/pid.h>
 #include <linux/sched.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/task.h>
@@ -56,6 +57,15 @@ static struct zp_zygote_guard zp_zygote_guards[ZP_ZYGOTE_GUARD_MAX];
 static bool zp_safemode_active;
 static u32 zp_safemode_zygote_crashes;
 static char zp_safemode_zygote[YZ_ZYGOTE_NAME_MAX];
+
+struct zp_runtime_slot {
+	struct yz_runtime_record record;
+	u64 start_boottime;
+};
+
+static DEFINE_MUTEX(zp_runtime_lock);
+static struct zp_runtime_slot zp_runtime_records[YZ_RUNTIME_RECORD_MAX];
+static u32 zp_runtime_generation;
 
 #define ZP_ENABLE_LSM_INJECTOR 1
 
@@ -817,6 +827,324 @@ static bool zp_next_arg(unsigned long *p, unsigned long end, char *arg,
 	return true;
 }
 
+static u32 zp_runtime_advance_locked(void)
+{
+	if (++zp_runtime_generation == 0)
+		zp_runtime_generation = 1;
+	return zp_runtime_generation;
+}
+
+static int zp_runtime_get_task_start(u32 pid, u64 *start_boottime)
+{
+	struct task_struct *task;
+	int ret = -ESRCH;
+
+	rcu_read_lock();
+	task = get_pid_task(find_vpid((pid_t)pid), PIDTYPE_PID);
+	rcu_read_unlock();
+	if (!task)
+		return ret;
+	if (!READ_ONCE(task->exit_state)) {
+		*start_boottime = READ_ONCE(task->start_boottime);
+		ret = 0;
+	}
+	put_task_struct(task);
+	return ret;
+}
+
+static bool zp_runtime_task_alive(u32 pid, u64 start_boottime)
+{
+	u64 current_start;
+
+	return !zp_runtime_get_task_start(pid, &current_start) &&
+	       current_start == start_boottime;
+}
+
+static void zp_runtime_refresh_exited_locked(void)
+{
+	u32 i;
+
+	for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+		struct zp_runtime_slot *slot = &zp_runtime_records[i];
+
+		if (!slot->record.pid ||
+		    slot->record.state == YZ_RUNTIME_STATE_EXITED)
+			continue;
+		if (!zp_runtime_task_alive(slot->record.pid,
+					   slot->start_boottime)) {
+			slot->record.state = YZ_RUNTIME_STATE_EXITED;
+			zp_runtime_advance_locked();
+		}
+	}
+}
+
+static struct zp_runtime_slot *
+zp_runtime_alloc_slot_locked(const struct zp_runtime_slot *avoid)
+{
+	struct zp_runtime_slot *oldest_exited = NULL;
+	struct zp_runtime_slot *oldest_module = NULL;
+	u32 i;
+
+	for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+		struct zp_runtime_slot *slot = &zp_runtime_records[i];
+
+		if (slot == avoid)
+			continue;
+		if (!slot->record.pid)
+			return slot;
+		if (slot->record.state == YZ_RUNTIME_STATE_EXITED &&
+		    (!oldest_exited || slot->record.generation <
+					   oldest_exited->record.generation))
+			oldest_exited = slot;
+		if (slot->record.module_id[0] &&
+		    (!oldest_module || slot->record.generation <
+					   oldest_module->record.generation))
+			oldest_module = slot;
+	}
+	return oldest_exited ? oldest_exited : oldest_module;
+}
+
+static void zp_runtime_read_process(struct mm_struct *mm, char *process,
+				    size_t process_len)
+{
+	unsigned long p, end;
+
+	if (!process_len)
+		return;
+	process[0] = '\0';
+	if (!mm)
+		return;
+	p = READ_ONCE(mm->arg_start);
+	end = READ_ONCE(mm->arg_end);
+	if (!p || end <= p)
+		return;
+	if (!zp_next_arg(&p, end, process, process_len))
+		process[0] = '\0';
+}
+
+static u32 zp_runtime_begin(u8 kind, u8 abi, u8 target_type, u32 flags,
+			    const char *process, const char *target,
+			    u64 start_boottime)
+{
+	struct zp_runtime_slot *slot = NULL;
+	u32 restarts = 0;
+	u32 pid = (u32)current->tgid;
+	u32 i;
+
+	mutex_lock(&zp_runtime_lock);
+	zp_runtime_refresh_exited_locked();
+	if (kind == YZ_RUNTIME_KIND_ZYGOTE) {
+		for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+			struct zp_runtime_slot *candidate =
+			    &zp_runtime_records[i];
+
+			if (candidate->record.pid &&
+			    candidate->record.kind == kind &&
+			    candidate->record.abi == abi &&
+			    !candidate->record.module_id[0] &&
+			    !strcmp(candidate->record.target, target)) {
+				slot = candidate;
+				break;
+			}
+		}
+	} else {
+		for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+			struct zp_runtime_slot *candidate =
+			    &zp_runtime_records[i];
+
+			if (candidate->record.pid == pid &&
+			    candidate->record.kind == kind &&
+			    !candidate->record.module_id[0]) {
+				slot = candidate;
+				break;
+			}
+		}
+	}
+
+	if (slot && kind == YZ_RUNTIME_KIND_ZYGOTE) {
+		restarts = slot->record.restarts + 1;
+	} else if (kind == YZ_RUNTIME_KIND_NATIVE) {
+		for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+			struct yz_runtime_record *record =
+			    &zp_runtime_records[i].record;
+
+			if (record->pid != pid || record->kind != kind ||
+			    !record->module_id[0] ||
+			    record->state == YZ_RUNTIME_STATE_EXITED)
+				continue;
+			record->state = YZ_RUNTIME_STATE_EXITED;
+			zp_runtime_advance_locked();
+		}
+		if (!slot)
+			slot = zp_runtime_alloc_slot_locked(NULL);
+	} else {
+		slot = zp_runtime_alloc_slot_locked(NULL);
+	}
+	if (!slot) {
+		mutex_unlock(&zp_runtime_lock);
+		return 0;
+	}
+
+	memset(slot, 0, sizeof(*slot));
+	slot->record.pid = pid;
+	slot->record.generation = zp_runtime_advance_locked();
+	slot->record.restarts = restarts;
+	slot->record.kind = kind;
+	slot->record.state = YZ_RUNTIME_STATE_DETECTED;
+	slot->record.abi = abi;
+	slot->record.target_type = target_type;
+	slot->record.flags = flags;
+	zp_copy_name(slot->record.process, sizeof(slot->record.process),
+		     process);
+	zp_copy_name(slot->record.target, sizeof(slot->record.target), target);
+	slot->start_boottime = start_boottime;
+	i = slot->record.generation;
+	mutex_unlock(&zp_runtime_lock);
+	return i;
+}
+
+static void zp_runtime_set_state(u32 pid, u32 generation, u8 state)
+{
+	u32 i;
+
+	if (!generation)
+		return;
+	mutex_lock(&zp_runtime_lock);
+	for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+		struct yz_runtime_record *record =
+		    &zp_runtime_records[i].record;
+
+		if (record->pid != pid || record->generation != generation ||
+		    record->module_id[0])
+			continue;
+		if (record->state != state) {
+			record->state = state;
+			zp_runtime_advance_locked();
+		}
+		break;
+	}
+	mutex_unlock(&zp_runtime_lock);
+}
+
+int ksu_zygote_probe_get_runtime(struct yz_runtime_record *entries,
+				 u32 capacity,
+				 struct yz_runtime_query_cmd *query)
+{
+	unsigned long flags;
+	u32 count = 0;
+	u32 i;
+
+	if (!query || capacity > YZ_RUNTIME_RECORD_MAX ||
+	    (capacity && !entries))
+		return -EINVAL;
+
+	mutex_lock(&zp_runtime_lock);
+	zp_runtime_refresh_exited_locked();
+	for (i = 0; i < YZ_RUNTIME_RECORD_MAX && count < capacity; i++) {
+		if (!zp_runtime_records[i].record.pid)
+			continue;
+		entries[count++] = zp_runtime_records[i].record;
+	}
+	query->count = count;
+	query->generation = zp_runtime_generation;
+	mutex_unlock(&zp_runtime_lock);
+
+	spin_lock_irqsave(&zp_safemode_lock, flags);
+	query->safe_mode = zp_safemode_active ? 1 : 0;
+	query->zygote_crashes = zp_safemode_zygote_crashes;
+	query->reserved = 0;
+	zp_copy_name(query->safe_mode_zygote, sizeof(query->safe_mode_zygote),
+		     zp_safemode_zygote);
+	spin_unlock_irqrestore(&zp_safemode_lock, flags);
+	return 0;
+}
+
+int ksu_zygote_probe_report_runtime(const struct yz_runtime_report_cmd *report)
+{
+	struct zp_runtime_slot *base = NULL;
+	struct zp_runtime_slot *module = NULL;
+	u64 start_boottime;
+	u32 i;
+
+	if (!report || !report->pid || !report->generation ||
+	    (report->kind != YZ_RUNTIME_KIND_ZYGOTE &&
+	     report->kind != YZ_RUNTIME_KIND_NATIVE) ||
+	    (report->kind == YZ_RUNTIME_KIND_NATIVE && !report->module_id[0]))
+		return -EINVAL;
+	if (zp_runtime_get_task_start(report->pid, &start_boottime))
+		return -ESRCH;
+
+	mutex_lock(&zp_runtime_lock);
+	zp_runtime_refresh_exited_locked();
+	for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+		struct zp_runtime_slot *slot = &zp_runtime_records[i];
+
+		if (slot->record.pid != report->pid ||
+		    slot->record.generation != report->generation ||
+		    slot->record.kind != report->kind ||
+		    slot->start_boottime != start_boottime ||
+		    slot->record.module_id[0] ||
+		    slot->record.state == YZ_RUNTIME_STATE_EXITED)
+			continue;
+		if (!base || slot->record.generation > base->record.generation)
+			base = slot;
+	}
+	if (!base) {
+		mutex_unlock(&zp_runtime_lock);
+		return -ESRCH;
+	}
+	if (!zp_runtime_task_alive(base->record.pid, base->start_boottime)) {
+		base->record.state = YZ_RUNTIME_STATE_EXITED;
+		zp_runtime_advance_locked();
+		mutex_unlock(&zp_runtime_lock);
+		return -ESRCH;
+	}
+	if (base->record.state != YZ_RUNTIME_STATE_REDIRECTED &&
+	    base->record.state != YZ_RUNTIME_STATE_INJECTED) {
+		mutex_unlock(&zp_runtime_lock);
+		return -EAGAIN;
+	}
+
+	if (base->record.state != YZ_RUNTIME_STATE_INJECTED) {
+		base->record.state = YZ_RUNTIME_STATE_INJECTED;
+		zp_runtime_advance_locked();
+	}
+	if (report->kind == YZ_RUNTIME_KIND_NATIVE) {
+		for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
+			struct zp_runtime_slot *slot = &zp_runtime_records[i];
+
+			if (slot->record.pid == report->pid &&
+			    slot->record.kind == YZ_RUNTIME_KIND_NATIVE &&
+			    !strcmp(slot->record.module_id,
+				    report->module_id)) {
+				module = slot;
+				break;
+			}
+		}
+		if (!module)
+			module = zp_runtime_alloc_slot_locked(base);
+		if (!module) {
+			mutex_unlock(&zp_runtime_lock);
+			return -ENOSPC;
+		}
+		if (module->record.generation != base->record.generation ||
+		    module->record.state != YZ_RUNTIME_STATE_INJECTED ||
+		    module->start_boottime != base->start_boottime) {
+			struct yz_runtime_record record = base->record;
+
+			zp_copy_name(record.module_id, sizeof(record.module_id),
+				     report->module_id);
+			record.state = YZ_RUNTIME_STATE_INJECTED;
+			memset(module, 0, sizeof(*module));
+			module->record = record;
+			module->start_boottime = base->start_boottime;
+			zp_runtime_advance_locked();
+		}
+	}
+	mutex_unlock(&zp_runtime_lock);
+	return 0;
+}
+
 static bool zp_parse_zygote_args(struct mm_struct *mm, char *socket_name,
 				 size_t socket_name_len)
 {
@@ -1562,7 +1890,7 @@ struct zp_inject_tw {
 	enum zp_inject_kind kind;
 	u8 native_target_type;
 	bool early_native;
-	char label[64];
+	char label[YZ_NATIVE_TARGET_VALUE_MAX];
 };
 
 static int zp_find_stack_at_entry(struct pt_regs *regs, bool compat,
@@ -1721,34 +2049,61 @@ static void zp_inject_tw_func(struct callback_head *cb)
 	unsigned long saved = 0, at_entry_uaddr = 0, at_entry_uval = 0;
 	unsigned long at_base = 0;
 	u64 dlopen_off, dlsym_off;
-	char socket_name[64];
+	u64 start_boottime;
+	u32 runtime_generation = 0;
+	char process[YZ_RUNTIME_PROCESS_MAX];
+	char socket_name[YZ_NATIVE_TARGET_VALUE_MAX];
 	bool native = tw->kind == ZP_INJECT_NATIVE;
 	bool compat = false;
-
-	if (!mm)
-		goto out;
-	if (native) {
-		zp_copy_name(socket_name, sizeof(socket_name),
-			     tw->label[0] ? tw->label : "native");
-		if (zp_safemode_is_active()) {
-			pr_info("zygote_probe: safemode active, skip native "
-				"pid=%d target=%s\n",
-				current->pid, socket_name);
-			goto out;
-		}
-	} else {
-		if (!zp_parse_zygote_args(mm, socket_name, sizeof(socket_name)))
-			goto out;
-	}
+	bool runtime_redirected = false;
+	bool runtime_safemode = false;
+	u32 runtime_flags =
+	    native && tw->early_native ? YZ_RUNTIME_F_EARLY_NATIVE : 0;
+	u8 runtime_abi;
+	u8 runtime_kind =
+	    native ? YZ_RUNTIME_KIND_NATIVE : YZ_RUNTIME_KIND_ZYGOTE;
 
 #ifdef CONFIG_COMPAT
 	compat = is_compat_task();
 #endif // #ifdef CONFIG_COMPAT
+	runtime_abi = compat ? YZ_RUNTIME_ABI_32 : YZ_RUNTIME_ABI_64;
+	start_boottime = READ_ONCE(current->start_boottime);
+	zp_runtime_read_process(mm, process, sizeof(process));
+	if (native) {
+		zp_copy_name(socket_name, sizeof(socket_name),
+			     tw->label[0] ? tw->label : "native");
+		runtime_generation = zp_runtime_begin(
+		    runtime_kind, runtime_abi, tw->native_target_type,
+		    runtime_flags, process, socket_name, start_boottime);
+		if (zp_safemode_is_active()) {
+			pr_info("zygote_probe: safemode active, skip native "
+				"pid=%d target=%s\n",
+				current->pid, socket_name);
+			runtime_safemode = true;
+			zp_runtime_set_state((u32)current->tgid,
+					     runtime_generation,
+					     YZ_RUNTIME_STATE_SAFEMODE);
+			goto out;
+		}
+	} else {
+		if (!mm ||
+		    !zp_parse_zygote_args(mm, socket_name, YZ_ZYGOTE_NAME_MAX))
+			goto out;
+		runtime_generation =
+		    zp_runtime_begin(runtime_kind, runtime_abi, 0, 0, process,
+				     socket_name, start_boottime);
+	}
+	if (!mm)
+		goto out;
 	dlopen_off = compat ? zp_dlopen32_off : zp_dlopen_off;
 	dlsym_off = compat ? zp_dlsym32_off : zp_dlsym_off;
 
-	if (!native && zp_zygote_safemode_should_skip(socket_name))
+	if (!native && zp_zygote_safemode_should_skip(socket_name)) {
+		runtime_safemode = true;
+		zp_runtime_set_state((u32)current->tgid, runtime_generation,
+				     YZ_RUNTIME_STATE_SAFEMODE);
 		goto out;
+	}
 
 	zp_read_saved_auxv(mm, compat, &saved, &at_base);
 
@@ -2068,18 +2423,25 @@ static void zp_inject_tw_func(struct callback_head *cb)
 			zp_close_early_packet_state(&early_packet);
 			zp_restore_native_policy_state(&native_policy);
 		} else {
+			runtime_redirected = true;
+			zp_runtime_set_state((u32)current->tgid,
+					     runtime_generation,
+					     YZ_RUNTIME_STATE_REDIRECTED);
 			zp_publish_native_policy_state(current->tgid,
 						       &native_policy);
 		}
 	}
 out:
+	if (runtime_generation && !runtime_redirected && !runtime_safemode)
+		zp_runtime_set_state((u32)current->tgid, runtime_generation,
+				     YZ_RUNTIME_STATE_FAILED);
 	kfree(tw);
 }
 
 static void __nocfi my_bprm_committed_creds(zp_bprm_arg_t *bprm)
 {
 	const char *filename = bprm ? bprm->filename : NULL;
-	char native_label[64] = {};
+	char native_label[YZ_NATIVE_TARGET_VALUE_MAX] = {};
 	u8 native_target_type = 0;
 	bool early_native = false;
 	bool live_enabled;
@@ -2094,9 +2456,6 @@ static void __nocfi my_bprm_committed_creds(zp_bprm_arg_t *bprm)
 	early_enabled = zp_early_native_active();
 	if (unlikely(!live_enabled && !early_enabled))
 		return;
-	if (unlikely(zp_safemode_is_active()))
-		return;
-
 	by_sid = live_enabled && is_zygote(current_cred());
 	by_path = live_enabled && zp_is_app_process_path(filename);
 	live_native = live_enabled && !by_path &&
@@ -2114,15 +2473,15 @@ static void __nocfi my_bprm_committed_creds(zp_bprm_arg_t *bprm)
 	if (unlikely(by_sid || by_path || by_native)) {
 		if (by_native)
 			pr_info("zygote_probe: native exec pid=%d tgid=%d "
-				"comm=%s file=%s target=%s early=%d\n",
-				current->pid, current->tgid, current->comm,
+				"file=%s target=%s early=%d\n",
+				current->pid, current->tgid,
 				filename ?: "(null)", native_label,
 				early_native ? 1 : 0);
 
-		pr_debug("zygote_probe: exec pid=%d tgid=%d comm=%s "
+		pr_debug("zygote_probe: exec pid=%d tgid=%d "
 			 "file=%s [sid=%d path=%d native=%d]\n",
-			 current->pid, current->tgid, current->comm,
-			 filename ?: "(null)", by_sid, by_path, by_native);
+			 current->pid, current->tgid, filename ?: "(null)",
+			 by_sid, by_path, by_native);
 
 		/* Defer auxv rewrite to task_work. */
 		if (by_path || by_native) {

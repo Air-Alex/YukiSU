@@ -182,6 +182,67 @@ struct yz_module_load_policy_cmd {
 
 #define KSU_IOCTL_YZ_SET_DLOPEN32 _IOC(_IOC_WRITE, 'K', 62, 0)
 
+#define YZ_RUNTIME_RECORD_MAX 128
+#define YZ_RUNTIME_PROCESS_MAX 256
+
+enum yz_runtime_kind {
+  YZ_RUNTIME_KIND_ZYGOTE = 1,
+  YZ_RUNTIME_KIND_NATIVE = 2,
+};
+
+enum yz_runtime_state {
+  YZ_RUNTIME_STATE_DETECTED = 1,
+  YZ_RUNTIME_STATE_REDIRECTED = 2,
+  YZ_RUNTIME_STATE_INJECTED = 3,
+  YZ_RUNTIME_STATE_FAILED = 4,
+  YZ_RUNTIME_STATE_SAFEMODE = 5,
+  YZ_RUNTIME_STATE_EXITED = 6,
+};
+
+enum yz_runtime_abi {
+  YZ_RUNTIME_ABI_UNKNOWN = 0,
+  YZ_RUNTIME_ABI_32 = 1,
+  YZ_RUNTIME_ABI_64 = 2,
+};
+
+#define YZ_RUNTIME_F_EARLY_NATIVE (1U << 0)
+
+struct yz_runtime_record {
+  __u32 pid;
+  __u32 generation;
+  __u32 restarts;
+  __u8 kind;
+  __u8 state;
+  __u8 abi;
+  __u8 target_type;
+  __u32 flags;
+  char process[YZ_RUNTIME_PROCESS_MAX];
+  char target[YZ_NATIVE_TARGET_VALUE_MAX];
+  char module_id[YZ_NATIVE_MODULE_ID_MAX];
+};
+
+struct yz_runtime_query_cmd {
+  __u32 capacity;
+  __u32 count;
+  __aligned_u64 entries;
+  __u32 generation;
+  __u32 safe_mode;
+  __u32 zygote_crashes;
+  __u32 reserved;
+  char safe_mode_zygote[YZ_ZYGOTE_NAME_MAX];
+};
+
+struct yz_runtime_report_cmd {
+  __u32 pid;
+  __u32 generation;
+  __u8 kind;
+  __u8 reserved[3];
+  char module_id[YZ_NATIVE_MODULE_ID_MAX];
+};
+
+#define KSU_IOCTL_YZ_GET_RUNTIME _IOC(_IOC_READ | _IOC_WRITE, 'K', 63, 0)
+#define KSU_IOCTL_YZ_REPORT_RUNTIME _IOC(_IOC_WRITE, 'K', 64, 0)
+
 struct yz_config {
   __u8 yukilinker;
   __u8 denylist_mode;

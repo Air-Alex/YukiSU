@@ -19,6 +19,7 @@
 #include <linux/task_work.h>
 #include <linux/uaccess.h>
 #include <linux/version.h>
+#include <linux/vmalloc.h>
 
 #include "policy/allowlist.h"
 #include "arch.h"
@@ -1133,6 +1134,50 @@ static int do_yz_get_safemode(void __user *arg)
 	return 0;
 }
 
+static int do_yz_get_runtime(void __user *arg)
+{
+	struct yz_runtime_query_cmd cmd;
+	struct yz_runtime_record *entries = NULL;
+	void __user *user_entries;
+	int ret;
+
+	if (copy_from_user(&cmd, arg, sizeof(cmd)))
+		return -EFAULT;
+	if (cmd.capacity > YZ_RUNTIME_RECORD_MAX ||
+	    (cmd.capacity && !cmd.entries))
+		return -EINVAL;
+
+	user_entries = (void __user *)(uintptr_t)cmd.entries;
+	if (cmd.capacity) {
+		entries = kvcalloc(cmd.capacity, sizeof(*entries), GFP_KERNEL);
+		if (!entries)
+			return -ENOMEM;
+	}
+	ret = ksu_zygote_probe_get_runtime(entries, cmd.capacity, &cmd);
+	if (ret)
+		goto out;
+	if (cmd.count &&
+	    copy_to_user(user_entries, entries, sizeof(*entries) * cmd.count)) {
+		ret = -EFAULT;
+		goto out;
+	}
+	if (copy_to_user(arg, &cmd, sizeof(cmd)))
+		ret = -EFAULT;
+out:
+	kvfree(entries);
+	return ret;
+}
+
+static int do_yz_report_runtime(void __user *arg)
+{
+	struct yz_runtime_report_cmd cmd;
+
+	if (copy_from_user(&cmd, arg, sizeof(cmd)))
+		return -EFAULT;
+	cmd.module_id[sizeof(cmd.module_id) - 1] = '\0';
+	return ksu_zygote_probe_report_runtime(&cmd);
+}
+
 static int do_yz_allow_module_load_policy(void __user *arg)
 {
 	struct yz_module_load_policy_cmd cmd;
@@ -1559,6 +1604,14 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_YZ_GET_SAFEMODE,
      .name = "YZ_GET_SAFEMODE",
      .handler = do_yz_get_safemode,
+     .perm_check = only_root},
+    {.cmd = KSU_IOCTL_YZ_GET_RUNTIME,
+     .name = "YZ_GET_RUNTIME",
+     .handler = do_yz_get_runtime,
+     .perm_check = only_root},
+    {.cmd = KSU_IOCTL_YZ_REPORT_RUNTIME,
+     .name = "YZ_REPORT_RUNTIME",
+     .handler = do_yz_report_runtime,
      .perm_check = only_root},
     {.cmd = KSU_IOCTL_YZ_ALLOW_MODULE_LOAD_POLICY,
      .name = "YZ_ALLOW_MODULE_LOAD_POLICY",

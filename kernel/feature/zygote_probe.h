@@ -4,6 +4,9 @@
 #include <linux/types.h>
 
 struct yz_native_targets_cmd;
+struct yz_runtime_query_cmd;
+struct yz_runtime_record;
+struct yz_runtime_report_cmd;
 struct yz_safemode_status_cmd;
 struct file;
 struct cred;
@@ -19,5 +22,9 @@ int ksu_zygote_probe_restore_native_policy(pid_t tgid);
 int ksu_zygote_probe_allow_module_policy(pid_t tgid, struct file *dir,
 					 const struct cred *cred);
 int ksu_zygote_probe_get_safemode(struct yz_safemode_status_cmd *cmd);
+int ksu_zygote_probe_get_runtime(struct yz_runtime_record *entries,
+				 u32 capacity,
+				 struct yz_runtime_query_cmd *query);
+int ksu_zygote_probe_report_runtime(const struct yz_runtime_report_cmd *report);
 
 #endif // #ifndef __KSU_H_ZYGOTE_PROBE
