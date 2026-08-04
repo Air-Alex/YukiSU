@@ -757,7 +757,7 @@
     <string name="yukizygisk_denylist_behaviour" tools:ignore="MissingTranslation">Denylist behaviour</string>
     <string name="yukizygisk_denylist_force_long" tools:ignore="MissingTranslation">Force unmount + no inject</string>
     <string name="yukizygisk_denylist_restore_long" tools:ignore="MissingTranslation">Inject + unmount only</string>
-    <string name="yukizygisk_injections_session" tools:ignore="MissingTranslation">Injections this session</string>
+    <string name="yukizygisk_injections_session" tools:ignore="MissingTranslation">Currently injected targets</string>
     <string name="yukizygisk_zygote_crashes" tools:ignore="MissingTranslation">Zygote crashes</string>
     <string name="yukizygisk_injected_zygotes" tools:ignore="MissingTranslation">Zygote monitor</string>
     <string name="yukizygisk_no_zygotes" tools:ignore="MissingTranslation">No Zygote</string>

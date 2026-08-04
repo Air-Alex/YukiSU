@@ -753,7 +753,7 @@
     <string name="yukizygisk_denylist_behaviour">拒绝名单行为</string>
     <string name="yukizygisk_denylist_force_long">强制卸载 + 不注入</string>
     <string name="yukizygisk_denylist_restore_long">注入 + 仅卸载</string>
-    <string name="yukizygisk_injections_session">本次会话注入数</string>
+    <string name="yukizygisk_injections_session">当前已注入目标</string>
     <string name="yukizygisk_zygote_crashes">Zygote 崩溃次数</string>
     <string name="yukizygisk_injected_zygotes">Zygote 监视器</string>
     <string name="yukizygisk_no_zygotes">无 Zygote</string>

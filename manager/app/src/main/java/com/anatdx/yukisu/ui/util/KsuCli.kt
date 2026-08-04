@@ -321,12 +321,13 @@ object KsuCli {
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/magiskboot",
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/bootctl",
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/resetprop",
+            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/yzctl",
             // Fix SELinux contexts (ignore errors on non-SEAndroid systems)
             "restorecon ${KsuPaths.KSUD_BIN} || true",
             "restorecon -R ${KsuPaths.KSU_ROOT} || true",
             // Precompute YukiZygisk's early native snapshot before reboot. If the
             // feature is off, ksud clears the snapshot and returns success.
-            "${KsuPaths.KSUD_BIN} yukizygisk refresh-snapshot || true"
+            "${KsuPaths.KSUD_BIN} yzctl refresh-snapshot || true"
         )
 
         Log.i(TAG, "installOrUpdateKsudDaemon: syncing ${ksudSo.absolutePath} -> /data/adb/ksud")
@@ -341,7 +342,7 @@ object KsuCli {
             return
         }
         val result = shell.newJob()
-            .add("${KsuPaths.KSUD_BIN} yukizygisk refresh-snapshot || true")
+            .add("${KsuPaths.KSUD_BIN} yzctl refresh-snapshot || true")
             .exec()
         Log.i(
             TAG,
@@ -427,6 +428,12 @@ internal fun ksudReadString(args: String, shell: Shell = getRootShell()): String
 internal fun ksudReadLines(args: String, shell: Shell = getRootShell()): List<String> =
     shell.newJob().add(ksudCmd(args)).to(ArrayList(), null).exec().out
         .filter { it.isNotBlank() }.map { it.trim() }
+
+suspend fun getYukiZygiskStatusJson(): String? = withContext(Dispatchers.IO) {
+    runCatching { ksudReadString("yzctl status --json") }
+        .getOrNull()
+        ?.takeIf { it.startsWith('{') && it.endsWith('}') }
+}
 
 suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.IO) {
     ksudReadLines("feature check $feature")

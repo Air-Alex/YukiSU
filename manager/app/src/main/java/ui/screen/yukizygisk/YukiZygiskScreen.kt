@@ -70,13 +70,13 @@ import androidx.compose.ui.unit.dp
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
-import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.util.execKsud
+import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
 import com.anatdx.yukisu.ui.util.getRootShell
 import com.anatdx.yukisu.ui.util.withNewRootShell
 import com.anatdx.yukisu.ui.theme.getCardColors
@@ -127,7 +127,7 @@ private suspend fun writeYzConfig(cfg: YzConfig) = withContext(Dispatchers.IO) {
         newJob().add("mkdir -p $YZCONFIG_DIR").exec()
         newJob().add("echo '$json' > $YZCONFIG_PATH").exec()
     }
-    execKsud("yukizygisk reload")
+    execKsud("yzctl reload")
 }
 
 private enum class MonitorState {
@@ -152,17 +152,6 @@ private fun parseMonitorState(value: String): MonitorState = when (value) {
     "unsupported32" -> MonitorState.Unsupported32
     "crashed" -> MonitorState.Crashed
     else -> MonitorState.Failed
-}
-
-private fun mergeZygoteMonitorEntries(
-    primary: List<ZygoteMonitorEntry>,
-    secondary: List<ZygoteMonitorEntry>,
-): List<ZygoteMonitorEntry> {
-    val merged = linkedMapOf<Triple<Int, String, String>, ZygoteMonitorEntry>()
-    (primary + secondary).forEach { entry ->
-        merged[Triple(entry.pid, entry.name, entry.abi)] = entry
-    }
-    return merged.values.toList()
 }
 
 private data class ZygoteMonitorEntry(
@@ -192,15 +181,6 @@ private data class NativeInjection(
     val state: MonitorState,
 )
 
-private data class NativeInjectionKey(
-    val pid: Int,
-    val process: String,
-    val module: String,
-    val targetType: String,
-    val target: String,
-    val abi: String,
-)
-
 private data class NativeProcessEntry(
     val pid: Int,
     val process: String,
@@ -219,6 +199,7 @@ private data class NativeModuleMonitorEntry(
 )
 
 private data class YzStatus(
+    val enabled: Boolean,
     val count: Int,
     val safeMode: Boolean,
     val zygoteCrashes: Int,
@@ -227,69 +208,6 @@ private data class YzStatus(
     val nativeModules: List<NativeModuleEntry>,
     val nativeInjections: List<NativeInjection>,
 )
-
-private fun mergeMonitorState(first: MonitorState, second: MonitorState): MonitorState = when {
-    first == MonitorState.Crashed || second == MonitorState.Crashed -> MonitorState.Crashed
-    first == MonitorState.Failed || second == MonitorState.Failed -> MonitorState.Failed
-    first == MonitorState.Injected || second == MonitorState.Injected -> MonitorState.Injected
-    else -> MonitorState.Unsupported32
-}
-
-private fun mergeNativeModules(
-    primary: List<NativeModuleEntry>,
-    secondary: List<NativeModuleEntry>,
-): List<NativeModuleEntry> {
-    val merged = linkedMapOf<Triple<String, String, String>, NativeModuleEntry>()
-    (primary + secondary).forEach { entry ->
-        val key = Triple(entry.id, entry.targetType, entry.target)
-        val current = merged[key]
-        merged[key] = current?.copy(
-            companion = current.companion || entry.companion,
-            state = mergeMonitorState(current.state, entry.state),
-        ) ?: entry
-    }
-    return merged.values.toList()
-}
-
-private fun mergeNativeInjections(
-    primary: List<NativeInjection>,
-    secondary: List<NativeInjection>,
-): List<NativeInjection> {
-    val merged = linkedMapOf<NativeInjectionKey, NativeInjection>()
-    (primary + secondary).forEach { entry ->
-        val key = NativeInjectionKey(
-            entry.pid,
-            entry.process,
-            entry.module,
-            entry.targetType,
-            entry.target,
-            entry.abi,
-        )
-        val current = merged[key]
-        merged[key] = current?.copy(
-            companion = current.companion || entry.companion,
-            state = mergeMonitorState(current.state, entry.state),
-        ) ?: entry
-    }
-    return merged.values.toList()
-}
-
-private fun mergeAbiStatuses(primary: YzStatus?, secondary: YzStatus?): YzStatus? {
-    if (primary == null) return secondary
-    if (secondary == null) return primary
-    return primary.copy(
-        count = primary.count + secondary.count,
-        safeMode = primary.safeMode || secondary.safeMode,
-        zygoteCrashes = maxOf(primary.zygoteCrashes, secondary.zygoteCrashes),
-        zygotes = mergeZygoteMonitorEntries(primary.zygotes, secondary.zygotes),
-        modules = (primary.modules + secondary.modules).distinct(),
-        nativeModules = mergeNativeModules(primary.nativeModules, secondary.nativeModules),
-        nativeInjections = mergeNativeInjections(
-            primary.nativeInjections,
-            secondary.nativeInjections,
-        ),
-    )
-}
 
 private fun parseYzStatus(json: String): YzStatus? = runCatching {
     val o = JSONObject(json)
@@ -350,6 +268,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
         }
     } ?: emptyList()
     YzStatus(
+        o.optBoolean("enabled", false),
         o.optInt("count", 0),
         o.optBoolean("safe_mode", false),
         o.optInt("zygote_crashes", 0),
@@ -361,6 +280,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
 }.getOrNull()
 
 private data class YzSnapshot(
+    val enabled: Boolean,
     val count: Int,
     val safeMode: Boolean,
     val zygoteCrashes: Int,
@@ -407,13 +327,10 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     LaunchedEffect(Unit) {
         while (true) {
             val snapshot = withContext(Dispatchers.IO) {
-                val primary = runCatching { Natives.yzQueryStatus() }.getOrNull()
-                    ?.let(::parseYzStatus)
-                val secondary = runCatching { Natives.yzQueryStatus32() }.getOrNull()
-                    ?.let(::parseYzStatus)
-                val st = mergeAbiStatuses(primary, secondary)
+                val st = getYukiZygiskStatusJson()?.let(::parseYzStatus)
                     ?: return@withContext null
                 YzSnapshot(
+                    enabled = st.enabled,
                     count = st.count,
                     safeMode = st.safeMode,
                     zygoteCrashes = st.zygoteCrashes,
@@ -425,7 +342,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
             }
             if (snapshot != null) {
                 safeMode = snapshot.safeMode
-                injectionActive = !snapshot.safeMode
+                injectionActive = snapshot.enabled && !snapshot.safeMode
                 injectionCount = snapshot.count
                 zygoteCrashes = snapshot.zygoteCrashes
                 monitoredZygotes = snapshot.zygotes

@@ -14,11 +14,11 @@ import com.dergoogler.mmrl.platform.model.ModuleConfig.Companion.asModuleConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.anatdx.yukisu.BuildConfig
-import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.util.HanziToPinyin
 import com.anatdx.yukisu.ui.util.listModules
 import com.anatdx.yukisu.ui.util.getRootShell
 import com.anatdx.yukisu.ui.util.getFeatureValue
+import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
 import com.anatdx.yukisu.ui.util.toggleModule
 import com.anatdx.yukisu.ui.util.ZYGISK_IMPL_MODULE_IDS
 import com.topjohnwu.superuser.io.SuFile
@@ -168,7 +168,7 @@ class ModuleViewModel : ViewModel() {
                 yukiZygiskEnabled = yukiZygiskOn
 
                 val yzStatus = if (yukiZygiskOn) {
-                    runCatching { Natives.yzQueryStatus()?.let(::JSONObject) }.getOrNull()
+                    runCatching { getYukiZygiskStatusJson()?.let(::JSONObject) }.getOrNull()
                 } else {
                     null
                 }

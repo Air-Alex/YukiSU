@@ -202,12 +202,6 @@ object Natives {
      */
     external fun isSignatureOk(): Boolean
 
-    /** YukiZygisk status JSON, or null when unavailable. */
-    external fun yzQueryStatus(): String?
-
-    /** 32-bit YukiZygisk daemon status JSON, or null when unavailable. */
-    external fun yzQueryStatus32(): String?
-    
     private const val NON_ROOT_DEFAULT_PROFILE_KEY = "$"
     private const val NOBODY_UID = 9999
 
