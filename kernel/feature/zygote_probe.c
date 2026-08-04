@@ -728,9 +728,20 @@ int ksu_zygote_probe_get_safemode(struct yz_safemode_status_cmd *cmd)
 static bool zp_match_early_native_target(const char *filename, char *label,
 					 size_t label_len, u8 *target_type);
 
-static bool zp_match_native_target(const char *filename, char *label,
-				   size_t label_len, u8 *target_type,
-				   bool *early)
+static bool zp_is_init_child(void)
+{
+	struct task_struct *parent;
+	bool is_init_child;
+
+	rcu_read_lock();
+	parent = rcu_dereference(current->real_parent);
+	is_init_child = parent && task_pid_nr(parent) == 1;
+	rcu_read_unlock();
+	return is_init_child;
+}
+
+static bool zp_match_live_native_target(const char *filename, char *label,
+					size_t label_len, u8 *target_type)
 {
 	const char *base = zp_basename(filename);
 	bool matched = false;
@@ -738,8 +749,6 @@ static bool zp_match_native_target(const char *filename, char *label,
 
 	if (target_type)
 		*target_type = 0;
-	if (early)
-		*early = false;
 	if (!filename || !base)
 		return false;
 
@@ -763,13 +772,6 @@ static bool zp_match_native_target(const char *filename, char *label,
 		break;
 	}
 	mutex_unlock(&zp_native_targets_lock);
-	if (matched)
-		return true;
-
-	matched = zp_match_early_native_target(filename, label, label_len,
-					       target_type);
-	if (matched && early)
-		*early = true;
 	return matched;
 }
 
@@ -1806,6 +1808,7 @@ static void __nocfi my_bprm_committed_creds(zp_bprm_arg_t *bprm)
 	bool by_sid;
 	bool by_path;
 	bool by_native;
+	bool live_native;
 
 	((bprm_committed_creds_fn)zygote_probe_hook.original)(bprm);
 	live_enabled = READ_ONCE(yukizygisk_enabled);
@@ -1817,10 +1820,18 @@ static void __nocfi my_bprm_committed_creds(zp_bprm_arg_t *bprm)
 
 	by_sid = live_enabled && is_zygote(current_cred());
 	by_path = live_enabled && zp_is_app_process_path(filename);
-	by_native =
-	    !by_path &&
-	    zp_match_native_target(filename, native_label, sizeof(native_label),
-				   &native_target_type, &early_native);
+	live_native = live_enabled && !by_path &&
+		      zp_match_live_native_target(filename, native_label,
+						  sizeof(native_label),
+						  &native_target_type);
+	by_native = live_native && zp_is_init_child();
+	if (!by_path && !by_native && early_enabled &&
+	    zp_match_early_native_target(filename, native_label,
+					 sizeof(native_label),
+					 &native_target_type)) {
+		by_native = true;
+		early_native = true;
+	}
 	if (unlikely(by_sid || by_path || by_native)) {
 		if (by_native)
 			pr_info("zygote_probe: native exec pid=%d tgid=%d "
