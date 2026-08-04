@@ -12,7 +12,6 @@ enum class Request : uint8_t {
   ConnectCompanion = 4,
   GetModuleDir = 5,
   GetConfig = 6, // -> struct yz_config (runtime config from yzconfig.json)
-  GetStatus = 7,
   RevertMount = 8,
   SelfDestruct = 9,
   Log = 10,
@@ -48,4 +47,4 @@ inline constexpr char kSocketName[] = "zygiskd32";
 
 } // namespace zygiskd
 
-extern "C" int zygiskd_main(int argc, char **argv);
+extern "C" int zygiskd_main();

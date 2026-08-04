@@ -102,13 +102,6 @@ bool uid_should_umount(uint32_t uid) {
          command.should_umount != 0;
 }
 
-int get_manager_uid() {
-  ksu_get_manager_uid_cmd command{};
-  return ksuctl(KSU_IOCTL_GET_MANAGER_UID, &command) == 0
-             ? static_cast<int>(command.uid)
-             : -1;
-}
-
 bool lsetfilecon(const std::filesystem::path &path,
                  const std::string &context) {
   return lsetxattr(path.c_str(), "security.selinux", context.c_str(),
@@ -117,4 +110,4 @@ bool lsetfilecon(const std::filesystem::path &path,
 
 } // namespace ksud
 
-int main(int argc, char **argv) { return zygiskd_main(argc, argv); }
+int main() { return zygiskd_main(); }

@@ -292,6 +292,24 @@ std::vector<NativeModule> scan_early_native_modules() {
     return out;
 }
 
+bool has_native_abi32_target() {
+    for (const auto& [module_id, base] : collect_active_module_roots()) {
+        std::ifstream f(base / "zn_modules.txt");
+        if (!f)
+            continue;
+
+        std::string line;
+        while (std::getline(f, line)) {
+            NativeModule module{};
+            if (yukizygisk::native::parse_native_module_line(module_id, base.string(), line,
+                                                             &module) &&
+                elf_class(module.lib_path) == ELFCLASS32)
+                return true;
+        }
+    }
+    return false;
+}
+
 void fill_cstr(char* dst, size_t dst_size, const std::string& src) {
     if (dst_size == 0)
         return;
@@ -352,6 +370,10 @@ bool yukizygisk_enabled_for_next_boot() {
 void clear_yukizygisk_early_snapshot() {
     remove_snapshot_dir(PREINIT_DIR_WATCHDOG);
     remove_snapshot_dir(PREINIT_DIR_DEFAULT);
+}
+
+bool yukizygisk_has_native_abi32_target() {
+    return has_native_abi32_target();
 }
 
 int refresh_yukizygisk_early_snapshot() {

@@ -31,7 +31,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <deque>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -47,7 +46,6 @@ namespace ksud {
 int ksuctl(int request, void *arg);
 bool uid_granted_root(uint32_t uid);
 bool uid_should_umount(uint32_t uid);
-int get_manager_uid();
 } // namespace ksud
 
 namespace {
@@ -106,14 +104,6 @@ using NativeModule = yukizygisk::native::NativeModule;
 std::vector<NativeModule> g_native_modules;
 std::vector<NativeModule> g_native_targets;
 
-struct SafemodeStatus {
-  bool active = false;
-  uint32_t zygote_crashes = 0;
-  std::string zygote;
-};
-
-SafemodeStatus g_safemode;
-
 int consume_ready_fd() {
   const char *env = getenv("YUKIZYGISK_READY_FD");
   if (env == nullptr || *env == '\0')
@@ -132,7 +122,10 @@ void notify_ready(int fd, bool ok) {
   if (fd < 0)
     return;
   const char byte = ok ? '1' : '0';
-  ssize_t w = write(fd, &byte, 1);
+  ssize_t w;
+  do {
+    w = write(fd, &byte, 1);
+  } while (w < 0 && errno == EINTR);
   (void)w;
   close(fd);
 }
@@ -148,7 +141,8 @@ std::vector<Module> scan_modules() {
     if (e->d_name[0] == '.')
       continue;
     std::string base = std::string(kModulesDir) + "/" + e->d_name;
-    if (access((base + "/disable").c_str(), F_OK) == 0)
+    if (access((base + "/disable").c_str(), F_OK) == 0 ||
+        access((base + "/remove").c_str(), F_OK) == 0)
       continue;
     std::string lib = base + "/zygisk/" + kAbi + ".so";
     if (access(lib.c_str(), F_OK) != 0)
@@ -170,7 +164,8 @@ std::vector<NativeModule> scan_native_modules() {
       continue;
     std::string module_id = e->d_name;
     std::string base = std::string(kModulesDir) + "/" + module_id;
-    if (access((base + "/disable").c_str(), F_OK) == 0)
+    if (access((base + "/disable").c_str(), F_OK) == 0 ||
+        access((base + "/remove").c_str(), F_OK) == 0)
       continue;
 
     std::ifstream f(base + "/zn_modules.txt");
@@ -755,48 +750,6 @@ void read_yzconfig() {
         cfg.denylist_mode, cfg.dmesg_log);
 }
 
-void refresh_safemode_status() {
-  yz_safemode_status_cmd cmd{};
-  if (ksud::ksuctl(KSU_IOCTL_YZ_GET_SAFEMODE, &cmd) != 0)
-    return;
-
-  cmd.zygote[sizeof(cmd.zygote) - 1] = '\0';
-  g_safemode.active = cmd.active != 0;
-  g_safemode.zygote_crashes = cmd.zygote_crashes;
-  g_safemode.zygote = cmd.zygote;
-}
-
-void note_safemode_event(uint32_t pid, uint32_t crashes) {
-  refresh_safemode_status();
-  if (!g_safemode.active) {
-    g_safemode.active = true;
-    g_safemode.zygote_crashes = crashes;
-  }
-  DLOGI("safemode: zygote crash threshold reached pid=%u crashes=%u name=%s",
-        pid, g_safemode.zygote_crashes,
-        g_safemode.zygote.empty() ? "zygote" : g_safemode.zygote.c_str());
-}
-
-uint64_t g_inject_count = 0;
-std::deque<uint32_t> g_recent_appids;
-constexpr size_t kRecentMax = 16;
-
-void record_injection(uint32_t appid) {
-  ++g_inject_count;
-  for (auto it = g_recent_appids.begin(); it != g_recent_appids.end(); ++it)
-    if (*it == appid) {
-      g_recent_appids.erase(it); // move-to-front: keep the list distinct
-      break;
-    }
-  g_recent_appids.push_front(appid);
-  if (g_recent_appids.size() > kRecentMax)
-    g_recent_appids.pop_back();
-}
-
-const char *native_target_type_name(uint8_t type) {
-  return type == YZ_NATIVE_TARGET_PATH ? "path" : "name";
-}
-
 #if defined(__LP64__)
 constexpr uint8_t kRuntimeAbi = YZ_RUNTIME_ABI_64;
 #else
@@ -804,53 +757,8 @@ constexpr uint8_t kRuntimeAbi = YZ_RUNTIME_ABI_32;
 #endif
 
 struct RuntimeSnapshot {
-  bool safe_mode = false;
-  uint32_t zygote_crashes = 0;
-  std::string safe_mode_zygote;
   std::vector<yz_runtime_record> records;
 };
-
-struct NativeInjectionView {
-  uint32_t pid;
-  std::string process;
-  std::string module_id;
-  std::string target_type;
-  std::string target;
-  std::string abi;
-  std::string state;
-  bool has_companion;
-};
-
-template <size_t N> std::string runtime_string(const char (&value)[N]) {
-  return std::string(value, strnlen(value, N));
-}
-
-const char *runtime_abi_name(uint8_t abi) {
-  switch (abi) {
-  case YZ_RUNTIME_ABI_32:
-    return "armeabi-v7a";
-  case YZ_RUNTIME_ABI_64:
-    return "arm64-v8a";
-  default:
-    return "unknown";
-  }
-}
-
-const char *runtime_state_name(uint8_t state) {
-  switch (state) {
-  case YZ_RUNTIME_STATE_INJECTED:
-    return "injected";
-  case YZ_RUNTIME_STATE_SAFEMODE:
-    return "crashed";
-  case YZ_RUNTIME_STATE_EXITED:
-    return nullptr;
-  case YZ_RUNTIME_STATE_DETECTED:
-  case YZ_RUNTIME_STATE_REDIRECTED:
-  case YZ_RUNTIME_STATE_FAILED:
-  default:
-    return "failed";
-  }
-}
 
 RuntimeSnapshot query_runtime_snapshot() {
   RuntimeSnapshot snapshot;
@@ -867,10 +775,6 @@ RuntimeSnapshot query_runtime_snapshot() {
 
   if (cmd.count < snapshot.records.size())
     snapshot.records.resize(cmd.count);
-  snapshot.safe_mode = cmd.safe_mode != 0;
-  snapshot.zygote_crashes = cmd.zygote_crashes;
-  cmd.safe_mode_zygote[sizeof(cmd.safe_mode_zygote) - 1] = '\0';
-  snapshot.safe_mode_zygote = cmd.safe_mode_zygote;
   return snapshot;
 }
 
@@ -905,242 +809,6 @@ uint32_t runtime_generation(pid_t pid, uint8_t kind) {
   }
   return generation;
 }
-
-const yz_runtime_record *find_native_ready(const RuntimeSnapshot &snapshot,
-                                           uint32_t pid, uint32_t generation,
-                                           const std::string &module_id) {
-  for (const auto &record : snapshot.records) {
-    if (record.kind != YZ_RUNTIME_KIND_NATIVE || record.abi != kRuntimeAbi ||
-        record.pid != pid || record.generation != generation ||
-        runtime_string(record.module_id) != module_id ||
-        record.state == YZ_RUNTIME_STATE_EXITED)
-      continue;
-    return &record;
-  }
-  return nullptr;
-}
-
-std::vector<NativeInjectionView>
-build_native_injection_views(const RuntimeSnapshot &snapshot) {
-  std::vector<NativeInjectionView> views;
-  for (const auto &base : snapshot.records) {
-    if (base.kind != YZ_RUNTIME_KIND_NATIVE || base.abi != kRuntimeAbi ||
-        base.state == YZ_RUNTIME_STATE_EXITED || base.module_id[0] != '\0')
-      continue;
-
-    const std::string target = runtime_string(base.target);
-    for (const auto &module : g_native_modules) {
-      if (module.target_type != base.target_type || module.target != target)
-        continue;
-
-      const yz_runtime_record *ready = find_native_ready(
-          snapshot, base.pid, base.generation, module.module_id);
-      const char *state = ready != nullptr ? runtime_state_name(ready->state)
-                          : base.state == YZ_RUNTIME_STATE_SAFEMODE ? "crashed"
-                                                                    : "failed";
-      if (state == nullptr)
-        continue;
-      views.push_back(NativeInjectionView{
-          base.pid,
-          runtime_string(base.process),
-          module.module_id,
-          native_target_type_name(base.target_type),
-          target,
-          runtime_abi_name(base.abi),
-          state,
-          module.has_companion,
-      });
-    }
-  }
-  return views;
-}
-
-const char *native_module_state(const std::string &module_id,
-                                const std::vector<NativeInjectionView> &views) {
-  bool injected = false;
-  bool failed = false;
-  for (const auto &view : views) {
-    if (view.module_id != module_id)
-      continue;
-    if (view.state == "crashed")
-      return "crashed";
-    if (view.state == "failed")
-      failed = true;
-    else if (view.state == "injected")
-      injected = true;
-  }
-  if (failed)
-    return "failed";
-  return injected ? "injected" : "failed";
-}
-
-void json_append_escaped(std::string &out, const std::string &s) {
-  for (char c : s) {
-    switch (c) {
-    case '"':
-      out += "\\\"";
-      break;
-    case '\\':
-      out += "\\\\";
-      break;
-    case '\n':
-      out += "\\n";
-      break;
-    case '\r':
-      out += "\\r";
-      break;
-    case '\t':
-      out += "\\t";
-      break;
-    default:
-      if (static_cast<unsigned char>(c) < 0x20) {
-        char b[8];
-        (void)snprintf(b, sizeof(b), "\\u%04x", static_cast<unsigned char>(c));
-        out += b;
-      } else {
-        out += c;
-      }
-    }
-  }
-}
-
-/* Compact status JSON for the manager. */
-std::string build_status_json() {
-  const RuntimeSnapshot runtime = query_runtime_snapshot();
-  const std::vector<NativeInjectionView> native_injections =
-      build_native_injection_views(runtime);
-
-  std::string s = "{\"count\":";
-  s += std::to_string(g_inject_count);
-  s += ",\"safe_mode\":";
-  s += runtime.safe_mode ? "true" : "false";
-  s += ",\"zygote_crashes\":";
-  s += std::to_string(runtime.zygote_crashes);
-  s += ",\"safe_mode_zygote\":\"";
-  json_append_escaped(s, runtime.safe_mode_zygote.empty()
-                             ? "zygote"
-                             : runtime.safe_mode_zygote);
-  s += "\"";
-  s += ",\"yukilinker\":";
-  s += g_yz_config.yukilinker ? "true" : "false";
-  s += ",\"denylist_mode\":";
-  s += std::to_string(g_yz_config.denylist_mode);
-  s += ",\"dmesg_log\":";
-  s += g_yz_config.dmesg_log ? "true" : "false";
-  s += ",\"recent\":[";
-  bool first = true;
-  for (uint32_t a : g_recent_appids) {
-    if (!first)
-      s += ',';
-    first = false;
-    s += std::to_string(a);
-  }
-  s += "],\"zygotes\":[";
-  first = true;
-  for (const auto &record : runtime.records) {
-    if (record.kind != YZ_RUNTIME_KIND_ZYGOTE || record.abi != kRuntimeAbi ||
-        record.state != YZ_RUNTIME_STATE_INJECTED)
-      continue;
-    const std::string target = runtime_string(record.target);
-    if (!first)
-      s += ',';
-    first = false;
-    s += "{\"pid\":";
-    s += std::to_string(record.pid);
-    s += ",\"name\":\"";
-    json_append_escaped(s, target);
-    s += "\",\"target\":\"";
-    json_append_escaped(s, target);
-    s += "\",\"process\":\"";
-    json_append_escaped(s, runtime_string(record.process));
-    s += "\",\"abi\":\"";
-    json_append_escaped(s, runtime_abi_name(record.abi));
-    s += "\"}";
-  }
-  s += "],\"zygote_monitor\":[";
-  first = true;
-  for (const auto &record : runtime.records) {
-    if (record.kind != YZ_RUNTIME_KIND_ZYGOTE || record.abi != kRuntimeAbi)
-      continue;
-    const char *state = runtime_state_name(record.state);
-    if (state == nullptr)
-      continue;
-    const std::string target = runtime_string(record.target);
-    if (!first)
-      s += ',';
-    first = false;
-    s += "{\"pid\":";
-    s += std::to_string(record.pid);
-    s += ",\"name\":\"";
-    json_append_escaped(s, target);
-    s += "\",\"target\":\"";
-    json_append_escaped(s, target);
-    s += "\",\"process\":\"";
-    json_append_escaped(s, runtime_string(record.process));
-    s += "\",\"abi\":\"";
-    json_append_escaped(s, runtime_abi_name(record.abi));
-    s += "\",\"state\":\"";
-    json_append_escaped(s, state);
-    s += "\"}";
-  }
-  s += "],\"modules\":[";
-  first = true;
-  for (const auto &m : g_modules) {
-    if (!first)
-      s += ',';
-    first = false;
-    s += '"';
-    json_append_escaped(s, m.name);
-    s += '"';
-  }
-  s += "],\"native_modules\":[";
-  first = true;
-  for (const auto &m : g_native_modules) {
-    if (!first)
-      s += ',';
-    first = false;
-    s += "{\"id\":\"";
-    json_append_escaped(s, m.module_id);
-    s += "\",\"target_type\":\"";
-    json_append_escaped(s, native_target_type_name(m.target_type));
-    s += "\",\"target\":\"";
-    json_append_escaped(s, m.target);
-    s += "\",\"companion\":";
-    s += m.has_companion ? "true" : "false";
-    s += ",\"state\":\"";
-    s += native_module_state(m.module_id, native_injections);
-    s += "\"";
-    s += "}";
-  }
-  s += "],\"native_injections\":[";
-  first = true;
-  for (const auto &n : native_injections) {
-    if (!first)
-      s += ',';
-    first = false;
-    s += "{\"pid\":";
-    s += std::to_string(n.pid);
-    s += ",\"process\":\"";
-    json_append_escaped(s, n.process);
-    s += "\",\"module\":\"";
-    json_append_escaped(s, n.module_id);
-    s += "\",\"target_type\":\"";
-    json_append_escaped(s, n.target_type);
-    s += "\",\"target\":\"";
-    json_append_escaped(s, n.target);
-    s += "\",\"abi\":\"";
-    json_append_escaped(s, n.abi);
-    s += "\",\"companion\":";
-    s += n.has_companion ? "true" : "false";
-    s += ",\"state\":\"";
-    json_append_escaped(s, n.state);
-    s += "\"";
-    s += "}";
-  }
-  s += "]}";
-  return s;
-}
-
 void handle_client(int client) {
   uint8_t op = 0;
   if (!read_exact(client, &op, sizeof(op)))
@@ -1239,26 +907,6 @@ void handle_client(int client) {
   }
   case zygiskd::Request::GetConfig: {
     write_exact(client, &g_yz_config, sizeof(g_yz_config));
-    break;
-  }
-  case zygiskd::Request::GetStatus: {
-    // Manager-only telemetry.
-    std::string js;
-    struct ucred cr{};
-    socklen_t crlen = sizeof(cr);
-    int mgr = ksud::get_manager_uid();
-    if (mgr > 0 &&
-        getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
-        cr.uid == static_cast<uid_t>(mgr)) {
-      js = build_status_json();
-    } else {
-      DLOGI("GetStatus denied: peer uid=%d manager uid=%d",
-            static_cast<int>(cr.uid), mgr);
-    }
-    uint32_t n = static_cast<uint32_t>(js.size());
-    write_exact(client, &n, sizeof(n));
-    if (n != 0)
-      write_exact(client, js.data(), n);
     break;
   }
   case zygiskd::Request::RevertMount: {
@@ -1455,6 +1103,26 @@ void handle_client(int client) {
   }
 }
 
+socklen_t fill_daemon_address(sockaddr_un *addr) {
+  *addr = {};
+  addr->sun_family = AF_UNIX;
+  const size_t name_len = strlen(zygiskd::kSocketName);
+  memcpy(addr->sun_path + 1, zygiskd::kSocketName, name_len);
+  return static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + 1 + name_len);
+}
+
+bool existing_daemon_reachable() {
+  int client = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (client < 0)
+    return false;
+  sockaddr_un addr{};
+  const socklen_t len = fill_daemon_address(&addr);
+  const bool reachable =
+      connect(client, reinterpret_cast<sockaddr *>(&addr), len) == 0;
+  close(client);
+  return reachable;
+}
+
 int bind_listen() {
   int srv = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (srv < 0) {
@@ -1463,21 +1131,20 @@ int bind_listen() {
   }
 
   sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  /* abstract namespace */
-  const size_t name_len = strlen(zygiskd::kSocketName);
-  memcpy(addr.sun_path + 1, zygiskd::kSocketName, name_len);
-  socklen_t len =
-      static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + 1 + name_len);
+  const socklen_t len = fill_daemon_address(&addr);
 
   if (bind(srv, reinterpret_cast<sockaddr *>(&addr), len) < 0) {
+    const int saved_errno = errno;
     DLOGE("bind @%s failed: %s", zygiskd::kSocketName, strerror(errno));
     close(srv);
+    errno = saved_errno;
     return -1;
   }
   if (listen(srv, 32) < 0) {
+    const int saved_errno = errno;
     DLOGE("listen failed: %s", strerror(errno));
     close(srv);
+    errno = saved_errno;
     return -1;
   }
   return srv;
@@ -1501,8 +1168,6 @@ int nl_listen() {
   return fd;
 }
 
-void on_specialize(uint32_t /*pid*/, uint32_t /*appid*/) {}
-
 void nl_drain(int fd) {
   char buf[4096];
   ssize_t got = recv(fd, buf, sizeof(buf), 0);
@@ -1517,17 +1182,12 @@ void nl_drain(int fd) {
     if (nlh->nlmsg_len < NLMSG_LENGTH(sizeof(yz_event)))
       continue;
     auto *ev = static_cast<yz_event *>(NLMSG_DATA(nlh));
-    DLOGI("event type=%u pid=%u appid=%u", ev->type, ev->pid, ev->appid);
-    if (ev->type == YZ_EV_SPECIALIZE) {
-      if (g_safemode.active)
-        continue;
-      record_injection(ev->appid);
-      on_specialize(ev->pid, ev->appid);
-    } else if (ev->type == YZ_EV_RELOAD) {
+    if (ev->type == YZ_EV_RELOAD) {
+      DLOGI("reload event");
       rescan_modules();
       read_yzconfig();
     } else if (ev->type == YZ_EV_SAFEMODE) {
-      note_safemode_event(ev->pid, ev->appid);
+      DLOGI("safemode event pid=%u crashes=%u", ev->pid, ev->appid);
     }
   }
 }
@@ -1621,29 +1281,59 @@ int run_daemon() {
 
   (void)signal(SIGPIPE, SIG_IGN);
 
+  yz_safemode_status_cmd kernel_status{};
+  if (ksud::ksuctl(KSU_IOCTL_YZ_GET_SAFEMODE, &kernel_status) != 0) {
+    DLOGE("kernel control unavailable; exiting");
+    notify_ready(ready_fd, false);
+    return 1;
+  }
+
   int srv = bind_listen();
   if (srv < 0) {
-    DLOGI("@%s already owned by another zygiskd; exiting",
-          zygiskd::kSocketName);
-    notify_ready(ready_fd, true);
-    return 0;
+    const int bind_errno = errno;
+    if (bind_errno == EADDRINUSE && existing_daemon_reachable()) {
+      DLOGI("@%s already owned by a reachable zygiskd; exiting",
+            zygiskd::kSocketName);
+      notify_ready(ready_fd, true);
+      return 0;
+    }
+    DLOGE("daemon socket unavailable: %s", strerror(bind_errno));
+    notify_ready(ready_fd, false);
+    return 1;
   }
 
   rescan_modules();
   read_yzconfig();
-  refresh_safemode_status();
-  bool offsets_ready = send_dlopen_offset();
+  if (!send_dlopen_offset()) {
+    DLOGE("linker offsets unavailable; exiting");
+    close(srv);
+    notify_ready(ready_fd, false);
+    return 1;
+  }
 
   int nlfd = nl_listen();
+  if (nlfd < 0) {
+    DLOGE("kernel event channel unavailable; exiting");
+    close(srv);
+    notify_ready(ready_fd, false);
+    return 1;
+  }
   DLOGI("zygiskd up: unix @%s, netlink proto=%d", zygiskd::kSocketName,
         YZ_NETLINK_PROTO);
-  notify_ready(ready_fd, offsets_ready);
+  notify_ready(ready_fd, true);
 
   pollfd pfds[2] = {{srv, POLLIN, 0}, {nlfd, POLLIN, 0}};
-  nfds_t nfds = (nlfd >= 0) ? 2 : 1;
   for (;;) {
-    if (poll(pfds, nfds, -1) < 0)
-      continue;
+    if (poll(pfds, 2, -1) < 0) {
+      if (errno == EINTR)
+        continue;
+      DLOGE("poll failed: %s; exiting", strerror(errno));
+      return 1;
+    }
+    if ((pfds[0].revents | pfds[1].revents) & (POLLERR | POLLHUP | POLLNVAL)) {
+      DLOGE("daemon channel failed; exiting");
+      return 1;
+    }
     if (pfds[0].revents & POLLIN) {
       int client = accept4(srv, nullptr, nullptr, SOCK_CLOEXEC);
       if (client >= 0) {
@@ -1651,13 +1341,11 @@ int run_daemon() {
         close(client);
       }
     }
-    if (nlfd >= 0 && (pfds[1].revents & POLLIN))
+    if (pfds[1].revents & POLLIN)
       nl_drain(nlfd);
   }
 }
 
 } // namespace
 
-extern "C" int zygiskd_main(int /*argc*/, char ** /*argv*/) {
-  return run_daemon();
-}
+extern "C" int zygiskd_main() { return run_daemon(); }

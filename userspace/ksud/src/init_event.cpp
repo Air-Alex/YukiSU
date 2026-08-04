@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <cerrno>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -114,7 +115,8 @@ void run_stage(const std::string& stage, bool block) {
 int spawn_zygiskd_process(const char* path, const char* label) {
     int ready_pipe[2] = {-1, -1};
     if (pipe(ready_pipe) != 0) {
-        LOGW("Failed to create %s ready pipe: %s", label, strerror(errno));
+        LOGE("Failed to create %s ready pipe: %s", label, strerror(errno));
+        return -1;
     }
 
     pid_t const pid = fork();
@@ -180,26 +182,43 @@ int spawn_zygiskd_process(const char* path, const char* label) {
     if (ready_pipe[1] >= 0)
         close(ready_pipe[1]);
 
+    pollfd pfd{};
+    pfd.fd = ready_pipe[0];
+    pfd.events = POLLIN | POLLHUP;
+    int pr;
+    do {
+        pr = poll(&pfd, 1, 5000);
+    } while (pr < 0 && errno == EINTR);
+
+    char ready = '0';
+    ssize_t received = -1;
+    if (pr > 0 && (pfd.revents & POLLIN)) {
+        do {
+            received = read(ready_pipe[0], &ready, 1);
+        } while (received < 0 && errno == EINTR);
+    }
+    close(ready_pipe[0]);
+
+    const bool daemon_ready = received == 1 && ready == '1';
+    if (!daemon_ready) {
+        LOGE("%s failed readiness (poll=%d, revents=0x%x, byte=%c)", label, pr, pfd.revents, ready);
+        (void)kill(-pid, SIGKILL);
+    }
+
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) {
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) {
         LOGW("waitpid for %s launcher failed: %s", label, strerror(errno));
     }
 
-    if (ready_pipe[0] >= 0) {
-        pollfd pfd{};
-        pfd.fd = ready_pipe[0];
-        pfd.events = POLLIN | POLLHUP;
-        const int pr = poll(&pfd, 1, 5000);
-        char ready = '0';
-
-        if (pr > 0 && read(ready_pipe[0], &ready, 1) == 1 && ready == '1') {
-            LOGI("%s reported ready", label);
-        } else {
-            LOGW("%s did not report ready before zygote exec (poll=%d, byte=%c)", label, pr, ready);
-        }
-        close(ready_pipe[0]);
+    if (daemon_ready) {
+        LOGI("%s reported ready", label);
+        return 0;
     }
-    return 0;
+    return -1;
 }
 
 bool has_zygote32() {
@@ -210,7 +229,11 @@ bool has_zygote32() {
     return access("/system/bin/app_process32", X_OK) == 0;
 }
 
-// Launch the ABI daemons required by the configured zygotes.
+bool needs_zygiskd32() {
+    return has_zygote32() || yukizygisk_has_native_abi32_target();
+}
+
+// Launch the daemons required by configured zygotes and native targets.
 int spawn_zygiskd() {
     int result = 0;
     struct Daemon {
@@ -220,12 +243,12 @@ int spawn_zygiskd() {
     };
     const Daemon daemons[] = {
         {ZYGISKD64_PATH, "zygiskd64", true},
-        {ZYGISKD32_PATH, "zygiskd32", has_zygote32()},
+        {ZYGISKD32_PATH, "zygiskd32", needs_zygiskd32()},
     };
 
     for (const auto& daemon : daemons) {
         if (!daemon.enabled) {
-            LOGI("No 32-bit zygote configured; skipping %s", daemon.label);
+            LOGI("No 32-bit zygote or native target configured; skipping %s", daemon.label);
             continue;
         }
         if (access(daemon.path, X_OK) != 0) {
@@ -259,7 +282,9 @@ void ensure_zygiskd_running_if_enabled() {
     if (!yukizygisk_feature_enabled())
         return;
     LOGI("YukiZygisk feature on -- launching zygiskd");
-    spawn_zygiskd();
+    if (spawn_zygiskd() != 0) {
+        LOGE("One or more YukiZygisk daemons failed to start");
+    }
 }
 
 }  // namespace
