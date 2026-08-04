@@ -166,10 +166,7 @@ private fun mergeZygoteMonitorEntries(
         }
         if (idx < 0) {
             merged += injected
-        } else if (
-            merged[idx].state != MonitorState.Unsupported32 &&
-            merged[idx].state != MonitorState.Crashed
-        ) {
+        } else if (merged[idx].state != MonitorState.Crashed) {
             val current = merged[idx]
             merged[idx] = current.copy(
                 pid = current.pid.takeIf { it != 0 } ?: injected.pid,
@@ -208,6 +205,15 @@ private data class NativeInjection(
     val state: MonitorState,
 )
 
+private data class NativeInjectionKey(
+    val pid: Int,
+    val process: String,
+    val module: String,
+    val targetType: String,
+    val target: String,
+    val abi: String,
+)
+
 private data class NativeProcessEntry(
     val pid: Int,
     val process: String,
@@ -234,6 +240,67 @@ private data class YzStatus(
     val nativeModules: List<NativeModuleEntry>,
     val nativeInjections: List<NativeInjection>,
 )
+
+private fun mergeMonitorState(first: MonitorState, second: MonitorState): MonitorState = when {
+    first == MonitorState.Injected || second == MonitorState.Injected -> MonitorState.Injected
+    first == MonitorState.Crashed || second == MonitorState.Crashed -> MonitorState.Crashed
+    first == MonitorState.Failed || second == MonitorState.Failed -> MonitorState.Failed
+    else -> MonitorState.Unsupported32
+}
+
+private fun mergeNativeModules(
+    primary: List<NativeModuleEntry>,
+    secondary: List<NativeModuleEntry>,
+): List<NativeModuleEntry> {
+    val merged = linkedMapOf<Triple<String, String, String>, NativeModuleEntry>()
+    (primary + secondary).forEach { entry ->
+        val key = Triple(entry.id, entry.targetType, entry.target)
+        val current = merged[key]
+        merged[key] = current?.copy(
+            companion = current.companion || entry.companion,
+            state = mergeMonitorState(current.state, entry.state),
+        ) ?: entry
+    }
+    return merged.values.toList()
+}
+
+private fun mergeNativeInjections(
+    primary: List<NativeInjection>,
+    secondary: List<NativeInjection>,
+): List<NativeInjection> {
+    val merged = linkedMapOf<NativeInjectionKey, NativeInjection>()
+    (primary + secondary).forEach { entry ->
+        val key = NativeInjectionKey(
+            entry.pid,
+            entry.process,
+            entry.module,
+            entry.targetType,
+            entry.target,
+            entry.abi,
+        )
+        val current = merged[key]
+        merged[key] = current?.copy(
+            companion = current.companion || entry.companion,
+            state = mergeMonitorState(current.state, entry.state),
+        ) ?: entry
+    }
+    return merged.values.toList()
+}
+
+private fun mergeAbiStatuses(primary: YzStatus, secondary: YzStatus?): YzStatus {
+    if (secondary == null) return primary
+    val secondaryInjected = secondary.zygotes.filter { it.state == MonitorState.Injected }
+    return primary.copy(
+        count = primary.count + secondary.count,
+        zygotes = mergeZygoteMonitorEntries(secondaryInjected, primary.zygotes),
+        modules = (primary.modules + secondary.modules).distinct(),
+        nativeModules = mergeNativeModules(primary.nativeModules, secondary.nativeModules),
+        nativeInjections = mergeNativeInjections(
+            primary.nativeInjections,
+            secondary.nativeInjections,
+        ),
+    )
+}
 
 private fun parseYzStatus(json: String): YzStatus? = runCatching {
     val o = JSONObject(json)
@@ -353,7 +420,10 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
             val snapshot = withContext(Dispatchers.IO) {
                 val json = runCatching { Natives.yzQueryStatus() }.getOrNull()
                     ?: return@withContext null
-                val st = parseYzStatus(json) ?: return@withContext null
+                val primary = parseYzStatus(json) ?: return@withContext null
+                val secondary = runCatching { Natives.yzQueryStatus32() }.getOrNull()
+                    ?.let(::parseYzStatus)
+                val st = mergeAbiStatuses(primary, secondary)
                 YzSnapshot(
                     count = st.count,
                     safeMode = st.safeMode,

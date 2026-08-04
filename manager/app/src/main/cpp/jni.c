@@ -528,7 +528,7 @@ static bool yz_read_full(int fd, void *buf, size_t n) {
   return true;
 }
 
-NativeBridgeNP(yzQueryStatus, jstring) {
+static jstring yz_query_status(JNIEnv *env, const char *socket_name) {
   int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (fd < 0) {
     return NULL;
@@ -536,8 +536,8 @@ NativeBridgeNP(yzQueryStatus, jstring) {
 
   struct sockaddr_un addr = {0};
   addr.sun_family = AF_UNIX;
-  size_t nlen = strlen(YZ_ZYGISKD_SOCKET);
-  memcpy(addr.sun_path + 1, YZ_ZYGISKD_SOCKET, nlen); // abstract: leading NUL
+  size_t nlen = strlen(socket_name);
+  memcpy(addr.sun_path + 1, socket_name, nlen); // abstract: leading NUL
   socklen_t alen =
       (socklen_t)(offsetof(struct sockaddr_un, sun_path) + 1 + nlen);
   if (connect(fd, (struct sockaddr *)&addr, alen) != 0) {
@@ -566,6 +566,14 @@ NativeBridgeNP(yzQueryStatus, jstring) {
   free(buf);
   close(fd);
   return out;
+}
+
+NativeBridgeNP(yzQueryStatus, jstring) {
+  return yz_query_status(env, YZ_ZYGISKD_SOCKET);
+}
+
+NativeBridgeNP(yzQueryStatus32, jstring) {
+  return yz_query_status(env, "zygiskd32");
 }
 
 static int wait_child_exit(pid_t pid) {
