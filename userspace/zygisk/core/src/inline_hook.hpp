@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include <cstdint>
 #include <cstring>
@@ -8,6 +9,30 @@
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
 #endif // #ifndef MAP_FIXED_NOREPLACE
+
+namespace yuki::ihook {
+
+enum class UnhookMode : uint8_t {
+  RestoreBytes,
+  DiscardCowPages,
+};
+
+inline bool discard_cow_patch_pages(uintptr_t address, size_t patch_size) {
+  if (patch_size == 0 ||
+      address > UINTPTR_MAX - static_cast<uintptr_t>(patch_size - 1))
+    return false;
+  const auto page_size = static_cast<uintptr_t>(getpagesize());
+  const uintptr_t first_page = address - (address % page_size);
+  const uintptr_t last = address + patch_size - 1;
+  const uintptr_t last_page = last - (last % page_size);
+  if (last_page > UINTPTR_MAX - page_size)
+    return false;
+  return madvise(reinterpret_cast<void *>(first_page),
+                 static_cast<size_t>(last_page - first_page + page_size),
+                 MADV_DONTNEED) == 0;
+}
+
+} // namespace yuki::ihook
 
 #if defined(__aarch64__)
 extern "C" {
@@ -138,13 +163,16 @@ inline void *install(void *target, void *replacement, Hook *out, bool = false) {
   return mapped_co; // wrapper reaches the ORIGINAL native via this trampoline
 }
 
-/* Restore by discarding the COW patch page. */
-inline bool uninstall(Hook *h) {
+inline bool uninstall(Hook *h, UnhookMode mode = UnhookMode::RestoreBytes) {
   if (!h->active)
     return true;
-  if (!yz_patch_text(reinterpret_cast<uintptr_t>(h->target), h->saved,
-                     sizeof(h->saved)))
+  const uintptr_t target = reinterpret_cast<uintptr_t>(h->target);
+  if (mode == UnhookMode::DiscardCowPages) {
+    if (!discard_cow_patch_pages(target, sizeof(h->saved)))
+      return false;
+  } else if (!yz_patch_text(target, h->saved, sizeof(h->saved))) {
     return false;
+  }
   __builtin___clear_cache(reinterpret_cast<char *>(h->target),
                           reinterpret_cast<char *>(h->target) + 8);
   if (h->trampoline != nullptr)
@@ -437,12 +465,16 @@ inline void *install(void *target, void *replacement, Hook *out,
                                   (thumb ? 1 : 0));
 }
 
-inline bool uninstall(Hook *hook) {
+inline bool uninstall(Hook *hook, UnhookMode mode = UnhookMode::RestoreBytes) {
   if (!hook->active)
     return true;
-  if (!yz_patch_text(reinterpret_cast<uintptr_t>(hook->target), hook->saved,
-                     hook->patched_size))
+  const uintptr_t target = reinterpret_cast<uintptr_t>(hook->target);
+  if (mode == UnhookMode::DiscardCowPages) {
+    if (!discard_cow_patch_pages(target, hook->patched_size))
+      return false;
+  } else if (!yz_patch_text(target, hook->saved, hook->patched_size)) {
     return false;
+  }
   __builtin___clear_cache(reinterpret_cast<char *>(hook->target),
                           reinterpret_cast<char *>(hook->target) +
                               hook->patched_size);
@@ -463,7 +495,9 @@ struct Hook {
 };
 
 inline void *install(void *, void *, Hook *, bool = false) { return nullptr; }
-inline bool uninstall(Hook *) { return false; }
+inline bool uninstall(Hook *, UnhookMode = UnhookMode::RestoreBytes) {
+  return false;
+}
 
 } // namespace yuki::ihook
 #endif // #if defined(__aarch64__)

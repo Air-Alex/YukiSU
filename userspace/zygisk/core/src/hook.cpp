@@ -449,7 +449,11 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
 }};
 
 /* Hook records for restore. */
-std::vector<yuki::ihook::Hook> g_ihooks;
+struct InlineHookRecord {
+  yuki::ihook::Hook hook;
+  yuki::ihook::UnhookMode unhook_mode;
+};
+std::vector<InlineHookRecord> g_ihooks;
 struct RnFallback {
   const char *clz;
   JNINativeMethod m; // m.fnPtr == ORIGINAL entry, for RegisterNatives restore
@@ -457,7 +461,7 @@ struct RnFallback {
 std::vector<RnFallback> g_rn_fallback;
 
 void hook_jni_methods(JNIEnv *env, const char *clz, JNINativeMethod *methods,
-                      int count) {
+                      int count, yuki::ihook::UnhookMode unhook_mode) {
   jclass clazz = env->FindClass(clz);
   if (clazz == nullptr) {
     env->ExceptionClear();
@@ -498,7 +502,7 @@ void hook_jni_methods(JNIEnv *env, const char *clz, JNINativeMethod *methods,
     yuki::ihook::Hook h;
     void *tramp = yuki::ihook::install(orig, m.fnPtr, &h);
     if (tramp != nullptr) {
-      g_ihooks.push_back(h);
+      g_ihooks.push_back({h, unhook_mode});
       m.fnPtr = tramp; // wrapper calls the original via the trampoline
       ZLOGI("inline-hooked %s @orig=%p tramp=%p", m.name, orig, tramp);
     } else {
@@ -568,7 +572,8 @@ void hook_zygote_jni() {
       ZLOGI("fork hook armed (orig=%p)", reinterpret_cast<void *>(g_orig_fork));
   }
   hook_jni_methods(env, kZygote, g_zygote_methods.data(),
-                   static_cast<int>(g_zygote_methods.size()));
+                   static_cast<int>(g_zygote_methods.size()),
+                   yuki::ihook::UnhookMode::DiscardCowPages);
   yz_unmap_injection_stub();
   ZLOGI("zygote JNI takeover done");
 }
@@ -615,7 +620,7 @@ bool zygisk_hook_bootstrap(const char *self_path) {
 
 void zygisk_hook_jni_methods(JNIEnv *env, const char *cls,
                              JNINativeMethod *methods, int n) {
-  hook_jni_methods(env, cls, methods, n);
+  hook_jni_methods(env, cls, methods, n, yuki::ihook::UnhookMode::RestoreBytes);
 }
 
 bool zygisk_plt_hook_register(dev_t dev, ino_t inode, const char *symbol,
@@ -637,10 +642,13 @@ bool zygisk_specialize_fully_inline_hooked() {
 }
 
 /* Restore hooks before self-unmap. */
-void zygisk_self_unhook(JNIEnv *env) {
+bool zygisk_self_unhook(JNIEnv *env) {
+  bool unhooked = true;
   for (auto &h : g_ihooks)
-    yuki::ihook::uninstall(&h);
-  g_ihooks.clear();
+    if (!yuki::ihook::uninstall(&h.hook, h.unhook_mode))
+      unhooked = false;
+  if (unhooked)
+    g_ihooks.clear();
   if (env != nullptr)
     for (auto &fb : g_rn_fallback) {
       jclass c = env->FindClass(fb.clz);
@@ -653,17 +661,33 @@ void zygisk_self_unhook(JNIEnv *env) {
   dev_t dev = 0;
   ino_t inode = 0;
   if (find_libandroid_runtime(dev, inode)) {
-    if (g_strdup.original != nullptr)
-      lsplt::RegisterHook(dev, inode, "strdup",
-                          reinterpret_cast<void *>(g_strdup.original), nullptr);
-    if (g_orig_fork != nullptr)
-      lsplt::RegisterHook(dev, inode, "fork",
-                          reinterpret_cast<void *>(g_orig_fork), nullptr);
-    lsplt::CommitHook();
+    bool registered = true;
+    bool have_hook = false;
+    if (g_strdup.original != nullptr) {
+      have_hook = true;
+      if (!lsplt::RegisterHook(dev, inode, "strdup",
+                               reinterpret_cast<void *>(g_strdup.original),
+                               nullptr))
+        registered = false;
+    }
+    if (g_orig_fork != nullptr) {
+      have_hook = true;
+      if (!lsplt::RegisterHook(dev, inode, "fork",
+                               reinterpret_cast<void *>(g_orig_fork), nullptr))
+        registered = false;
+    }
+    if (have_hook) {
+      const bool committed = lsplt::CommitHook();
+      if (!registered || !committed)
+        unhooked = false;
+    }
+  } else if (g_strdup.original != nullptr || g_orig_fork != nullptr) {
+    unhooked = false;
   }
   int nc = close_inherited_module_fds();
   if (nc != 0)
     ZLOGI("self-destruct: closed %d leaked module fd", nc);
+  return unhooked;
 }
 
 /* Collect matching maps segments. */
