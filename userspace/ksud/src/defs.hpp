@@ -54,10 +54,30 @@ constexpr const char* ZYUKILINKER64_PATH = "/data/adb/ksu/lib/yukizygisk/libyuki
 constexpr const char* ZYUKILINKER32_PATH = "/data/adb/ksu/lib/yukizygisk/libyukilinker32.so";
 constexpr const char* ZYGISKD64_PATH = "/data/adb/ksu/bin/zygiskd64";
 constexpr const char* ZYGISKD32_PATH = "/data/adb/ksu/bin/zygiskd32";
-// Runtime config, kept apart from the binary payload dir so the manager can
-// rewrite it freely. zygiskd parses it and brokers it to core.
-constexpr const char* YZCONFIG_DIR = "/data/adb/ksu/yukizygisk/";
-constexpr const char* YZCONFIG_PATH = "/data/adb/ksu/yukizygisk/yzconfig.json";
+// Runtime state remains separate from deployed payloads so updates cannot
+// replace user configuration or diagnostic logs.
+constexpr const char* YUKIZYGISK_STATE_DIR = "/data/adb/ksu/yukizygisk";
+constexpr const char* YUKIZYGISK_CONFIG_PATH = "/data/adb/ksu/yukizygisk/yzconfig.json";
+constexpr const char* YUKIZYGISK_DIAGNOSTICS_DIR = "/data/adb/ksu/yukizygisk/diagnostics";
+constexpr const char* YUKIZYGISK_CURRENT_DIAGNOSTICS_DIR =
+    "/data/adb/ksu/yukizygisk/diagnostics/current";
+constexpr const char* YUKIZYGISK_OLD_DIAGNOSTICS_DIR = "/data/adb/ksu/yukizygisk/diagnostics/old";
+constexpr const char* YUKIZYGISK_LOG_DIR = "/data/adb/ksu/yukizygisk/diagnostics/current/logs";
+constexpr const char* YUKIZYGISK_LOG64_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/logs/zygiskd64.log";
+constexpr const char* YUKIZYGISK_ROLLED_LOG64_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/logs/zygiskd64.1.log";
+constexpr const char* YUKIZYGISK_LOG32_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/logs/zygiskd32.log";
+constexpr const char* YUKIZYGISK_ROLLED_LOG32_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/logs/zygiskd32.1.log";
+constexpr const char* YUKIZYGISK_LINKER64_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/linker64.json";
+constexpr const char* YUKIZYGISK_LINKER32_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/linker32.json";
+constexpr const char* YUKIZYGISK_DIAGNOSTIC_EVIDENCE_PATH =
+    "/data/adb/ksu/yukizygisk/diagnostics/current/evidence";
+constexpr const char* YUKIZYGISK_LEGACY_LOG_DIR = "/data/adb/ksu/yukizygisk/log";
 constexpr const char* DAEMON_LINK_PATH = "/data/adb/ksu/bin/ksud";
 constexpr const char* SULOGD_LOCK_PATH = "/data/adb/ksu/sulogd.lock";
 

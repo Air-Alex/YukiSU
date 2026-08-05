@@ -3,6 +3,7 @@
 #include "assets.hpp"
 #include "boot/boot_patch.hpp"
 #include "core/feature.hpp"
+#include "core/ksucalls.hpp"
 #include "core/restorecon.hpp"
 #include "core/uts_view.hpp"
 #include "defs.hpp"
@@ -16,6 +17,7 @@
 #include "profile/profile.hpp"
 #include "umount.hpp"
 #include "utils.hpp"
+#include "yukizygisk_diagnostics.hpp"
 
 #include <unistd.h>
 #include <cerrno>
@@ -162,6 +164,8 @@ int run(bool post_magica, bool allow_shell) {
             return 1;
         }
 
+        (void)prepare_yukizygisk_diagnostics(false);
+
         ksud::umask(0);
 
         clear_all_temp_configs();
@@ -198,6 +202,13 @@ int run(bool post_magica, bool allow_shell) {
         if (init_features() != 0) {
             LOGW("late-load: init_features failed");
         }
+        const bool safe_mode = is_safe_mode();
+        const auto [yz_value, yz_supported] = get_feature(KSU_FEATURE_YUKIZYGISK);
+        const bool yz_enabled = !safe_mode && yz_supported && yz_value != 0;
+        if (yz_enabled)
+            (void)prepare_yukizygisk_diagnostics(true);
+        update_yukizygisk_boot_diagnostics(safe_mode, yz_supported, yz_enabled,
+                                           "late-load-restored");
 
         run_stage_scripts("late-load", true);
 

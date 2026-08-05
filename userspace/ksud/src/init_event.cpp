@@ -17,6 +17,7 @@
 #include "sulog.hpp"
 #include "umount.hpp"
 #include "utils.hpp"
+#include "yukizygisk_diagnostics.hpp"
 #include "yukizygisk_snapshot.hpp"
 
 #include <fcntl.h>
@@ -291,6 +292,7 @@ void ensure_zygiskd_running_if_enabled() {
 
 int on_post_data_fs() {
     LOGI("post-fs-data triggered");
+    (void)prepare_yukizygisk_diagnostics(false);
 
     if (!ensure_uapi_version_matched()) {
         LOGE("Skip post-fs-data due to UAPI version mismatch");
@@ -314,14 +316,17 @@ int on_post_data_fs() {
     catch_bootlog("logcat", {"logcat", "-b", "all"});
     catch_bootlog("dmesg", {"dmesg", "-w"});
 
+    const bool safe_mode = is_safe_mode();
+    const auto [early_yz_value, early_yz_supported] = get_feature(KSU_FEATURE_YUKIZYGISK);
+    update_yukizygisk_boot_diagnostics(safe_mode, early_yz_supported,
+                                       !safe_mode && early_yz_supported && early_yz_value != 0,
+                                       "pre-restore");
+
     // Check for Magisk (like Rust version)
     if (has_magisk()) {
         LOGW("Magisk detected, skip post-fs-data!");
         return 0;
     }
-
-    // Check for safe mode FIRST (like Rust version)
-    const bool safe_mode = is_safe_mode();
 
     if (safe_mode) {
         LOGW("safe mode, skip common post-fs-data.d scripts");
@@ -376,6 +381,11 @@ int on_post_data_fs() {
 
     // Load feature config (with init_features handling managed features)
     init_features();
+    const auto [yz_value, yz_supported] = get_feature(KSU_FEATURE_YUKIZYGISK);
+    const bool yz_enabled = yz_supported && yz_value != 0;
+    if (yz_enabled)
+        (void)prepare_yukizygisk_diagnostics(true);
+    update_yukizygisk_boot_diagnostics(false, yz_supported, yz_enabled, "restored");
     ensure_yukizygisk_payload_if_enabled();
     if (refresh_yukizygisk_early_snapshot() != 0) {
         LOGW("refresh YukiZygisk early snapshot failed");

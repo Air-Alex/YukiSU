@@ -1,6 +1,7 @@
 #include "hook.hpp"
 #include "log.hpp"
 #include "solist.hpp"
+#include "userspace/zygisk/daemon/zygiskd.hpp"
 #include "yukilinker.hpp"
 #include "zygisk.hpp"
 
@@ -21,7 +22,6 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -174,27 +174,7 @@ bool RegisterModuleImpl(CoreApiTable *tbl, module_abi *abi) {
 volatile int g_ctors_done = 0;
 __attribute__((constructor)) void mark_ctors_done() { g_ctors_done = 1; }
 
-/* Mirrors daemon/zygiskd.hpp. */
-enum class ZdRequest : uint8_t {
-  GetProcessFlags = 1,
-  GetModuleCount = 2,
-  GetModuleFd = 3,
-  ConnectCompanion = 4,
-  GetModuleDir = 5,
-  GetConfig = 6,
-  RevertMount = 8,
-  SelfDestruct = 9,
-  Log = 10,
-  PatchText = 11,
-  ReportZygote = 12,
-  RestoreLoadPolicy = 17,
-  GetRuntimeGeneration = 21,
-};
-#if defined(__LP64__)
-constexpr char kZygiskdSocket[] = "zygiskd64";
-#else
-constexpr char kZygiskdSocket[] = "zygiskd32";
-#endif // #if defined(__LP64__)
+using ZdRequest = zygiskd::Request;
 
 bool read_all(int fd, void *buf, size_t n) {
   auto *p = static_cast<uint8_t *>(buf);
@@ -246,8 +226,9 @@ int connect_zygiskd() {
     return -1;
   sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
-  size_t len = std::strlen(kZygiskdSocket);
-  memcpy(addr.sun_path + 1, kZygiskdSocket, len); // abstract: leading NUL
+  size_t len = std::strlen(zygiskd::kSocketName);
+  memcpy(addr.sun_path + 1, zygiskd::kSocketName,
+         len); // abstract: leading NUL
   auto alen = static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + 1 + len);
   if (connect(fd, reinterpret_cast<sockaddr *>(&addr), alen) != 0) {
     close(fd);
@@ -423,30 +404,6 @@ bool arm_module_load_policy(int id) {
   return true;
 }
 
-/* dmesg logging via zygiskd. */
-extern "C" void yz_klog(const char *fmt, ...) {
-  if (g_yz_config.dmesg_log == 0)
-    return;
-  char buf[224];
-  va_list ap;
-  va_start(ap, fmt);
-  const int n = vsnprintf(buf, sizeof(buf), fmt, ap);
-  va_end(ap);
-  if (n <= 0)
-    return;
-  const size_t len = static_cast<size_t>(n) < sizeof(buf)
-                         ? static_cast<size_t>(n)
-                         : sizeof(buf) - 1;
-  const int s = connect_zygiskd();
-  if (s < 0)
-    return;
-  uint8_t req = static_cast<uint8_t>(ZdRequest::Log);
-  uint16_t l16 = static_cast<uint16_t>(len);
-  if (write(s, &req, 1) == 1 && write(s, &l16, sizeof(l16)) == sizeof(l16))
-    (void)!write(s, buf, len);
-  close(s);
-}
-
 /* Built-in yukilinker symbols. */
 extern "C" {
 __attribute__((visibility("hidden"))) void *
@@ -467,8 +424,8 @@ size_t g_self_size = 0;
 
 void load_modules_impl(JNIEnv *env) {
   if (!g_modules.empty())
-    return;         // already loaded in this process (called per-specialize)
-  zd_load_config(); // refresh yukilinker/denylist_mode/dmesg from yzconfig.json
+    return; // already loaded in this process (called per-specialize)
+  zd_load_config();
   int sock = connect_zygiskd();
   if (sock < 0) {
     LOGE("cannot connect zygiskd");

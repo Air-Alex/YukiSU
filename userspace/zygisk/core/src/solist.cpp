@@ -1,4 +1,5 @@
 #include "solist.hpp"
+#include "log.hpp"
 
 #include <elf.h>
 #include <fcntl.h>
@@ -23,14 +24,8 @@
 namespace yuki::solist {
 namespace {
 
-extern "C" __attribute__((weak, format(printf, 1, 2))) void
-yz_klog(const char *fmt, ...);
-#define SLOGE(...)                                                             \
-  do {                                                                         \
-    if (yz_klog != nullptr)                                                    \
-      yz_klog(__VA_ARGS__);                                                    \
-  } while (0)
-#define SLOGI(...) SLOGE(__VA_ARGS__)
+#define SLOGE(...) ZLOGE(__VA_ARGS__)
+#define SLOGI(...) ZLOGI(__VA_ARGS__)
 
 constexpr size_t kSoinfoNextOff = 5 * sizeof(void *);
 constexpr int kMaxWalk = 2000; /* guard against a wrong offset / cyclic list */

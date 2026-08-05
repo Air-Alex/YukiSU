@@ -53,6 +53,7 @@ target_compile_definitions(lsplt_static PRIVATE LOG_DISABLED)
 add_library(zygisk SHARED
     src/core.cpp
     src/hook.cpp
+    src/runtime_log.cpp
     # the anonymous in-memory loader, compiled INTO the core so libzygisk carries
     # its own copy -- the separate libyukilinker first stage is then unloaded
     # right after handoff (zygisk_finalize_loader) instead of lingering.
@@ -93,7 +94,9 @@ target_compile_options(zygisk PRIVATE
     # static destructors never run, but our exit path is the app process exit
     # (the OS reclaims the whole address space) so there is nothing to clean.
     -fno-c++-static-destructors)
-target_compile_definitions(zygisk PRIVATE YUKILINKER_FULL=1)
+target_compile_definitions(zygisk PRIVATE
+    YUKILINKER_FULL=1
+    YUKIZYGISK_LOG_SOURCE=1)
 target_link_libraries(zygisk PRIVATE dl lsplt_static)
 # --as-needed drops the liblog DT_NEEDED that lsplt links PUBLIC: with LOG_DISABLED
 # we never call into it, so no point advertising the dependency.
@@ -103,6 +106,7 @@ yukisu_enable_clang_tidy(zygisk CXX)
 
 add_library(yukizncore SHARED
     src/yukizncore.cpp
+    src/runtime_log.cpp
     src/yukilinker.cpp
     ${YUKILINKER_ARCH_SOURCES}
     src/self_unmap.S
@@ -129,6 +133,7 @@ target_compile_options(yukizncore PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-fno-c++-static-destructors>)
 target_compile_definitions(yukizncore PRIVATE
     YUKILINKER_FULL=1
+    YUKIZYGISK_LOG_SOURCE=2
     XZ_DEC_DYNALLOC=1
     XZ_DEC_ANY_CHECK=1
     XZ_INTERNAL_CRC32=1
@@ -145,6 +150,7 @@ yukisu_enable_clang_tidy(yukizncore CXX)
 # dlclose). Same source as compiled-in; no lsplt/solist deps.
 add_library(yukilinker SHARED
     src/yukilinker.cpp
+    src/runtime_log.cpp
     ${YUKILINKER_ARCH_SOURCES})
 set_target_properties(yukilinker PROPERTIES
     PREFIX "lib"
@@ -162,7 +168,9 @@ target_compile_options(yukilinker PRIVATE
     # this flag is belt-and-suspenders, and prevents any handler from being
     # registered in the first place.
     -fno-c++-static-destructors)
-target_compile_definitions(yukilinker PRIVATE YUKILINKER_BOOTSTRAP=1)
+target_compile_definitions(yukilinker PRIVATE
+    YUKILINKER_BOOTSTRAP=1
+    YUKIZYGISK_LOG_SOURCE=3)
 target_link_libraries(yukilinker PRIVATE dl)
 target_link_options(yukilinker PRIVATE -Wl,--gc-sections -Wl,--strip-all)
 yukisu_enable_clang_tidy(yukilinker CXX)

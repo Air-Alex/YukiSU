@@ -20,6 +20,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 
 add_executable(${ZYGISKD_TARGET}
+    log.cpp
     zygiskd.cpp
     standalone.cpp)
 target_include_directories(${ZYGISKD_TARGET} PRIVATE

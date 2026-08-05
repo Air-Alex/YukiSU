@@ -21,10 +21,35 @@ enum class Request : uint8_t {
   GetNativeModuleInfo = 14,
   GetNativeModuleFd = 15,
   ConnectNativeCompanion = 16,
-  RestoreNativeLoadPolicy = 17,
+  RestoreLoadPolicy = 17,
   ReportNativeInjection = 18,
   GetRuntimeGeneration = 21,
+  WriteLog = 22,
 };
+
+enum class LogLevel : uint8_t {
+  Debug = 0,
+  Info = 1,
+  Warning = 2,
+  Error = 3,
+};
+
+enum class LogSource : uint8_t {
+  Daemon = 0,
+  Zygisk = 1,
+  Native = 2,
+  Linker = 3,
+};
+
+inline constexpr uint16_t kLogMessageMax = 1024;
+
+struct LogHeader {
+  LogLevel level;
+  LogSource source;
+  uint16_t length;
+};
+
+static_assert(sizeof(LogHeader) == 4);
 
 inline constexpr uint32_t kNativeModuleNameMax = 64;
 inline constexpr uint32_t kNativeModuleTargetMax = 256;

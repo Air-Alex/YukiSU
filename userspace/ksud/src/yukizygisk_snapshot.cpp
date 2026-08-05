@@ -6,6 +6,7 @@
 #include "log.hpp"
 #include "userspace/zygisk/daemon/native_modules.hpp"
 #include "utils.hpp"
+#include "yukizygisk_diagnostics.hpp"
 
 #include "uapi/yukizygisk.h"
 
@@ -498,6 +499,7 @@ int refresh_yukizygisk_early_snapshot() {
         LOGW("yukizygisk early: failed to rename snapshot: %s", ec.message().c_str());
         return 1;
     }
+    record_yukizygisk_early_linker(header);
 
     const fs::path stale_dir =
         (preinit_dir == PREINIT_DIR_WATCHDOG) ? PREINIT_DIR_DEFAULT : PREINIT_DIR_WATCHDOG;

@@ -22,7 +22,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -84,18 +83,7 @@ struct ZygiskNextModule {
   void (*onModuleLoaded)(void *self_handle, const ZygiskNextAPI *api);
 };
 
-enum class ZdRequest : uint8_t {
-  GetConfig = 6,
-  Log = 10,
-  PatchText = 11,
-  GetNativeModuleCount = 13,
-  GetNativeModuleInfo = 14,
-  GetNativeModuleFd = 15,
-  ConnectNativeCompanion = 16,
-  RestoreNativeLoadPolicy = 17,
-  ReportNativeInjection = 18,
-  GetRuntimeGeneration = 21,
-};
+using ZdRequest = zygiskd::Request;
 
 struct ModuleHandle {
   uint32_t magic = kHandleMagic;
@@ -223,7 +211,7 @@ void restore_native_load_policy() {
     LOGE("native load policy restore: zygiskd unavailable");
     return;
   }
-  uint8_t op = static_cast<uint8_t>(ZdRequest::RestoreNativeLoadPolicy);
+  uint8_t op = static_cast<uint8_t>(ZdRequest::RestoreLoadPolicy);
   uint8_t ok = 0;
   bool sent = write_all(s, &op, 1) && read_all(s, &ok, sizeof(ok));
   close(s);
@@ -1209,33 +1197,6 @@ void core_start() {
 }
 
 } // namespace
-
-extern "C" void yz_klog(const char *fmt, ...) {
-  if (g_yz_config.dmesg_log == 0)
-    return;
-  char buf[1024];
-  va_list ap;
-  va_start(ap, fmt);
-  const int n = vsnprintf(buf, sizeof(buf), fmt, ap);
-  va_end(ap);
-  if (n <= 0)
-    return;
-  const size_t len = static_cast<size_t>(n) < sizeof(buf)
-                         ? static_cast<size_t>(n)
-                         : sizeof(buf) - 1;
-  constexpr size_t kChunk = 220;
-  for (size_t off = 0; off < len; off += kChunk) {
-    const size_t chunk = std::min(len - off, kChunk);
-    const int s = connect_zygiskd();
-    if (s < 0)
-      return;
-    const uint8_t op = static_cast<uint8_t>(ZdRequest::Log);
-    const uint16_t l16 = static_cast<uint16_t>(chunk);
-    if (write_all(s, &op, 1) && write_all(s, &l16, sizeof(l16)))
-      (void)!write_all(s, buf + off, chunk);
-    close(s);
-  }
-}
 
 extern "C" bool yz_patch_text(uintptr_t addr, const void *bytes,
                               unsigned int len) {
