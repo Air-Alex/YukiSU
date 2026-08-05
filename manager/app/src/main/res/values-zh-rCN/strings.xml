@@ -787,8 +787,9 @@
     <string name="yukizygisk_denylist_off">关闭</string>
     <string name="yukizygisk_denylist_force">强制</string>
     <string name="yukizygisk_denylist_restore">恢复</string>
-    <string name="yukizygisk_log_dmesg_title">记录到 dmesg</string>
-    <string name="yukizygisk_log_dmesg_summary">输出到 dmesg。</string>
+    <string name="yukizygisk_logging_title">YukiZygisk 日志</string>
+    <string name="yukizygisk_log_dmesg_title">镜像到 dmesg</string>
+    <string name="yukizygisk_log_dmesg_summary">开启后将zygiskd日志同步写入dmesg；内核部分日志始终写入dmesg</string>
     <string name="module_zygisk_loaded">已加载</string>
     <string name="module_zygisk_module">Zygisk模块</string>
     <string name="module_zn_module">ZN模块</string>

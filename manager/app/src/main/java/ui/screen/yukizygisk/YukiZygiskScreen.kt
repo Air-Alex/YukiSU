@@ -607,7 +607,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 }
             }
 
-            SettingsCard(title = stringResource(R.string.yukizygisk_log_dmesg_title)) {
+            SettingsCard(title = stringResource(R.string.yukizygisk_logging_title)) {
                 SwitchSettingItem(
                     icon = Icons.AutoMirrored.Filled.Article,
                     title = stringResource(R.string.yukizygisk_log_dmesg_title),

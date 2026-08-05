@@ -791,8 +791,9 @@
     <string name="yukizygisk_denylist_off" tools:ignore="MissingTranslation">Off</string>
     <string name="yukizygisk_denylist_force" tools:ignore="MissingTranslation">Force</string>
     <string name="yukizygisk_denylist_restore" tools:ignore="MissingTranslation">Restore</string>
-    <string name="yukizygisk_log_dmesg_title" tools:ignore="MissingTranslation">Log to dmesg</string>
-    <string name="yukizygisk_log_dmesg_summary" tools:ignore="MissingTranslation">Write to dmesg.</string>
+    <string name="yukizygisk_logging_title" tools:ignore="MissingTranslation">YukiZygisk logs</string>
+    <string name="yukizygisk_log_dmesg_title" tools:ignore="MissingTranslation">Mirror to dmesg</string>
+    <string name="yukizygisk_log_dmesg_summary" tools:ignore="MissingTranslation">When enabled, zygiskd logs are also written to dmesg; kernel logs are always written to dmesg.</string>
     <string name="module_zygisk_loaded" tools:ignore="MissingTranslation">Loaded</string>
     <string name="module_zygisk_module" tools:ignore="MissingTranslation">Zygisk module</string>
     <string name="module_zn_module" tools:ignore="MissingTranslation">ZN module</string>
