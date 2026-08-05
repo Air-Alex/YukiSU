@@ -7,11 +7,6 @@ on:
         required: false
         default: false
         type: boolean
-      yukizygisk_parts:
-        description: 'YukiZygisk kernel hook parts: probe,nl,orch,ctl'
-        required: false
-        default: 'probe,nl,orch,ctl'
-        type: string
   workflow_dispatch:
     inputs:
       yukizygisk:
@@ -19,11 +14,6 @@ on:
         required: false
         default: false
         type: boolean
-      yukizygisk_parts:
-        description: 'YukiZygisk kernel hook parts'
-        required: false
-        default: 'probe,nl,orch,ctl'
-        type: string
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -46,4 +36,3 @@ jobs:
       kmi: ${{ matrix.kmi }}
       ddk_release: '20260313'
       yukizygisk: ${{ inputs.yukizygisk }}
-      yukizygisk_parts: ${{ inputs.yukizygisk_parts || 'probe,nl,orch,ctl' }}

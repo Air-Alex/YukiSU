@@ -68,7 +68,6 @@ jobs:
     secrets: inherit
     with:
       yukizygisk: true
-      yukizygisk_parts: probe,nl,orch,ctl
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml

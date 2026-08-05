@@ -1,6 +1,6 @@
 # Native Windows build: DDK LKM -> ksuinit -> su -> YukiZygisk -> ksud -> Manager App
 # Signing env: YUKISU_KEYSTORE, YUKISU_KEYSTORE_PASSWORD, YUKISU_KEY_ALIAS, YUKISU_KEY_PASSWORD
-# Usage: .\scripts\build.bat [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--yukizygisk-parts PARTS] [--skip-lkm] [-i] [-h]
+# Usage: .\scripts\build.bat [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--skip-lkm] [-i] [-h]
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -16,9 +16,8 @@ Options:
   -k, --kmi KMI                 DDK target/KMI (default: android16-6.12)
   --clean                       Delete Native CMake build directories first
   --skip-lkm                    Reuse an existing out\<KMI>_kernelsu.ko if present
-  --yukizygisk                  Enable all YukiZygisk kernel hooks (default)
+  --yukizygisk                  Enable YukiZygisk kernel support (default)
   --yukizygisk-off              Disable YukiZygisk kernel hooks
-  --yukizygisk-parts PARTS      Comma list: probe,nl,orch,ctl; also accepts all or none
   -i, --install                 Install the resulting APK with adb
   -h, --help                    Show this help
 
@@ -229,7 +228,6 @@ try {
     $skipLkm = $false
     $installApk = $false
     $enableYukiZygisk = $true
-    $yukiZygiskParts = 'all'
 
     for ($index = 0; $index -lt $args.Count; $index++) {
         $argument = [string]$args[$index]
@@ -242,15 +240,8 @@ try {
             }
             '--clean' { $script:CleanBuild = $true; break }
             '--skip-lkm' { $skipLkm = $true; break }
-            '--yukizygisk' { $enableYukiZygisk = $true; $yukiZygiskParts = 'all'; break }
+            '--yukizygisk' { $enableYukiZygisk = $true; break }
             '--yukizygisk-off' { $enableYukiZygisk = $false; break }
-            '--yukizygisk-parts' {
-                if ($index + 1 -ge $args.Count) { throw "$argument requires a value" }
-                $index++
-                $enableYukiZygisk = $true
-                $yukiZygiskParts = [string]$args[$index]
-                break
-            }
             { $_ -in @('-i', '--install') } { $installApk = $true; break }
             { $_ -in @('-h', '--help') } { Show-Usage; exit 0 }
             default { throw "Unknown option: $argument" }
@@ -259,21 +250,6 @@ try {
 
     if ($kmi -notmatch '^[A-Za-z0-9._-]+$') {
         throw "Invalid KMI/DDK target: $kmi"
-    }
-
-    $partNames = @()
-    if ($enableYukiZygisk) {
-        switch ($yukiZygiskParts.ToLowerInvariant()) {
-            'all' { $partNames = @('probe', 'nl', 'orch', 'ctl') }
-            'none' { $partNames = @() }
-            default {
-                $partNames = @($yukiZygiskParts.Split(',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-            }
-        }
-        $unknownParts = @($partNames | Where-Object { $_ -notin @('probe', 'nl', 'orch', 'ctl') })
-        if ($unknownParts.Count -gt 0) {
-            throw "Unknown YukiZygisk part(s): $($unknownParts -join ', ')"
-        }
     }
 
     $sdkRoot = Resolve-AndroidSdk
@@ -337,7 +313,7 @@ try {
     Write-Host "Jobs:      $script:BuildJobs"
     Write-Host "Native cache: $(if ($script:CleanBuild) { 'clean rebuild' } else { 'reuse build directories' })"
     if ($enableYukiZygisk) {
-        Write-Host "YukiZygisk kernel hooks: enabled ($($partNames -join ','))"
+        Write-Host 'YukiZygisk kernel hooks: enabled'
     }
     else {
         Write-Host 'YukiZygisk kernel hooks: disabled'
@@ -380,14 +356,6 @@ try {
         )
         if ($enableYukiZygisk) {
             $dockerArguments += 'CONFIG_KSU_YUKIZYGISK=y'
-            foreach ($partName in $partNames) {
-                $dockerArguments += switch ($partName) {
-                    'probe' { 'CONFIG_KSU_YZ_PROBE=y' }
-                    'nl' { 'CONFIG_KSU_YZ_NL=y' }
-                    'orch' { 'CONFIG_KSU_YZ_ORCH=y' }
-                    'ctl' { 'CONFIG_KSU_YZ_CTL=y' }
-                }
-            }
         }
         $dockerArguments += @('CC=clang', "-j$script:BuildJobs")
         $kernelDirectory = Join-Path $script:RepoRoot 'kernel'
@@ -432,26 +400,21 @@ try {
     Build-CMakeProject -Name 'su' -SourceDirectory $suDirectory
     Copy-RequiredFile -Source (Join-Path $suDirectory 'build\su') -Destination (Join-Path $assetsDirectory 'su')
 
-    try {
-        Build-CMakeProject -Name 'YukiZygisk payload' -SourceDirectory $zygiskDirectory
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libzygisk64.so') -Destination (Join-Path $assetsDirectory 'libzygisk64.so')
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukilinker64.so') -Destination (Join-Path $assetsDirectory 'libyukilinker64.so')
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukizncore64.so') -Destination (Join-Path $assetsDirectory 'libyukizncore64.so')
-        Build-CMakeProject -Name 'zygiskd64' -SourceDirectory $zygiskDaemonDirectory -AndroidApi 28
-        Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build\zygiskd64') -Destination (Join-Path $assetsDirectory 'zygiskd64')
-        Build-CMakeProject -Name 'YukiZygisk armv7 core' -SourceDirectory $zygiskDirectory `
-            -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libzygisk32.so') -Destination (Join-Path $assetsDirectory 'libzygisk32.so')
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukilinker32.so') -Destination (Join-Path $assetsDirectory 'libyukilinker32.so')
-        Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukizncore32.so') -Destination (Join-Path $assetsDirectory 'libyukizncore32.so')
-        Build-CMakeProject -Name 'zygiskd32' -SourceDirectory $zygiskDaemonDirectory `
-            -AndroidApi 28 -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
-        Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build-armv7\zygiskd32') -Destination (Join-Path $assetsDirectory 'zygiskd32')
-        Write-Host '    staged arm64/armv7 payloads + zygiskd64/zygiskd32'
-    }
-    catch {
-        Write-Warning "YukiZygisk payload build failed; skipped. $($_.Exception.Message)"
-    }
+    Build-CMakeProject -Name 'YukiZygisk payload' -SourceDirectory $zygiskDirectory
+    Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libzygisk64.so') -Destination (Join-Path $assetsDirectory 'libzygisk64.so')
+    Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukilinker64.so') -Destination (Join-Path $assetsDirectory 'libyukilinker64.so')
+    Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukizncore64.so') -Destination (Join-Path $assetsDirectory 'libyukizncore64.so')
+    Build-CMakeProject -Name 'zygiskd64' -SourceDirectory $zygiskDaemonDirectory -AndroidApi 28
+    Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build\zygiskd64') -Destination (Join-Path $assetsDirectory 'zygiskd64')
+    Build-CMakeProject -Name 'YukiZygisk armv7 core' -SourceDirectory $zygiskDirectory `
+        -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
+    Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libzygisk32.so') -Destination (Join-Path $assetsDirectory 'libzygisk32.so')
+    Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukilinker32.so') -Destination (Join-Path $assetsDirectory 'libyukilinker32.so')
+    Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukizncore32.so') -Destination (Join-Path $assetsDirectory 'libyukizncore32.so')
+    Build-CMakeProject -Name 'zygiskd32' -SourceDirectory $zygiskDaemonDirectory `
+        -AndroidApi 28 -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
+    Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build-armv7\zygiskd32') -Destination (Join-Path $assetsDirectory 'zygiskd32')
+    Write-Host '    staged arm64/armv7 payloads + zygiskd64/zygiskd32'
 
     Write-Host '>>> [3/5] Build ksud ...' -ForegroundColor Cyan
     if (Test-Path -LiteralPath $lkmOutput) {

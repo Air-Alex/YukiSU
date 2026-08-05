@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # YukiSU local build: DDK LKM -> ksuinit -> ksud -> Manager App
 # Signing env: YUKISU_KEYSTORE, YUKISU_KEYSTORE_PASSWORD, YUKISU_KEY_ALIAS, YUKISU_KEY_PASSWORD
-# Usage: ./scripts/build.sh [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--yukizygisk-parts PARTS] [--skip-lkm] [-i] [-h]
+# Usage: ./scripts/build.sh [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--skip-lkm] [-i] [-h]
 # --clean deletes Native CMake build directories before building.
 
 set -euo pipefail
@@ -16,7 +16,6 @@ SKIP_LKM=false
 DDK_RELEASE="20260313"
 DO_INSTALL=false
 ENABLE_YUKIZYGISK=true
-YUKIZYGISK_PARTS="all"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -34,17 +33,11 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--yukizygisk)
 		ENABLE_YUKIZYGISK=true
-		YUKIZYGISK_PARTS="all"
 		shift
 		;;
 	--yukizygisk-off)
 		ENABLE_YUKIZYGISK=false
 		shift
-		;;
-	--yukizygisk-parts)
-		ENABLE_YUKIZYGISK=true
-		YUKIZYGISK_PARTS="$2"
-		shift 2
 		;;
 	-i | --install)
 		DO_INSTALL=true
@@ -154,26 +147,7 @@ echo ""
 KSU_YUKIZYGISK_MAKE=""
 if [[ "$ENABLE_YUKIZYGISK" == "true" ]]; then
 	KSU_YUKIZYGISK_MAKE="CONFIG_KSU_YUKIZYGISK=y"
-	if [[ "$YUKIZYGISK_PARTS" == "all" ]]; then
-		YUKIZYGISK_PARTS="probe,nl,orch,ctl"
-	elif [[ "$YUKIZYGISK_PARTS" == "none" ]]; then
-		YUKIZYGISK_PARTS=""
-	fi
-	IFS=',' read -r -a yz_parts <<<"$YUKIZYGISK_PARTS"
-	for part in "${yz_parts[@]}"; do
-		case "$part" in
-		"" ) ;;
-		probe) KSU_YUKIZYGISK_MAKE+=" CONFIG_KSU_YZ_PROBE=y" ;;
-		orch) KSU_YUKIZYGISK_MAKE+=" CONFIG_KSU_YZ_ORCH=y" ;;
-		nl) KSU_YUKIZYGISK_MAKE+=" CONFIG_KSU_YZ_NL=y" ;;
-		ctl) KSU_YUKIZYGISK_MAKE+=" CONFIG_KSU_YZ_CTL=y" ;;
-		*)
-			echo "Unknown YukiZygisk part: $part"
-			exit 1
-			;;
-		esac
-	done
-	echo "YukiZygisk kernel hooks: enabled (${YUKIZYGISK_PARTS:-none})"
+	echo "YukiZygisk kernel hooks: enabled"
 else
 	echo "YukiZygisk kernel hooks: disabled"
 fi
@@ -259,22 +233,19 @@ echo "    su staged"
 echo ">>> Build YukiZygisk payload ..."
 ZCORE_DIR="$REPO_ROOT/userspace/zygisk/core"
 ZYGISKD_DIR="$REPO_ROOT/userspace/zygisk/daemon"
-if build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build" arm64-v8a 26 &&
-	build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build" arm64-v8a 28 &&
-	build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build-armv7" armeabi-v7a 26 &&
-	build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build-armv7" armeabi-v7a 28; then
-	cp "$ZCORE_DIR/build/libzygisk64.so" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build/libyukilinker64.so" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build/libyukizncore64.so" "$KSUD_ASSETS/"
-	cp "$ZYGISKD_DIR/build/zygiskd64" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build-armv7/libzygisk32.so" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build-armv7/libyukilinker32.so" "$KSUD_ASSETS/"
-	cp "$ZCORE_DIR/build-armv7/libyukizncore32.so" "$KSUD_ASSETS/"
-	cp "$ZYGISKD_DIR/build-armv7/zygiskd32" "$KSUD_ASSETS/"
-	echo "    staged arm64/armv7 payloads + zygiskd64/zygiskd32"
-else
-	echo "    YukiZygisk payload build failed; skipped"
-fi
+build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build" arm64-v8a 26
+build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build" arm64-v8a 28
+build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build-armv7" armeabi-v7a 26
+build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build-armv7" armeabi-v7a 28
+cp "$ZCORE_DIR/build/libzygisk64.so" "$KSUD_ASSETS/"
+cp "$ZCORE_DIR/build/libyukilinker64.so" "$KSUD_ASSETS/"
+cp "$ZCORE_DIR/build/libyukizncore64.so" "$KSUD_ASSETS/"
+cp "$ZYGISKD_DIR/build/zygiskd64" "$KSUD_ASSETS/"
+cp "$ZCORE_DIR/build-armv7/libzygisk32.so" "$KSUD_ASSETS/"
+cp "$ZCORE_DIR/build-armv7/libyukilinker32.so" "$KSUD_ASSETS/"
+cp "$ZCORE_DIR/build-armv7/libyukizncore32.so" "$KSUD_ASSETS/"
+cp "$ZYGISKD_DIR/build-armv7/zygiskd32" "$KSUD_ASSETS/"
+echo "    staged arm64/armv7 payloads + zygiskd64/zygiskd32"
 
 KSUD_DIR="$REPO_ROOT/userspace/ksud"
 prepare_build_dir "$KSUD_DIR/build"
