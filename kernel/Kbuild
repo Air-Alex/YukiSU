@@ -1,3 +1,5 @@
+MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+
 kernelsu-objs := core/init.o
 kernelsu-objs += policy/allowlist.o
 kernelsu-objs += policy/app_profile.o
@@ -33,23 +35,8 @@ kernelsu-objs += feature/adb_root.o
 kernelsu-objs += feature/selinux_hide.o
 kernelsu-objs += extension/uts_view.o
 ifeq ($(CONFIG_KSU_YUKIZYGISK),y)
-kernelsu-objs += feature/zygote_probe.o
-kernelsu-objs += feature/zygote_orch.o
-kernelsu-objs += feature/zygote_nl.o
-kernelsu-objs += feature/zygote_ctl.o
+include $(src)/feature/yukizygisk/Kbuild
 ccflags-y += -DCONFIG_KSU_YUKIZYGISK
-ifeq ($(CONFIG_KSU_YZ_PROBE),y)
-ccflags-y += -DCONFIG_KSU_YZ_PROBE
-endif
-ifeq ($(CONFIG_KSU_YZ_ORCH),y)
-ccflags-y += -DCONFIG_KSU_YZ_ORCH
-endif
-ifeq ($(CONFIG_KSU_YZ_NL),y)
-ccflags-y += -DCONFIG_KSU_YZ_NL
-endif
-ifeq ($(CONFIG_KSU_YZ_CTL),y)
-ccflags-y += -DCONFIG_KSU_YZ_CTL
-endif
 endif
 kernelsu-objs += infra/symbol_resolver.o
 kernelsu-objs += runtime/boot_event.o
@@ -113,8 +100,6 @@ REPO_FALLBACK_BRANCH := main
 
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 CURL_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin curl
-
-MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
 KSU_GITHUB_VERSION := $(shell $(CURL_BIN) -s "https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
 

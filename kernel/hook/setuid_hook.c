@@ -15,9 +15,9 @@
 #include "policy/feature.h"
 #include "feature/kernel_umount.h"
 #include "extension/uts_view.h"
-#ifdef CONFIG_KSU_YZ_ORCH
-#include "feature/zygote_orch.h"
-#endif // #ifdef CONFIG_KSU_YZ_ORCH
+#ifdef CONFIG_KSU_YUKIZYGISK
+#include "feature/yukizygisk/api.h"
+#endif // #ifdef CONFIG_KSU_YUKIZYGISK
 #include "klog.h" // IWYU pragma: keep
 #include "manager/manager_identity.h"
 #include "infra/seccomp_cache.h"
@@ -57,13 +57,10 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
 {
 	pr_info("handle_setresuid from %d to %d\n", old_uid, new_uid);
 
-	/*
-	 * Feed the zygote orchestrator: a tracked app child dropping to its app
-	 * uid here is the specialization signal that reveals its identity.
-	 */
-#ifdef CONFIG_KSU_YZ_ORCH
-	ksu_zygote_orch_on_setresuid(old_uid, new_uid);
-#endif // #ifdef CONFIG_KSU_YZ_ORCH
+	/* Notify lifecycle tracking after a successful UID transition. */
+#ifdef CONFIG_KSU_YUKIZYGISK
+	ksu_yukizygisk_on_setresuid(old_uid, new_uid);
+#endif // #ifdef CONFIG_KSU_YUKIZYGISK
 	ksu_uts_view_on_setresuid(old_uid, new_uid);
 
 	// if old process is root, ignore it.

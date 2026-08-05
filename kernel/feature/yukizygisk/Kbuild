@@ -1,0 +1,12 @@
+kernelsu-objs += feature/yukizygisk/main.o
+kernelsu-objs += feature/yukizygisk/config.o
+kernelsu-objs += feature/yukizygisk/load_policy.o
+kernelsu-objs += feature/yukizygisk/safemode.o
+kernelsu-objs += feature/yukizygisk/runtime.o
+kernelsu-objs += feature/yukizygisk/early_native.o
+kernelsu-objs += feature/yukizygisk/payload.o
+kernelsu-objs += feature/yukizygisk/injector.o
+kernelsu-objs += feature/yukizygisk/exec.o
+kernelsu-objs += feature/yukizygisk/lifecycle.o
+kernelsu-objs += feature/yukizygisk/events.o
+kernelsu-objs += feature/yukizygisk/fd_handoff.o

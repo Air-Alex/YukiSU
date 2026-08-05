@@ -10,6 +10,9 @@
 #include "arch.h"
 #include "feature/adb_root.h"
 #include "feature/sucompat.h"
+#ifdef CONFIG_KSU_YUKIZYGISK
+#include "feature/yukizygisk/api.h"
+#endif // #ifdef CONFIG_KSU_YUKIZYGISK
 #include "hook/setuid_hook.h"
 #include "hook/syscall_event_bridge.h"
 #include "hook/syscall_hook.h"
@@ -101,9 +104,9 @@ long __nocfi ksu_hook_execve(int orig_nr, const struct pt_regs *regs)
 	if (static_branch_unlikely(&ksud_execve_key))
 		ksu_execve_hook_ksud(regs);
 
-#ifdef CONFIG_KSU_YZ_PROBE
-	ksu_zygote_probe_execve(regs);
-#endif // #ifdef CONFIG_KSU_YZ_PROBE
+#ifdef CONFIG_KSU_YUKIZYGISK
+	ksu_yukizygisk_observe_execve(regs);
+#endif // #ifdef CONFIG_KSU_YUKIZYGISK
 
 	if (current_euid().val == 0) {
 		const char __user *const __user *argv_user =

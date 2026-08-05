@@ -48,10 +48,7 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 #include "feature/selinux_hide.h"
 #include "extension/uts_view.h"
 #ifdef CONFIG_KSU_YUKIZYGISK
-#include "feature/zygote_probe.h"
-#include "feature/zygote_orch.h"
-#include "feature/zygote_nl.h"
-#include "feature/zygote_ctl.h"
+#include "feature/yukizygisk/api.h"
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 #include "infra/file_wrapper.h"
 #include "hook/lsm_hook.h"
@@ -176,18 +173,7 @@ int __init kernelsu_init(void)
 	ksu_adb_root_init();
 	ksu_selinux_hide_init();
 #ifdef CONFIG_KSU_YUKIZYGISK
-#ifdef CONFIG_KSU_YZ_PROBE
-	ksu_zygote_probe_init();
-#endif // #ifdef CONFIG_KSU_YZ_PROBE
-#ifdef CONFIG_KSU_YZ_NL
-	ksu_zygote_nl_init();
-#endif // #ifdef CONFIG_KSU_YZ_NL
-#ifdef CONFIG_KSU_YZ_ORCH
-	ksu_zygote_orch_init();
-#endif // #ifdef CONFIG_KSU_YZ_ORCH
-#ifdef CONFIG_KSU_YZ_CTL
-	ksu_zygote_ctl_init();
-#endif // #ifdef CONFIG_KSU_YZ_CTL
+	ksu_yukizygisk_init();
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 
 	ksu_supercalls_init();
@@ -275,18 +261,7 @@ void kernelsu_exit(void)
 	yukisu_custom_config_exit();
 	ksu_selinux_hide_exit();
 #ifdef CONFIG_KSU_YUKIZYGISK
-#ifdef CONFIG_KSU_YZ_PROBE
-	ksu_zygote_probe_exit();
-#endif // #ifdef CONFIG_KSU_YZ_PROBE
-#ifdef CONFIG_KSU_YZ_ORCH
-	ksu_zygote_orch_exit();
-#endif // #ifdef CONFIG_KSU_YZ_ORCH
-#ifdef CONFIG_KSU_YZ_NL
-	ksu_zygote_nl_exit();
-#endif // #ifdef CONFIG_KSU_YZ_NL
-#ifdef CONFIG_KSU_YZ_CTL
-	ksu_zygote_ctl_exit();
-#endif // #ifdef CONFIG_KSU_YZ_CTL
+	ksu_yukizygisk_exit();
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 	ksu_adb_root_exit();
 	ksu_lsm_hook_exit();

@@ -46,9 +46,7 @@
 #include "supercall/supercall.h"
 #include "supercall/internal.h"
 #ifdef CONFIG_KSU_YUKIZYGISK
-#include "feature/zygote_ctl.h"
-#include "feature/zygote_nl.h"
-#include "feature/zygote_probe.h"
+#include "feature/yukizygisk/api.h"
 #include "uapi/yukizygisk.h"
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 #include "hook/syscall_hook_manager.h"
@@ -1059,7 +1057,7 @@ static int do_get_uapi_version(void __user *arg)
 #ifdef CONFIG_KSU_YUKIZYGISK
 static int do_yz_handoff(void __user *arg)
 {
-	return ksu_zygote_ctl_handoff(arg);
+	return ksu_yukizygisk_handoff_module_fds(arg);
 }
 
 static int do_yz_set_dlopen(void __user *arg)
@@ -1068,7 +1066,7 @@ static int do_yz_set_dlopen(void __user *arg)
 
 	if (copy_from_user(&cmd, arg, sizeof(cmd)))
 		return -EFAULT;
-	ksu_zygote_probe_set_dlopen_off(cmd.dlopen_offset, cmd.dlsym_offset);
+	ksu_yukizygisk_set_linker_offsets(cmd.dlopen_offset, cmd.dlsym_offset);
 	return 0;
 }
 
@@ -1078,14 +1076,15 @@ static int do_yz_set_dlopen32(void __user *arg)
 
 	if (copy_from_user(&cmd, arg, sizeof(cmd)))
 		return -EFAULT;
-	ksu_zygote_probe_set_dlopen32_off(cmd.dlopen_offset, cmd.dlsym_offset);
+	ksu_yukizygisk_set_compat_linker_offsets(cmd.dlopen_offset,
+						 cmd.dlsym_offset);
 	return 0;
 }
 
 static int do_yz_reload(void __user *arg)
 {
 	(void)arg;
-	ksu_zygote_nl_emit_reload();
+	ksu_yukizygisk_emit_reload();
 	return 0;
 }
 
@@ -1095,7 +1094,7 @@ static int do_yz_set_yukilinker(void __user *arg)
 
 	if (copy_from_user(&cmd, arg, sizeof(cmd)))
 		return -EFAULT;
-	ksu_zygote_probe_set_yukilinker(cmd.enabled != 0);
+	ksu_yukizygisk_set_first_stage_loader(cmd.enabled != 0);
 	return 0;
 }
 
@@ -1107,7 +1106,7 @@ static int do_yz_set_native_targets(void __user *arg)
 	cmd = memdup_user(arg, sizeof(*cmd));
 	if (IS_ERR(cmd))
 		return PTR_ERR(cmd);
-	ret = ksu_zygote_probe_set_native_targets(cmd);
+	ret = ksu_yukizygisk_set_native_targets(cmd);
 	kfree(cmd);
 	return ret;
 }
@@ -1118,7 +1117,7 @@ static int do_yz_restore_native_load_policy(void __user *arg)
 
 	if (copy_from_user(&cmd, arg, sizeof(cmd)))
 		return -EFAULT;
-	return ksu_zygote_probe_restore_native_policy((pid_t)cmd.pid);
+	return ksu_yukizygisk_restore_native_load_policy((pid_t)cmd.pid);
 }
 
 static int do_yz_get_safemode(void __user *arg)
@@ -1126,7 +1125,7 @@ static int do_yz_get_safemode(void __user *arg)
 	struct yz_safemode_status_cmd cmd;
 	int ret;
 
-	ret = ksu_zygote_probe_get_safemode(&cmd);
+	ret = ksu_yukizygisk_get_safemode(&cmd);
 	if (ret)
 		return ret;
 	if (copy_to_user(arg, &cmd, sizeof(cmd)))
@@ -1153,7 +1152,7 @@ static int do_yz_get_runtime(void __user *arg)
 		if (!entries)
 			return -ENOMEM;
 	}
-	ret = ksu_zygote_probe_get_runtime(entries, cmd.capacity, &cmd);
+	ret = ksu_yukizygisk_get_runtime(entries, cmd.capacity, &cmd);
 	if (ret)
 		goto out;
 	if (cmd.count &&
@@ -1175,7 +1174,7 @@ static int do_yz_report_runtime(void __user *arg)
 	if (copy_from_user(&cmd, arg, sizeof(cmd)))
 		return -EFAULT;
 	cmd.module_id[sizeof(cmd.module_id) - 1] = '\0';
-	return ksu_zygote_probe_report_runtime(&cmd);
+	return ksu_yukizygisk_report_runtime(&cmd);
 }
 
 static int do_yz_allow_module_load_policy(void __user *arg)
@@ -1199,9 +1198,9 @@ static int do_yz_allow_module_load_policy(void __user *arg)
 
 	cred = get_task_cred(task);
 	if (!is_zygote(cred)) {
-		pr_info(
-		    "yz_module_policy: reject pid=%u outside zygote domain\n",
-		    cmd.pid);
+		pr_info("yukizygisk: module load policy rejected pid=%u "
+			"outside zygote domain\n",
+			cmd.pid);
 		put_cred(cred);
 		put_task_struct(task);
 		return -EPERM;
@@ -1219,16 +1218,15 @@ static int do_yz_allow_module_load_policy(void __user *arg)
 		return -ENOTDIR;
 	}
 
-	ret = ksu_zygote_probe_allow_module_policy((pid_t)cmd.pid, fd_file(dir),
-						   cred);
+	ret = ksu_yukizygisk_allow_module_load_policy((pid_t)cmd.pid,
+						      fd_file(dir), cred);
 	fdput(dir);
 	put_cred(cred);
-	pr_info("yz_module_policy: allow pid=%u fd=%d ret=%d\n", cmd.pid,
-		cmd.dirfd, ret);
+	pr_info("yukizygisk: module load policy request pid=%u fd=%d err=%d\n",
+		cmd.pid, cmd.dirfd, ret);
 	return ret;
 }
 
-/* Schedule app mount revert. */
 static int do_yz_umount_pid(void __user *arg)
 {
 	struct yz_umount_pid_cmd cmd;
@@ -1244,9 +1242,8 @@ static int do_yz_umount_pid(void __user *arg)
 	if (!task)
 		return -ESRCH;
 
-	/* app processes only */
 	if (!is_appuid(task_uid(task).val)) {
-		pr_info("yz_umount_pid: reject non-app pid=%u uid=%u\n",
+		pr_info("yukizygisk: module unmount rejected pid=%u uid=%u\n",
 			cmd.pid, task_uid(task).val);
 		put_task_struct(task);
 		return -EPERM;
@@ -1254,7 +1251,8 @@ static int do_yz_umount_pid(void __user *arg)
 
 	ret = ksu_umount_task_modules(task);
 	put_task_struct(task);
-	pr_info("yz_umount_pid: scheduled for pid=%u ret=%d\n", cmd.pid, ret);
+	pr_info("yukizygisk: module unmount request pid=%u err=%d\n", cmd.pid,
+		ret);
 	return ret;
 }
 
@@ -1266,7 +1264,7 @@ struct yz_unmap_tw {
 	unsigned int retry;
 };
 
-/* task_work unmap; retry while PC is inside the target range. */
+/* Retry until the program counter leaves all requested ranges. */
 static void yz_unmap_tw_func(struct callback_head *cb)
 {
 	struct yz_unmap_tw *tw = container_of(cb, struct yz_unmap_tw, cb);
@@ -1282,23 +1280,23 @@ static void yz_unmap_tw_func(struct callback_head *cb)
 						   TWA_RESUME))
 					return; /* re-queued; keep tw */
 			}
-			pr_warn("yz_unmap: pc=0x%lx still in core after %u "
-				"tries, skip pid=%d\n",
-				pc, tw->retry, current->pid);
+			pr_warn("yukizygisk: core unmap skipped pid=%d "
+				"pc=0x%lx retries=%u\n",
+				current->pid, pc, tw->retry);
 			kfree(tw);
 			return;
 		}
 	}
 
 	for (i = 0; i < tw->n; i++) {
-		pr_info("yz_unmap: munmap [0x%lx +0x%lx] pid=%d\n", tw->addr[i],
-			tw->size[i], current->pid);
+		pr_info("yukizygisk: core segment unmap pid=%d address=0x%lx "
+			"size=0x%lx\n",
+			current->pid, tw->addr[i], tw->size[i]);
 		vm_munmap(tw->addr[i], tw->size[i]);
 	}
 	kfree(tw);
 }
 
-/* Schedule vm_munmap of reported segments. */
 static int do_yz_unmap_pid(void __user *arg)
 {
 	struct yz_unmap_pid_cmd cmd;
@@ -1318,8 +1316,8 @@ static int do_yz_unmap_pid(void __user *arg)
 		return -ESRCH;
 
 	if (!is_appuid(task_uid(task).val)) {
-		pr_info("yz_unmap_pid: reject non-app pid=%u uid=%u\n", cmd.pid,
-			task_uid(task).val);
+		pr_info("yukizygisk: core unmap rejected pid=%u uid=%u\n",
+			cmd.pid, task_uid(task).val);
 		put_task_struct(task);
 		return -EPERM;
 	}
@@ -1341,12 +1339,11 @@ static int do_yz_unmap_pid(void __user *arg)
 		return -ESRCH;
 	}
 	put_task_struct(task);
-	pr_info("yz_unmap_pid: scheduled %u seg(s) for pid=%u\n", cmd.n_segs,
-		cmd.pid);
+	pr_info("yukizygisk: core unmap scheduled pid=%u segments=%u\n",
+		cmd.pid, cmd.n_segs);
 	return 0;
 }
 
-/* Current-task unmap. */
 static int do_yz_unmap_self(void __user *arg)
 {
 	struct yz_unmap_self_cmd cmd;
@@ -1359,16 +1356,15 @@ static int do_yz_unmap_self(void __user *arg)
 		return -EFAULT;
 	if (cmd.n_segs == 0 || cmd.n_segs > YZ_MAX_UNMAP_SEGS)
 		return -EINVAL;
-	/* validate userspace ranges */
 	for (i = 0; i < cmd.n_segs; i++) {
 		unsigned long a = (unsigned long)cmd.addr[i];
 		unsigned long s = (unsigned long)cmd.size[i];
 
 		if (a == 0 || s == 0 || a >= TASK_SIZE || s > TASK_SIZE ||
 		    a + s < a || a + s > TASK_SIZE) {
-			pr_warn(
-			    "yz_unmap_self: bad seg [0x%lx +0x%lx] pid=%d\n", a,
-			    s, current->pid);
+			pr_warn("yukizygisk: invalid core segment pid=%d "
+				"address=0x%lx size=0x%lx\n",
+				current->pid, a, s);
 			return -EINVAL;
 		}
 	}
@@ -1386,8 +1382,8 @@ static int do_yz_unmap_self(void __user *arg)
 		kfree(tw);
 		return -ESRCH;
 	}
-	pr_info("yz_unmap_self: pid=%d armed %u seg(s)\n", current->pid,
-		cmd.n_segs);
+	pr_info("yukizygisk: self core unmap scheduled pid=%d segments=%u\n",
+		current->pid, cmd.n_segs);
 	return 0;
 }
 
@@ -1412,18 +1408,19 @@ static int do_yz_patch_text(void __user *arg)
 	if (!task)
 		return -ESRCH;
 
-	/* cmd.pid is checked by zygiskd via SO_PEERCRED. */
+	/* zygiskd validates cmd.pid against the SO_PEERCRED peer PID. */
 
 	n = access_process_vm(task, (unsigned long)cmd.addr, cmd.bytes, cmd.len,
 			      FOLL_FORCE | FOLL_WRITE);
 	put_task_struct(task);
 	if (n != (int)cmd.len) {
-		pr_warn("yz_patch_text: wrote %d/%u @0x%llx pid=%u\n", n,
-			cmd.len, cmd.addr, cmd.pid);
+		pr_warn("yukizygisk: text patch incomplete pid=%u "
+			"address=0x%llx written=%d requested=%u\n",
+			cmd.pid, cmd.addr, n, cmd.len);
 		return -EFAULT;
 	}
-	pr_info("yz_patch_text: %u byte(s) @0x%llx pid=%u\n", cmd.len, cmd.addr,
-		cmd.pid);
+	pr_info("yukizygisk: text patched pid=%u address=0x%llx bytes=%u\n",
+		cmd.pid, cmd.addr, cmd.len);
 	return 0;
 }
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
