@@ -444,7 +444,28 @@ suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.
 /** Read a feature's current on/off value via `ksud feature get` (parses the
  *  "Status: enabled/disabled" line). Returns false when unsupported. */
 suspend fun getFeatureValue(feature: String): Boolean = withContext(Dispatchers.IO) {
-    ksudReadLines("feature get $feature").any { it.equals("Status: enabled", ignoreCase = true) }
+    getFeatureValueOrNull(feature, getRootShell()) ?: false
+}
+
+internal fun getFeatureValueOrNull(feature: String, shell: Shell): Boolean? {
+    val output = ArrayList<String>()
+    val result = shell.newJob()
+        .add(ksudCmd("feature get $feature"))
+        .to(output, null)
+        .exec()
+    if (!result.isSuccess) return null
+
+    return parseFeatureValue(output)
+}
+
+internal fun parseFeatureValue(output: Iterable<String>): Boolean? {
+    val enabled = output.any { it.trim().equals("Status: enabled", ignoreCase = true) }
+    val disabled = output.any { it.trim().equals("Status: disabled", ignoreCase = true) }
+    return when {
+        enabled == disabled -> null
+        enabled -> true
+        else -> false
+    }
 }
 
 /** Set a feature value and persist it; returns whether ksud reported success. */

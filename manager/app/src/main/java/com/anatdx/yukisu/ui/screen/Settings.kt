@@ -59,6 +59,7 @@ import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,15 +133,25 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                 ActivityResultContracts.CreateDocument("application/gzip")
             ) { uri: Uri? ->
                 if (uri == null) return@rememberLauncherForActivityResult
-                scope.launch(Dispatchers.IO) {
-                    loadingDialog.show()
-                    context.contentResolver.openOutputStream(uri)?.use { output ->
-                        getBugreportFile(context).inputStream().use {
-                            it.copyTo(output)
-                        }
+                scope.launch {
+                    val saved = loadingDialog.withLoading {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                val output = checkNotNull(
+                                    context.contentResolver.openOutputStream(uri)
+                                )
+                                output.use { outputStream ->
+                                    getBugreportFile(context).inputStream().use { input ->
+                                        input.copyTo(outputStream)
+                                    }
+                                }
+                            }
+                        }.onFailure {
+                            if (it is CancellationException) throw it
+                        }.isSuccess
                     }
-                    loadingDialog.hide()
-                    snackBarHost.showSnackbar(resources.getString(R.string.log_saved))
+                    val message = if (saved) R.string.log_saved else R.string.operation_failed
+                    snackBarHost.showSnackbar(resources.getString(message))
                 }
             }
 
@@ -583,37 +594,53 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             onSaveLog = {
                                 val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH_mm")
                                 val current = LocalDateTime.now().format(formatter)
-                                exportBugreportLauncher.launch("KernelSU_bugreport_${current}.tar.gz")
+                                exportBugreportLauncher.launch("YukiSU_bugreport_${current}.tar.gz")
                                 showBottomsheet = false
                             },
                             onShareLog = {
                                 scope.launch {
                                     val bugreport = loadingDialog.withLoading {
-                                        withContext(Dispatchers.IO) {
-                                            getBugreportFile(context)
+                                        runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                getBugreportFile(context)
+                                            }
+                                        }.onFailure {
+                                            if (it is CancellationException) throw it
                                         }
-                                    }
-
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${BuildConfig.APPLICATION_ID}.fileprovider",
-                                        bugreport
-                                    )
-
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        setDataAndType(uri, "application/gzip")
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-
-                                    context.startActivity(
-                                        Intent.createChooser(
-                                            shareIntent,
-                                            resources.getString(R.string.send_log)
+                                    }.getOrElse {
+                                        snackBarHost.showSnackbar(
+                                            resources.getString(R.string.operation_failed)
                                         )
-                                    )
+                                        return@launch
+                                    }
 
-                                    showBottomsheet = false
+                                    val shared = runCatching {
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${BuildConfig.APPLICATION_ID}.fileprovider",
+                                            bugreport
+                                        )
+
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            setDataAndType(uri, "application/gzip")
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+
+                                        context.startActivity(
+                                            Intent.createChooser(
+                                                shareIntent,
+                                                resources.getString(R.string.send_log)
+                                            )
+                                        )
+                                    }.isSuccess
+                                    if (shared) {
+                                        showBottomsheet = false
+                                    } else {
+                                        snackBarHost.showSnackbar(
+                                            resources.getString(R.string.operation_failed)
+                                        )
+                                    }
                                 }
                             }
                         )
