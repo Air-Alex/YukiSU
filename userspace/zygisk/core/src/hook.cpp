@@ -3,14 +3,16 @@
 #include <jni.h>
 
 #include <array>
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <dlfcn.h>
+#include <sched.h>
+#include <string_view>
 #include <sys/mman.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
-#include <string_view>
 #include <vector>
 
 #include "art_method.hpp"
@@ -26,7 +28,8 @@ constexpr char kAndroidRuntime[] = "/libandroid_runtime.so";
 
 bool ends_with(std::string_view value, std::string_view suffix) {
   return value.size() >= suffix.size() &&
-         value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+             0;
 }
 
 template <class F> struct Hook {
@@ -120,9 +123,35 @@ void mark_allowed(ZygiskContext *ctx, int fd) {
     ctx->allowed_fds[fd] = true;
 }
 
+bool set_fifo_ui_scheduler(int policy, int priority) {
+  sched_param param{};
+  param.sched_priority = priority;
+  if (sched_setscheduler(0, policy, &param) != 0) {
+    ZLOGE("sched_setscheduler(%#x) failed: %s", policy, strerror(errno));
+    return false;
+  }
+  return true;
+}
+
+[[noreturn]] void abort_fifo_ui_scheduler(JNIEnv *env) {
+  env->FatalError("failed to apply FIFO UI scheduler state");
+  _exit(127);
+}
+
 /* Real fork; child snapshots native fds. */
-void ctx_fork_pre(ZygiskContext *ctx) {
+void ctx_fork_pre(ZygiskContext *ctx, bool fifo_ui = false) {
+  if (fifo_ui)
+    set_fifo_ui_scheduler(SCHED_FIFO, 1);
   ctx->pid = g_orig_fork != nullptr ? g_orig_fork() : fork();
+  if (fifo_ui) {
+    if (ctx->pid == 0) {
+      if (!set_fifo_ui_scheduler(SCHED_FIFO | SCHED_RESET_ON_FORK, 1))
+        abort_fifo_ui_scheduler(ctx->env);
+    } else {
+      if (!set_fifo_ui_scheduler(SCHED_OTHER, 0))
+        abort_fifo_ui_scheduler(ctx->env);
+    }
+  }
   if (ctx->pid != 0)
     return; // zygote
   ctx->allowed_fds.assign(fd_table_size(), false);
@@ -134,6 +163,12 @@ void ctx_fork_pre(ZygiskContext *ctx) {
       ctx->allowed_fds[dfd] = false;
     closedir(d);
   }
+}
+
+void reconcile_fifo_ui_scheduler(ZygiskContext *ctx, bool armed, bool enabled) {
+  if (ctx->pid == 0 && armed && !enabled &&
+      !set_fifo_ui_scheduler(SCHED_OTHER, 0))
+    abort_fifo_ui_scheduler(ctx->env);
 }
 
 /* Drop inherited module fds. */
@@ -210,7 +245,21 @@ void ctx_sanitize_fds(ZygiskContext *ctx) {
 }
 
 /* Replacement zygote natives. */
-std::array<JNINativeMethod, 5> g_zygote_methods = {{
+enum ZygoteMethodIndex : size_t {
+  kForkLegacy,
+  kForkFifo,
+  kForkSysprop,
+  kForkCgroup,
+  kSpecializeLegacy,
+  kSpecializeSysprop,
+  kSpecializeCgroup,
+  kForkSystemServer,
+  kZygoteMethodCount,
+};
+
+bool g_app_specialize_hooks_complete = false;
+
+std::array<JNINativeMethod, kZygoteMethodCount> g_zygote_methods = {{
     {"nativeForkAndSpecialize",
      "(II[II[[IILjava/lang/String;Ljava/lang/String;[I[IZLjava/lang/String;"
      "Ljava/lang/String;Z[Ljava/lang/String;[Ljava/lang/String;ZZ)I",
@@ -253,13 +302,79 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                JNIEnv *, jclass, jint, jint, jintArray, jint, jobjectArray,
                jint, jstring, jstring, jintArray, jintArray, jboolean, jstring,
                jstring, jboolean, jobjectArray, jobjectArray, jboolean,
-               jboolean)>(g_zygote_methods[0].fnPtr);
+               jboolean)>(g_zygote_methods[kForkLegacy].fnPtr);
            jint pid =
                orig(env, clazz, uid, gid, gids, runtime_flags, rlimits,
                     mount_external, se_info, nice_name, fds_to_close,
                     fds_to_ignore, is_child_zygote, instruction_set,
                     app_data_dir, is_top_app, pkg_data_info_list,
                     allowlisted_data_info, mount_data_dirs, mount_storage_dirs);
+           if (run_modules)
+             zygisk_run_app_post(&args);
+           if (ctx.pid == 0)
+             finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
+           if (is_child_zygote && ctx.pid == 0)
+             close_inherited_module_fds();
+           g_ctx = nullptr;
+           return pid;
+         })},
+    {"nativeForkAndSpecialize",
+     "(II[II[[IILjava/lang/String;Ljava/lang/String;[I[IZLjava/lang/String;"
+     "Ljava/lang/String;ZZ[Ljava/lang/String;[Ljava/lang/String;ZZZ)I",
+     reinterpret_cast<void *>(
+         +[](JNIEnv *env, jclass clazz, jint uid, jint gid, jintArray gids,
+             jint runtime_flags, jobjectArray rlimits, jint mount_external,
+             jstring se_info, jstring nice_name, jintArray fds_to_close,
+             jintArray fds_to_ignore, jboolean is_child_zygote,
+             jstring instruction_set, jstring app_data_dir, jboolean is_top_app,
+             jboolean use_fifo_ui, jobjectArray pkg_data_info_list,
+             jobjectArray allowlisted_data_info, jboolean mount_data_dirs,
+             jboolean mount_storage_dirs,
+             jboolean mount_sysprop_overrides) -> jint {
+           zygisk::AppSpecializeArgs args(
+               uid, gid, gids, runtime_flags, rlimits, mount_external, se_info,
+               nice_name, instruction_set, app_data_dir);
+           args.fds_to_ignore = &fds_to_ignore;
+           args.is_child_zygote = &is_child_zygote;
+           args.is_top_app = &is_top_app;
+           args.pkg_data_info_list = &pkg_data_info_list;
+           args.whitelisted_data_info_list = &allowlisted_data_info;
+           args.mount_data_dirs = &mount_data_dirs;
+           args.mount_storage_dirs = &mount_storage_dirs;
+           args.mount_sysprop_overrides = &mount_sysprop_overrides;
+           ZygiskContext ctx;
+           ctx.env = env;
+           ctx.fds_to_ignore = &fds_to_ignore;
+           g_ctx = &ctx;
+           const bool fifo_ui =
+               is_top_app == JNI_TRUE && use_fifo_ui == JNI_TRUE;
+           ctx_fork_pre(&ctx, fifo_ui);
+           bool run_modules = ctx.pid == 0 && !is_isolated(uid);
+           int decision = forked_decision(ctx.pid == 0, uid);
+           if (decision == 2)
+             run_modules = false;
+           if (run_modules) {
+             zygisk_load_modules(env);
+             zygisk_run_app_pre(&args);
+             ctx_sanitize_fds(&ctx);
+           } else if (ctx.pid == 0) {
+             close_inherited_module_fds();
+           }
+           reconcile_fifo_ui_scheduler(&ctx, fifo_ui,
+                                       is_top_app == JNI_TRUE &&
+                                           use_fifo_ui == JNI_TRUE);
+           auto orig = reinterpret_cast<jint (*)(
+               JNIEnv *, jclass, jint, jint, jintArray, jint, jobjectArray,
+               jint, jstring, jstring, jintArray, jintArray, jboolean, jstring,
+               jstring, jboolean, jboolean, jobjectArray, jobjectArray,
+               jboolean, jboolean, jboolean)>(
+               g_zygote_methods[kForkFifo].fnPtr);
+           jint pid = orig(
+               env, clazz, uid, gid, gids, runtime_flags, rlimits,
+               mount_external, se_info, nice_name, fds_to_close, fds_to_ignore,
+               is_child_zygote, instruction_set, app_data_dir, is_top_app,
+               use_fifo_ui, pkg_data_info_list, allowlisted_data_info,
+               mount_data_dirs, mount_storage_dirs, mount_sysprop_overrides);
            if (run_modules)
              zygisk_run_app_post(&args);
            if (ctx.pid == 0)
@@ -313,13 +428,80 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                JNIEnv *, jclass, jint, jint, jintArray, jint, jobjectArray,
                jint, jstring, jstring, jintArray, jintArray, jboolean, jstring,
                jstring, jboolean, jobjectArray, jobjectArray, jboolean,
-               jboolean, jboolean)>(g_zygote_methods[1].fnPtr);
+               jboolean, jboolean)>(g_zygote_methods[kForkSysprop].fnPtr);
            jint pid = orig(env, clazz, uid, gid, gids, runtime_flags, rlimits,
                            mount_external, se_info, nice_name, fds_to_close,
                            fds_to_ignore, is_child_zygote, instruction_set,
                            app_data_dir, is_top_app, pkg_data_info_list,
                            allowlisted_data_info, mount_data_dirs,
                            mount_storage_dirs, mount_sysprop_overrides);
+           if (run_modules)
+             zygisk_run_app_post(&args);
+           if (ctx.pid == 0)
+             finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
+           if (is_child_zygote && ctx.pid == 0)
+             close_inherited_module_fds();
+           g_ctx = nullptr;
+           return pid;
+         })},
+    {"nativeForkAndSpecialize",
+     "(III[II[[IILjava/lang/String;Ljava/lang/String;[I[IZLjava/lang/String;"
+     "Ljava/lang/String;ZZ[Ljava/lang/String;[Ljava/lang/String;ZZZ)I",
+     reinterpret_cast<void *>(
+         +[](JNIEnv *env, jclass clazz, jint uid, jint cgroup_uid, jint gid,
+             jintArray gids, jint runtime_flags, jobjectArray rlimits,
+             jint mount_external, jstring se_info, jstring nice_name,
+             jintArray fds_to_close, jintArray fds_to_ignore,
+             jboolean is_child_zygote, jstring instruction_set,
+             jstring app_data_dir, jboolean is_top_app, jboolean use_fifo_ui,
+             jobjectArray pkg_data_info_list,
+             jobjectArray allowlisted_data_info, jboolean mount_data_dirs,
+             jboolean mount_storage_dirs,
+             jboolean mount_sysprop_overrides) -> jint {
+           zygisk::AppSpecializeArgs args(
+               uid, gid, gids, runtime_flags, rlimits, mount_external, se_info,
+               nice_name, instruction_set, app_data_dir);
+           args.fds_to_ignore = &fds_to_ignore;
+           args.is_child_zygote = &is_child_zygote;
+           args.is_top_app = &is_top_app;
+           args.pkg_data_info_list = &pkg_data_info_list;
+           args.whitelisted_data_info_list = &allowlisted_data_info;
+           args.mount_data_dirs = &mount_data_dirs;
+           args.mount_storage_dirs = &mount_storage_dirs;
+           args.mount_sysprop_overrides = &mount_sysprop_overrides;
+           ZygiskContext ctx;
+           ctx.env = env;
+           ctx.fds_to_ignore = &fds_to_ignore;
+           g_ctx = &ctx;
+           const bool fifo_ui =
+               is_top_app == JNI_TRUE && use_fifo_ui == JNI_TRUE;
+           ctx_fork_pre(&ctx, fifo_ui);
+           bool run_modules = ctx.pid == 0 && !is_isolated(uid);
+           int decision = forked_decision(ctx.pid == 0, uid);
+           if (decision == 2)
+             run_modules = false;
+           if (run_modules) {
+             zygisk_load_modules(env);
+             zygisk_run_app_pre(&args);
+             ctx_sanitize_fds(&ctx);
+           } else if (ctx.pid == 0) {
+             close_inherited_module_fds();
+           }
+           reconcile_fifo_ui_scheduler(&ctx, fifo_ui,
+                                       is_top_app == JNI_TRUE &&
+                                           use_fifo_ui == JNI_TRUE);
+           auto orig = reinterpret_cast<jint (*)(
+               JNIEnv *, jclass, jint, jint, jint, jintArray, jint,
+               jobjectArray, jint, jstring, jstring, jintArray, jintArray,
+               jboolean, jstring, jstring, jboolean, jboolean, jobjectArray,
+               jobjectArray, jboolean, jboolean, jboolean)>(
+               g_zygote_methods[kForkCgroup].fnPtr);
+           jint pid = orig(
+               env, clazz, uid, cgroup_uid, gid, gids, runtime_flags, rlimits,
+               mount_external, se_info, nice_name, fds_to_close, fds_to_ignore,
+               is_child_zygote, instruction_set, app_data_dir, is_top_app,
+               use_fifo_ui, pkg_data_info_list, allowlisted_data_info,
+               mount_data_dirs, mount_storage_dirs, mount_sysprop_overrides);
            if (run_modules)
              zygisk_run_app_post(&args);
            if (ctx.pid == 0)
@@ -362,7 +544,7 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                JNIEnv *, jclass, jint, jint, jintArray, jint, jobjectArray,
                jint, jstring, jstring, jboolean, jstring, jstring, jboolean,
                jobjectArray, jobjectArray, jboolean, jboolean)>(
-               g_zygote_methods[2].fnPtr)(
+               g_zygote_methods[kSpecializeLegacy].fnPtr)(
                env, clazz, uid, gid, gids, runtime_flags, rlimits,
                mount_external, se_info, nice_name, is_child_zygote,
                instruction_set, app_data_dir, is_top_app, pkg_data_info_list,
@@ -405,8 +587,53 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
                JNIEnv *, jclass, jint, jint, jintArray, jint, jobjectArray,
                jint, jstring, jstring, jboolean, jstring, jstring, jboolean,
                jobjectArray, jobjectArray, jboolean, jboolean, jboolean)>(
-               g_zygote_methods[3].fnPtr)(
+               g_zygote_methods[kSpecializeSysprop].fnPtr)(
                env, clazz, uid, gid, gids, runtime_flags, rlimits,
+               mount_external, se_info, nice_name, is_child_zygote,
+               instruction_set, app_data_dir, is_top_app, pkg_data_info_list,
+               allowlisted_data_info, mount_data_dirs, mount_storage_dirs,
+               mount_sysprop_overrides);
+           if (run_modules)
+             zygisk_run_app_post(&args);
+           finish_app_child(env, is_child_zygote, is_isolated(uid), decision);
+         })},
+    {"nativeSpecializeAppProcess",
+     "(III[II[[IILjava/lang/String;Ljava/lang/String;ZLjava/lang/String;"
+     "Ljava/lang/String;Z[Ljava/lang/String;[Ljava/lang/String;ZZZ)V",
+     reinterpret_cast<void *>(
+         +[](JNIEnv *env, jclass clazz, jint uid, jint cgroup_uid, jint gid,
+             jintArray gids, jint runtime_flags, jobjectArray rlimits,
+             jint mount_external, jstring se_info, jstring nice_name,
+             jboolean is_child_zygote, jstring instruction_set,
+             jstring app_data_dir, jboolean is_top_app,
+             jobjectArray pkg_data_info_list,
+             jobjectArray allowlisted_data_info, jboolean mount_data_dirs,
+             jboolean mount_storage_dirs,
+             jboolean mount_sysprop_overrides) -> void {
+           zygisk::AppSpecializeArgs args(
+               uid, gid, gids, runtime_flags, rlimits, mount_external, se_info,
+               nice_name, instruction_set, app_data_dir);
+           args.is_child_zygote = &is_child_zygote;
+           args.is_top_app = &is_top_app;
+           args.pkg_data_info_list = &pkg_data_info_list;
+           args.whitelisted_data_info_list = &allowlisted_data_info;
+           args.mount_data_dirs = &mount_data_dirs;
+           args.mount_storage_dirs = &mount_storage_dirs;
+           args.mount_sysprop_overrides = &mount_sysprop_overrides;
+           bool run_modules = !is_isolated(uid);
+           int decision = forked_decision(true, uid);
+           if (decision == 2)
+             run_modules = false;
+           if (run_modules) {
+             zygisk_load_modules(env);
+             zygisk_run_app_pre(&args);
+           }
+           reinterpret_cast<void (*)(
+               JNIEnv *, jclass, jint, jint, jint, jintArray, jint,
+               jobjectArray, jint, jstring, jstring, jboolean, jstring, jstring,
+               jboolean, jobjectArray, jobjectArray, jboolean, jboolean,
+               jboolean)>(g_zygote_methods[kSpecializeCgroup].fnPtr)(
+               env, clazz, uid, cgroup_uid, gid, gids, runtime_flags, rlimits,
                mount_external, se_info, nice_name, is_child_zygote,
                instruction_set, app_data_dir, is_top_app, pkg_data_info_list,
                allowlisted_data_info, mount_data_dirs, mount_storage_dirs,
@@ -438,7 +665,7 @@ std::array<JNINativeMethod, 5> g_zygote_methods = {{
        auto orig =
            reinterpret_cast<jint (*)(JNIEnv *, jclass, jint, jint, jintArray,
                                      jint, jobjectArray, jlong, jlong)>(
-               g_zygote_methods[4].fnPtr);
+               g_zygote_methods[kForkSystemServer].fnPtr);
        jint pid = orig(env, clazz, uid, gid, gids, runtime_flags, rlimits,
                        permitted_capabilities, effective_capabilities);
        if (ctx.pid == 0)
@@ -562,20 +789,41 @@ void hook_zygote_jni() {
   // Fork early; specialize then runs in our child.
   dev_t rt_dev = 0;
   ino_t rt_inode = 0;
+  bool fork_plt_hooked = false;
   if (find_libandroid_runtime(rt_dev, rt_inode)) {
-    lsplt::RegisterHook(rt_dev, rt_inode, "fork",
-                        reinterpret_cast<void *>(new_fork),
-                        reinterpret_cast<void **>(&g_orig_fork));
-    if (!lsplt::CommitHook() || g_orig_fork == nullptr)
-      ZLOGE("fork hook failed -- fd sanitize will not engage");
-    else
-      ZLOGI("fork hook armed (orig=%p)", reinterpret_cast<void *>(g_orig_fork));
+    fork_plt_hooked =
+        lsplt::RegisterHook(rt_dev, rt_inode, "fork",
+                            reinterpret_cast<void *>(new_fork),
+                            reinterpret_cast<void **>(&g_orig_fork)) &&
+        lsplt::CommitHook() && g_orig_fork != nullptr;
   }
+  if (!fork_plt_hooked) {
+    ZLOGE("fork hook failed -- not hooking zygote natives");
+    yz_unmap_injection_stub();
+    return;
+  }
+  ZLOGI("fork hook armed (orig=%p)", reinterpret_cast<void *>(g_orig_fork));
   hook_jni_methods(env, kZygote, g_zygote_methods.data(),
                    static_cast<int>(g_zygote_methods.size()),
                    yuki::ihook::UnhookMode::DiscardCowPages);
+  const bool fork_hooked = g_zygote_methods[kForkLegacy].fnPtr != nullptr ||
+                           g_zygote_methods[kForkSysprop].fnPtr != nullptr ||
+                           g_zygote_methods[kForkFifo].fnPtr != nullptr ||
+                           g_zygote_methods[kForkCgroup].fnPtr != nullptr;
+  const bool specialize_hooked =
+      g_zygote_methods[kSpecializeLegacy].fnPtr != nullptr ||
+      g_zygote_methods[kSpecializeSysprop].fnPtr != nullptr ||
+      g_zygote_methods[kSpecializeCgroup].fnPtr != nullptr;
+  const bool system_server_hooked =
+      g_zygote_methods[kForkSystemServer].fnPtr != nullptr;
+  g_app_specialize_hooks_complete = fork_hooked && specialize_hooked;
   yz_unmap_injection_stub();
-  ZLOGI("zygote JNI takeover done");
+  if (g_app_specialize_hooks_complete && system_server_hooked) {
+    ZLOGI("zygote JNI takeover done");
+  } else {
+    ZLOGE("zygote JNI takeover incomplete: fork=%d specialize=%d server=%d",
+          fork_hooked, specialize_hooked, system_server_hooked);
+  }
 }
 
 } // namespace
@@ -638,7 +886,8 @@ bool zygisk_exempt_fd(int fd) {
 }
 
 bool zygisk_specialize_fully_inline_hooked() {
-  return !g_ihooks.empty() && g_rn_fallback.empty();
+  return g_app_specialize_hooks_complete && !g_ihooks.empty() &&
+         g_rn_fallback.empty();
 }
 
 /* Restore hooks before self-unmap. */
