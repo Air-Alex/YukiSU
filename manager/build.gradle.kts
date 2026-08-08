@@ -34,13 +34,13 @@ cmaker {
 }
 
 val androidMinSdkVersion = 26
-val androidTargetSdkVersion = 36
+val androidTargetSdkVersion = 37
 val androidCompileSdkVersion = 37
 val androidBuildToolsVersion = "36.1.0"
 val androidCompileNdkVersion = libs.versions.ndk.get()
 val androidCmakeVersion = "3.22.0+"
-val androidSourceCompatibility = JavaVersion.VERSION_17
-val androidTargetCompatibility = JavaVersion.VERSION_17
+val androidSourceCompatibility = JavaVersion.VERSION_21
+val androidTargetCompatibility = JavaVersion.VERSION_21
 val managerVersionCode = 10000 - 3135 + getGitCommitCount()
 val managerVersionName = computeManagerVersionName()
 val ksudBundledVersion = computeKsudBundledVersion()
