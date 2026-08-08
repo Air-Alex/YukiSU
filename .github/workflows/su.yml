@@ -68,6 +68,7 @@ jobs:
         file su
 
     - name: Import GPG key
+      if: github.event_name != 'pull_request'
       env:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -78,6 +79,7 @@ jobs:
         rm -f key.asc
 
     - name: Sign su with GPG
+      if: github.event_name != 'pull_request'
       run: |
         cd userspace/su/build
         echo "Signing su..."
@@ -99,3 +101,4 @@ jobs:
         path: |
           userspace/su/build/su
           userspace/su/build/su.sig
+        if-no-files-found: ignore

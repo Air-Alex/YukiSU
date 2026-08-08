@@ -76,6 +76,7 @@ jobs:
         file ksuinit
 
     - name: Import GPG key
+      if: github.event_name != 'pull_request'
       env:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -86,6 +87,7 @@ jobs:
         rm -f key.asc
 
     - name: Sign ksuinit with GPG
+      if: github.event_name != 'pull_request'
       run: |
         cd userspace/ksuinit/build
         echo "Signing ksuinit..."
@@ -107,3 +109,4 @@ jobs:
         path: |
           userspace/ksuinit/build/ksuinit
           userspace/ksuinit/build/ksuinit.sig
+        if-no-files-found: ignore
