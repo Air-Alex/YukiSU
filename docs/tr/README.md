@@ -2,82 +2,77 @@
 
 <img align='right' src='../YukiSU-mini.svg' width='220px' alt="yukisu logo">
 
-
 [English](../README.md) | [简体中文](../zh/README.md) | [日本語](../ja/README.md) | **Türkçe** | [Русский](../ru/README.md)
 
-Android cihazlar için çekirdek tabanlı root çözümü; [`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) projesinden fork edilmiş, gereksiz kısımlar çıkarılmış ve bazı değişiklikler eklenmiştir.
+Çekirdek tabanlı bir Android root çözümüdür. [`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) projesinden fork edilmiştir; bazı gereksiz kısımlar kaldırılmış ve bazı ilginç değişiklikler eklenmiştir.
 
-> **⚠️ Önemli Duyuru**
+> **⚠️ Önemli Uyarı**
 >
-> YukiSU **tamamen C++ ile yeniden yazılmıştır** (önceden Rust tabanlıydı). Bu nedenle YukiSU, diğer KernelSU fork'larından farklı davranabilir. Sorun yaşarsanız lütfen üst akış projelerine değil bize bildirin.
->
-> Eski Rust sürümü [`classic`](https://github.com/Anatdx/YukiSU/tree/classic) dalında durmaktadır.
->
+> YukiSU userspace **tamamen C++ ile yeniden yazılmıştır** (önceden Rust tabanlıydı). Bu, YukiSU'nun davranışının diğer KernelSU fork'larından farklı olabileceği anlamına gelir. Herhangi bir sorunla karşılaşırsanız, lütfen upstream projelere değil bize bildirin.
 
-[![Latest release](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=Release&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
-[![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![GitHub License](https://img.shields.io/github/license/Anatdx/YukiSU?logo=gnu)](/LICENSE)
+[![En son kararlı sürüm](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=En%20son%20kararlı%20sürüm&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
+[![En son test sürümü](https://img.shields.io/badge/En%20son%20test%20sürümü-nightly.link-39C5BB.svg?logo=github)](https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main)
+[![Grup](https://img.shields.io/badge/Grup-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
+[![Lisans: GPL v2](https://img.shields.io/badge/Lisans-GPL%20v2-FFA500.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![Lisans: GPL v3](https://img.shields.io/badge/Lisans-GPL%20v3-FFE211.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 ## Özellikler
 
-1. Çekirdek tabanlı `su` ve root erişim yönetimi
-2. Kullanıcının seçtiği modül bağlama arka uçları için harici MetaModule yaşam döngüsü ve betik entegrasyonu
-   > **Not:** YukiSU, SUSFS veya yerleşik bir bağlama arka ucu içermez. Sistem modüllerini bağlamak için uyumlu bir harici MetaModule yükleyin.
-3. [App Profile](https://kernelsu.org/guide/app-profile.html) ve uygulama başına non-root profil denetimleri
-4. Yerleşik paket imzası yolunun dışındaki güvenilir yönetici uygulamaları için Dynamic Manager desteği
-5. APatch tarzı SuperKey kimlik doğrulaması; derleme zamanı anahtarı veya `ksud` tarafından LKM içine yazılan anahtar desteklenir
-6. ADB root, sulog, SELinux hide, modül `init.rc` ekleme ve güncel KernelSU userspace davranışları C++ `ksud` yığınına eşitlendi
-7. arm64 LKM desteği olan TSR tabanlı sucompat/syscall hook altyapısı
-8. SuperUser kaydırma eylemleri, günlük görüntüleme, soft reboot ve WebUI düzeltmeleri içeren yönetici güncellemeleri
+1. Çekirdek tabanlı `su` ve root yetkisi yönetimi
+2. Harici MetaModule yaşam döngüsü ve betik entegrasyonu desteği; modül bağlama backend'ini kullanıcı kendisi seçebilir
+3. [App Profile](https://kernelsu.org/zh_CN/guide/app-profile.html) ve uygulama bazında kontrol edilen non-root yapılandırmaları
+4. Dinamik yönetici desteği; yerleşik paket adı/imza yolunun dışında güvenilir yöneticiler yapılandırılabilir
+5. APatch tarzı SuperKey kimlik doğrulaması; hem derleme zamanında belirlenen anahtarları hem de `ksud` tarafından LKM'ye enjekte edilen anahtarları destekler
+6. ADB root, sulog, SELinux hide, modül `init.rc` enjeksiyonu ve diğer upstream özellikleri
+7. Yerleşik YukiZygisk; çekirdek tabanlı bir Zygisk uygulamasıdır ve [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext) modülleriyle tamamen uyumludur
+8. TSR tabanlı sucompat/syscall hook altyapısı
+9. UTS view özelliği; çekirdeği yeniden derlemeden `uts_ns` değiştirilerek `uname` taklit edilebilir
+10. Keşfetmenizi bekleyen daha fazla özellik…
 
-## Uyumluluk
+## Uyumluluk Durumu
 
-- YukiSU şu anda yalnızca yüklenebilir çekirdek modülü yolunu (`CONFIG_KSU=m`) destekler. Yerleşik `CONFIG_KSU=y` artık desteklenmez.
-
-- YukiSU, Android GKI 2.0 cihazlarında (çekirdek 5.10+) LKM modunu resmen destekler. Eski ve non-GKI çekirdeklerde cihaza özel kaynak entegrasyonu gerekebilir.
-
-- Dağıtılan tüm YukiSU bileşenleri yalnızca `arm64-v8a` hedefler. YukiZygisk,
-  gelecekteki `zygote32` uygulaması için ayrıca işlevsiz `armeabi-v7a` yer
-  tutucu DSO'ları ayırır; 32 bit enjeksiyon henüz desteklenmez.
+- YukiSU şu anda yalnızca yüklenebilir çekirdek modülünü (`CONFIG_KSU=m`) destekler ve artık yerleşik `CONFIG_KSU=y` seçeneğini desteklemez.
+- YukiSU, Android GKI 2.0 cihazlarında (çekirdek 5.10+) LKM modunu destekler. GKI 1.0 ve non-GKI çekirdekleri desteklenmez.
+- YukiSU yalnızca `arm64-v8a` cihazlarını destekler.
+- YukiZygisk, hem `arm64-v8a` hem de `armeabi-v7a` ABI'leri için derleme ve enjeksiyonu destekler.
 
 ## Kurulum
 
-[`guide/installation.md`](guide/installation.md) konusuna bakın.
+Bkz. [`guide/installation.md`](guide/installation.md)
 
 ## Entegrasyon
 
-[`guide/how-to-integrate.md`](guide/how-to-integrate.md) konusuna bakın.
+Bkz. [`guide/how-to-integrate.md`](guide/how-to-integrate.md)
 
 ## Sorun Giderme
 
-1. Yönetici uygulaması kaldırılınca cihaz takılıyor mu?
+1. Yöneticiyi kaldırdıktan sonra cihaz takılıyor mu?
    _com.sony.playmemories.mobile_ uygulamasını kaldırın.
 
-## Sponsorlar
+## Sponsor
 
-- [Anatdx](https://afd.anatdx.moe) (YukiSU bakımcısı)
-- [ShirkNeko](https://afdian.com/a/shirkneko) (SukiSU bakımcısı)
+- [Anatdx](https://afd.anatdx.moe) (YukiSU geliştiricisi)
+- [ShirkNeko](https://afdian.com/a/shirkneko) (SukiSU geliştiricisi)
 - [weishu](https://github.com/sponsors/tiann) (KernelSU yazarı)
 
 ## Lisans
 
-- "kernel" dizinindeki dosyalar [GPL-2.0-only](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html) lisanslıdır.
-- Bunlar dışındaki tüm kısımlar [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html) lisanslıdır.
+- “kernel” dizinindeki dosyalar [GPL-2.0-only](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html) lisansı altındadır.
+- Yukarıda belirtilenler dışındaki tüm diğer kısımlar [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html) lisansı altındadır.
 
 ## Katkıda Bulunanlar
 
-- [KernelSU](https://github.com/tiann/KernelSU): Üst akış
-- Modül bağlama: kullanıcı tarafından yüklenen harici MetaModule tarafından sağlanır
-- [MKSU](https://github.com/5ec1cff/KernelSU): Magic Mount
-- [RKSU](https://github.com/rsuntk/KernelsU): non-GKI desteği
-- [KernelPatch](https://github.com/bmax121/KernelPatch): KernelPatch, APatch çekirdek modülü uygulamasının önemli bir parçasıdır
+- [KernelSU](https://github.com/tiann/KernelSU): upstream
+- ~~[MKSU](https://github.com/5ec1cff/KernelSU): Magic Mount~~
+- ~~[RKSU](https://github.com/rsuntk/KernelsU): non-GKI desteği~~
+- ~~[KernelPatch](https://github.com/bmax121/KernelPatch): KernelPatch, APatch çekirdek modülü uygulamasının önemli bir parçasıdır~~
 
 <details>
-<summary>KernelSU katkıda bulunanları</summary>
+<summary>KernelSU katkıları</summary>
 
-- [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/): KernelSU fikri
-- [Magisk](https://github.com/topjohnwu/Magisk): Güçlü root aracı
-- [genuine](https://github.com/brevent/genuine/): APK v2 imza doğrulama
-- [Diamorphine](https://github.com/m0nad/Diamorphine): Rootkit becerileri
+- [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/): KernelSU fikrinin kaynağı
+- [Magisk](https://github.com/topjohnwu/Magisk): güçlü bir root aracı
+- [genuine](https://github.com/brevent/genuine/): APK v2 imza doğrulaması
+- [Diamorphine](https://github.com/m0nad/Diamorphine): bazı rootkit teknikleri
+
 </details>

@@ -1,43 +1,40 @@
 # YukiSU
-<img align='right' src='../YukiSU-mini.svg' width='220px' alt="yukisu logo">
 
+<img align='right' src='../YukiSU-mini.svg' width='220px' alt="yukisu logo">
 
 [English](../README.md) | **简体中文** | [日本語](../ja/README.md) | [Türkçe](../tr/README.md) | [Русский](../ru/README.md)
 
-一个基于内核的 Android root 方案，从 [`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) 分叉而来，去掉了一些无用的部分，并增加了一些有趣的变更。
+一个基于内核的 Android root 方案，从 [`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) 分叉而来，去掉了一些无用的部分，增加了一些有趣的变更。
 
 > **⚠️ 重要提示**
 >
-> YukiSU 已**完全用 C++ 重写**（原先基于 Rust）。此次重写意味着 YukiSU 的行为可能与其他 KernelSU 分支有所不同。若遇到问题，请向我们反馈，而非上游项目。
->
-> 经典的 Rust 版本保留在 [`classic`](https://github.com/Anatdx/YukiSU/tree/classic) 分支中。
->
+> YukiSU userspace 已**完全用 C++ 重写**（原先基于 Rust）。这意味着 YukiSU 的行为可能与其他 KernelSU 分支有所不同。若遇到问题，请向我们反馈，而非上游项目。
 
-[![最新发行](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=Release&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
-[![频道](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
-[![协议: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![GitHub 协议](https://img.shields.io/github/license/Anatdx/YukiSU?logo=gnu)](/LICENSE)
+[![最新正式版](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=最新正式版&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
+[![最新测试版](https://img.shields.io/badge/最新测试版-nightly.link-39C5BB.svg?logo=github)](https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main)
+[![群组](https://img.shields.io/badge/群组-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
+[![协议: GPL v2](https://img.shields.io/badge/许可证-GPL%20v2-FFA500.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![协议: GPL v3](https://img.shields.io/badge/许可证-GPL%20v3-FFE211.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 ## 特性
 
 1. 基于内核的 `su` 与 root 权限管理
 2. 支持外部 MetaModule 生命周期与脚本集成，由用户自行选择模块挂载后端
-   > **说明：** YukiSU 不再内置 SUSFS 或任何挂载后端。需要挂载系统模块时，请安装兼容的外部 MetaModule。
 3. [App Profile](https://kernelsu.org/zh_CN/guide/app-profile.html) 与按应用控制的非 root 配置
 4. 动态管理器支持，可配置除内置包名/签名路径之外的受信任管理器
-5. APatch 风格的 SuperKey 认证，支持编译期密钥，也支持由 `ksud` 写入 LKM
-6. ADB root、sulog、SELinux hide、模块 `init.rc` 注入，以及同步到当前 C++ `ksud` 栈的 KernelSU 用户空间行为
-7. 基于 TSR 的 sucompat/syscall hook 基础设施，支持 arm64 LKM
-8. 管理器更新：超级用户列表滑动操作、日志查看、软重启与 WebUI 修复
+5. APatch 风格的 SuperKey 认证，支持编译期密钥，也支持由 `ksud` 注入 LKM
+6. ADB root、sulog、SELinux hide、模块 `init.rc` 注入等上游特性
+7. 内置 YukiZygisk，基于内核的 Zygisk 实现，全面兼容 [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext) 模块
+8. 基于 TSR 的 sucompat/syscall hook 基础设施
+9. UTS 视图功能，支持通过修改 `uts_ns` 来进行 uname 伪装，无需编译内核
+10. 更多功能等您发现…
 
 ## 兼容状态
 
-- YukiSU 当前仅支持可加载内核模块路径（`CONFIG_KSU=m`），不再支持内置 `CONFIG_KSU=y`。
-
-- YukiSU 官方支持 Android GKI 2.0 设备（内核 5.10+）的 LKM 模式。旧内核与 non-GKI 内核可能需要按设备进行源码集成。
-
-- 所有已交付的 YukiSU 组件仅支持 `arm64-v8a`。YukiZygisk 额外保留无功能的
-  `armeabi-v7a` 占位 DSO，供未来 `zygote32` 实现使用；目前不提供 32 位注入功能。
+- YukiSU 当前仅支持可加载内核模块（`CONFIG_KSU=m`），不再支持内置 `CONFIG_KSU=y`。
+- YukiSU 支持 Android GKI 2.0 设备（内核 5.10+）的 LKM 模式。GKI 1.0 内核与 non-GKI 内核不被支持。
+- YukiSU 仅支持 `arm64-v8a` 的设备。
+- YukiZygisk 支持 `arm64-v8a` 与 `armeabi-v7a` 两种 ABI 的构建与注入。
 
 ## 安装
 
@@ -66,16 +63,16 @@
 ## 鸣谢
 
 - [KernelSU](https://github.com/tiann/KernelSU)：上游
-- 模块挂载：由用户安装的外部 MetaModule 提供
-- [MKSU](https://github.com/5ec1cff/KernelSU)：Magic Mount
-- [RKSU](https://github.com/rsuntk/KernelsU)：non-GKI 支持
-- [KernelPatch](https://github.com/bmax121/KernelPatch)：KernelPatch 为 APatch 内核模块实现的关键部分
+- ~~[MKSU](https://github.com/5ec1cff/KernelSU)：Magic Mount~~
+- ~~[RKSU](https://github.com/rsuntk/KernelsU)：non-GKI 支持~~
+- ~~[KernelPatch](https://github.com/bmax121/KernelPatch)：KernelPatch 为 APatch 内核模块实现的关键部分~~
 
 <details>
 <summary>KernelSU 鸣谢</summary>
 
 - [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/)：KernelSU 创意来源
-- [Magisk](https://github.com/topjohnwu/Magisk)：强大 root 工具
+- [Magisk](https://github.com/topjohnwu/Magisk)：强大的 root 工具
 - [genuine](https://github.com/brevent/genuine/)：APK v2 签名校验
 - [Diamorphine](https://github.com/m0nad/Diamorphine)：部分 rootkit 技巧
+
 </details>

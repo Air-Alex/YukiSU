@@ -1,57 +1,52 @@
 # Руководство по интеграции
 
-YukiSU может быть интегрирован в исходные деревья ядер GKI и non-GKI, но текущий драйвер поддерживает только путь загружаемого модуля ядра (`CONFIG_KSU=m`). Встроенный `CONFIG_KSU=y` больше не поддерживается.
+В настоящее время YukiSU поддерживает только загружаемые модули ядра (`CONFIG_KSU=m`) и больше не поддерживает встроенный вариант `CONFIG_KSU=y`.
 
-Некоторые настройки OEM могут привести к тому, что до 50 % кода ядра будет происходить извне дерева ядра, а не из исходного Linux или ACK. Следовательно, индивидуальные функции ядер, не относящихся к GKI, приводят к значительной фрагментации ядра, и у нас нет универсального метода для их сборки. Поэтому мы не можем предоставить загрузочные образы для ядер, не относящихся к GKI.
+## Методы Hook
 
-Предпосылка: ядро с открытым исходным кодом, способное к загрузке.
+**TSR hook:**
 
-## Методы подключения
+- Стандартный вариант для загружаемого модуля ядра (LKM). Подходит для ядер GKI 2.0 (`5.10+`) и совместимых ядер, интегрированных из исходного кода.
+- Требуются `CONFIG_KPROBES=y`, `CONFIG_KRETPROBES=y` и `CONFIG_HAVE_SYSCALL_TRACEPOINTS=y`.
 
-1. **TSR syscall hook:**
+### Как собрать YukiSU LKM с использованием собственного дерева исходного кода ядра
 
-   - Основной путь для загружаемых модулей ядра (LKM). Поддерживается на ядрах GKI 2.0 (`5.10+`) и совместимых интеграциях из исходников.
-   - Требует `CONFIG_KPROBES=y`, `CONFIG_KRETPROBES=y` и `CONFIG_HAVE_SYSCALL_TRACEPOINTS=y`.
+В большинстве случаев LKM, собранный CI с помощью [ddk](https://github.com/Ylarod/ddk), может быть загружен на подавляющем большинстве устройств. Однако, если на вашем устройстве модуль не загружается, вам может потребоваться самостоятельно собрать LKM, используя исходный код ядра и конфигурацию сборки, соответствующие вашему устройству.
 
-2. **Портирование hook под конкретное устройство:**
-
-   - [Дополнительные сведения см. в этом репозитории](https://github.com/rksuorg/kernel_patches)
-   - Некоторые non-GKI ядра отключают необходимую hook-инфраструктуру или содержат значительные OEM-изменения.
-   - См. [руководство по kernelsu](https://github.com/tiann/KernelSU/blob/main/website/docs/guide/how-to-integrate-for-non-gki.md#manually-modify-the-kernel-source)
-   - См. [`guide/how-to-integrate.md`](how-to-integrate.md)
-   - Дополнительная ссылка: [backslashxx hooks](https://github.com/backslashxx/KernelSU/issues/5)
-
-### Как добавить драйвер ядра YukiSU в исходный код ядра
-
-YukiSU теперь использует **единую кодовую базу** для LKM-сборок на GKI и device-specific исходных деревьях. Отдельные ветки не нужны.
+> **Примечание: это не интеграция YukiSU в ядро.**
+>
+> Убедитесь, что дерево сборки ядра уже собрано с конфигурацией, соответствующей ядру вашего устройства, и что в нём присутствует `vmlinux`.
+>
+> Убедитесь, что в вашей среде доступны Clang, LLVM и Git.
 
 ```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
+# Укажите уже настроенное и собранное дерево сборки ядра.
+# Если ядро собирается с O=out, обычно здесь следует указать каталог out, а не каталог исходного кода.
+export KDIR=<каталог дерева сборки ядра>
+
+export CLANG_PATH=<каталог bin вашего Clang/LLVM>
+export PATH=$CLANG_PATH:$PATH
+
+export CROSS_COMPILE=aarch64-linux-gnu-
+export ARCH=arm64
+export LLVM=1
+export LLVM_IAS=1
+
+git clone https://github.com/Anatdx/YukiSU
+cd YukiSU/kernel
+
+test -f include/uapi/supercall.h
+
+make CONFIG_KSU=m \
+    CONFIG_KSU_SUPERKEY=y \
+    CONFIG_KSU_YUKIZYGISK=y \
+    CC=clang
+
+llvm-strip -d kernelsu.ko
 ```
 
-Или укажите тег/коммит:
+После завершения сборки созданный LKM находится здесь:
 
-```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s v1.2.0
+```text
+YukiSU/kernel/kernelsu.ko
 ```
-
-Очистка:
-
-```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s -- --cleanup
-```
-
-### Необходимые опции конфигурации ядра
-
-#### Для режима LKM (загружаемый модуль ядра):
-
-```
-CONFIG_KSU=m
-CONFIG_KPROBES=y
-CONFIG_HAVE_KPROBES=y
-CONFIG_KPROBE_EVENTS=y
-CONFIG_KRETPROBES=y
-CONFIG_HAVE_SYSCALL_TRACEPOINTS=y
-```
-
-YukiSU не поддерживает встроенный `CONFIG_KSU=y`; выберите `m`.

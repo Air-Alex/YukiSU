@@ -2,44 +2,39 @@
 
 <img align='right' src='../YukiSU-mini.svg' width='220px' alt="yukisu logo">
 
-
 [English](../README.md) | [简体中文](../zh/README.md) | **日本語** | [Türkçe](../tr/README.md) | [Русский](../ru/README.md)
 
-Android デバイス向けのカーネルベース root ソリューション。[`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) からフォークし、不要な部分を削除し、いくつかの変更を加えています。
+カーネルベースの Android root ソリューションです。[`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) からフォークし、不要な部分をいくつか削除し、いくつかの興味深い変更を追加しています。
 
 > **⚠️ 重要なお知らせ**
 >
-> YukiSU は**完全に C++ で書き直されました**（以前は Rust ベース）。このため、YukiSU の挙動は他の KernelSU フォークと異なる場合があります。問題があれば、上游プロジェクトではなく当方へ報告してください。
->
-> 従来の Rust 版は [`classic`](https://github.com/Anatdx/YukiSU/tree/classic) ブランチに残しています。
->
+> YukiSU の userspace は **C++ で完全に書き直されました**（以前は Rust ベース）。これは、YukiSU の挙動が他の KernelSU フォークと異なる可能性があることを意味します。問題が発生した場合は、上流プロジェクトではなく、私たちに報告してください。
 
-[![Latest release](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=Release&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
-[![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![GitHub License](https://img.shields.io/github/license/Anatdx/YukiSU?logo=gnu)](/LICENSE)
+[![最新正式版](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=最新正式版&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
+[![最新テスト版](https://img.shields.io/badge/最新テスト版-nightly.link-39C5BB.svg?logo=github)](https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main)
+[![グループ](https://img.shields.io/badge/グループ-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
+[![ライセンス: GPL v2](https://img.shields.io/badge/ライセンス-GPL%20v2-FFA500.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![ライセンス: GPL v3](https://img.shields.io/badge/ライセンス-GPL%20v3-FFE211.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
-## 特徴
+## 機能
 
-1. カーネルベースの `su` と root アクセス管理
-2. ユーザーが選択したモジュールマウントバックエンド向けの外部 MetaModule ライフサイクルとスクリプト統合
-   > **Note:** YukiSU は SUSFS や組み込みマウントバックエンドを同梱しません。システムモジュールのマウントが必要な場合は、互換性のある外部 MetaModule をインストールしてください。
-3. [App Profile](https://kernelsu.org/ja_JP/guide/app-profile.html) とアプリごとの non-root プロファイル制御
-4. 組み込みパッケージ署名以外の信頼済みマネージャーに対応する Dynamic Manager
-5. APatch 風の SuperKey 認証。コンパイル時キー、または `ksud` による LKM へのキー注入に対応
-6. ADB root、sulog、SELinux hide、モジュール `init.rc` 注入、現在の KernelSU userspace 挙動を C++ `ksud` スタックへ同期
-7. arm64 LKM をサポートする TSR ベースの sucompat/syscall hook 基盤
-8. SuperUser スワイプ操作、ログビューア、ソフト再起動、WebUI 修正を含むマネージャー更新
+1. カーネルベースの `su` と root 権限管理
+2. 外部 MetaModule のライフサイクルとスクリプト統合に対応し、モジュールのマウントバックエンドをユーザー自身が選択可能
+3. [App Profile](https://kernelsu.org/zh_CN/guide/app-profile.html) とアプリ単位で制御する non-root 設定
+4. 動的マネージャーに対応し、組み込みのパッケージ名/署名パス以外の信頼済みマネージャーを設定可能
+5. APatch 方式の SuperKey 認証。コンパイル時のキー、および `ksud` による LKM へのキー注入の両方に対応
+6. ADB root、sulog、SELinux hide、モジュールの `init.rc` 注入などの上流機能
+7. YukiZygisk を内蔵。カーネルベースの Zygisk 実装で、[Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext) モジュールと完全互換
+8. TSR ベースの sucompat/syscall hook 基盤
+9. UTS ビュー機能。カーネルを再ビルドせずに `uts_ns` を変更して `uname` を偽装可能
+10. その他の機能もぜひ見つけてください…
 
 ## 互換性
 
-- YukiSU は現在、ロード可能カーネルモジュールパス（`CONFIG_KSU=m`）のみをサポートします。組み込みの `CONFIG_KSU=y` はサポートされません。
-
-- YukiSU は Android GKI 2.0 デバイス（カーネル 5.10+）の LKM モードを公式にサポートしています。古いカーネルや non-GKI カーネルでは、デバイス固有のソース統合が必要になる場合があります。
-
-- 出荷する YukiSU の全コンポーネントは `arm64-v8a` のみを対象とします。YukiZygisk
-  だけは将来の `zygote32` 実装用に機能を持たない `armeabi-v7a` のプレースホルダー DSO
-  を予約していますが、現在は 32 ビット注入を提供しません。
+- YukiSU は現在、ロード可能カーネルモジュール（`CONFIG_KSU=m`）のみをサポートしており、built-in の `CONFIG_KSU=y` はサポートしていません。
+- YukiSU は Android GKI 2.0 デバイス（カーネル 5.10+）の LKM モードをサポートします。GKI 1.0 カーネルおよび non-GKI カーネルはサポートされません。
+- YukiSU は `arm64-v8a` デバイスのみをサポートします。
+- YukiZygisk は `arm64-v8a` と `armeabi-v7a` の両 ABI のビルドと注入をサポートします。
 
 ## インストール
 
@@ -51,7 +46,7 @@ Android デバイス向けのカーネルベース root ソリューション。
 
 ## トラブルシューティング
 
-1. マネージャーアプリをアンインストールしたらデバイスが固まる？
+1. マネージャーをアンインストールした後、デバイスが固まりますか？
    _com.sony.playmemories.mobile_ をアンインストールしてください。
 
 ## スポンサー
@@ -62,22 +57,22 @@ Android デバイス向けのカーネルベース root ソリューション。
 
 ## ライセンス
 
-- 「kernel」ディレクトリ内のファイルは [GPL-2.0-only](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html) です。
-- 上記以外は [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html) です。
+- “kernel” ディレクトリ内のファイルには [GPL-2.0-only](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html) が適用されます。
+- 上記以外のすべての部分には [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html) が適用されます。
 
-## クレジット
+## 謝辞
 
-- [KernelSU](https://github.com/tiann/KernelSU): 上流
-- モジュールマウント: ユーザーがインストールした外部 MetaModule が提供
-- [MKSU](https://github.com/5ec1cff/KernelSU): Magic Mount
-- [RKSU](https://github.com/rsuntk/KernelsU): non-GKI サポート
-- [KernelPatch](https://github.com/bmax121/KernelPatch): KernelPatch は APatch カーネルモジュール実装の重要な一部です
+- [KernelSU](https://github.com/tiann/KernelSU)：上流
+- ~~[MKSU](https://github.com/5ec1cff/KernelSU)：Magic Mount~~
+- ~~[RKSU](https://github.com/rsuntk/KernelsU)：non-GKI 対応~~
+- ~~[KernelPatch](https://github.com/bmax121/KernelPatch)：KernelPatch は APatch のカーネルモジュール実装における重要な部分~~
 
 <details>
-<summary>KernelSU のクレジット</summary>
+<summary>KernelSU の謝辞</summary>
 
-- [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/): KernelSU のアイデア
-- [Magisk](https://github.com/topjohnwu/Magisk): 強力な root ツール
-- [genuine](https://github.com/brevent/genuine/): APK v2 署名検証
-- [Diamorphine](https://github.com/m0nad/Diamorphine): rootkit 関連の技術
+- [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/)：KernelSU のアイデアの出典
+- [Magisk](https://github.com/topjohnwu/Magisk)：強力な root ツール
+- [genuine](https://github.com/brevent/genuine/)：APK v2 署名検証
+- [Diamorphine](https://github.com/m0nad/Diamorphine)：一部の rootkit テクニック
+
 </details>

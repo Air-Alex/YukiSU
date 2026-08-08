@@ -2,44 +2,39 @@
 
 <img align='right' src='../YukiSU-mini.svg' width='220px' alt="yukisu logo">
 
-
 [English](../README.md) | [简体中文](../zh/README.md) | [日本語](../ja/README.md) | [Türkçe](../tr/README.md) | **Русский**
 
-Решение для получения root на основе ядра для устройств Android: форк [`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra) с удалением лишнего и рядом изменений.
+Решение для получения root-доступа на Android-устройствах на уровне ядра, созданное как форк [`SukiSU-Ultra`](https://github.com/ShirkNeko/SukiSU-Ultra): некоторые бесполезные части удалены, а несколько интересных изменений добавлены.
 
 > **⚠️ Важное уведомление**
 >
-> YukiSU **полностью переписан на C++** (ранее был на Rust). Поэтому поведение YukiSU может отличаться от других форков KernelSU. При проблемах сообщайте нам, а не в вышестоящие проекты.
->
-> Классическая версия на Rust сохранена в ветке [`classic`](https://github.com/Anatdx/YukiSU/tree/classic).
->
+> Userspace YukiSU был **полностью переписан на C++** (ранее он был основан на Rust). Это означает, что поведение YukiSU может отличаться от других форков KernelSU. Если вы столкнулись с проблемой, сообщите о ней нам, а не вышестоящим проектам.
 
-[![Latest release](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=Release&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
-[![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![GitHub License](https://img.shields.io/github/license/Anatdx/YukiSU?logo=gnu)](/LICENSE)
+[![Последний стабильный релиз](https://img.shields.io/github/v/release/Anatdx/YukiSU?label=Последний%20стабильный%20релиз&logo=github)](https://github.com/Anatdx/YukiSU/releases/latest)
+[![Последняя тестовая версия](https://img.shields.io/badge/Последняя%20тестовая%20версия-nightly.link-39C5BB.svg?logo=github)](https://nightly.link/Anatdx/YukiSU/workflows/build-manager/main)
+[![Группа](https://img.shields.io/badge/Группа-Telegram-blue.svg?logo=telegram)](https://t.me/manosaba)
+[![Лицензия: GPL v2](https://img.shields.io/badge/Лицензия-GPL%20v2-FFA500.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![Лицензия: GPL v3](https://img.shields.io/badge/Лицензия-GPL%20v3-FFE211.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 ## Возможности
 
-1. Управление `su` и root-доступом на основе ядра
-2. Жизненный цикл и интеграция скриптов внешних MetaModule для выбранных пользователем бэкендов монтирования модулей
-   > **Примечание:** YukiSU не включает SUSFS или встроенный бэкенд монтирования. Для монтирования системных модулей установите совместимый внешний MetaModule.
-3. [App Profile](https://kernelsu.org/guide/app-profile.html) и по-приложенческие профили non-root
-4. Dynamic Manager для доверенных приложений менеджера за пределами встроенного пути подписи пакета
-5. Аутентификация SuperKey в стиле APatch: ключ может задаваться при сборке или записываться в LKM через `ksud`
-6. ADB root, sulog, SELinux hide, внедрение модульного `init.rc` и актуальное поведение KernelSU userspace синхронизированы со стеком C++ `ksud`
-7. Инфраструктура sucompat/syscall hook на базе TSR с поддержкой arm64 LKM
-8. Обновления менеджера: свайпы SuperUser, просмотр логов, soft reboot и исправления WebUI
+1. Управление `su` и root-правами на уровне ядра
+2. Поддержка жизненного цикла внешнего MetaModule и интеграции скриптов, при этом пользователь самостоятельно выбирает backend монтирования модулей
+3. [App Profile](https://kernelsu.org/zh_CN/guide/app-profile.html) и управляемые отдельно для каждого приложения non-root настройки
+4. Поддержка динамического менеджера с возможностью настраивать доверенные менеджеры помимо встроенного пути по имени пакета/подписи
+5. Аутентификация SuperKey в стиле APatch с поддержкой как ключей, заданных во время компиляции, так и ключей, внедряемых в LKM через `ksud`
+6. ADB root, sulog, SELinux hide, внедрение `init.rc` модулей и другие возможности вышестоящего проекта
+7. Встроенный YukiZygisk — реализация Zygisk на уровне ядра, полностью совместимая с модулями [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext)
+8. Инфраструктура sucompat/syscall hook на основе TSR
+9. Функция UTS view, позволяющая подменять `uname` изменением `uts_ns` без повторной сборки ядра
+10. И ещё больше возможностей, которые вам предстоит открыть…
 
 ## Совместимость
 
-- YukiSU сейчас поддерживает только путь загружаемого модуля ядра (`CONFIG_KSU=m`). Встроенный `CONFIG_KSU=y` больше не поддерживается.
-
-- YukiSU официально поддерживает режим LKM на устройствах Android GKI 2.0 (ядро 5.10+). Для старых и non-GKI ядер может потребоваться интеграция исходников под конкретное устройство.
-
-- Все поставляемые компоненты YukiSU рассчитаны только на `arm64-v8a`.
-  YukiZygisk дополнительно резервирует инертные DSO-заглушки `armeabi-v7a` для
-  будущей реализации `zygote32`; 32-битная инъекция пока не поддерживается.
+- В настоящее время YukiSU поддерживает только загружаемый модуль ядра (`CONFIG_KSU=m`) и больше не поддерживает встроенный вариант `CONFIG_KSU=y`.
+- YukiSU поддерживает режим LKM на устройствах Android GKI 2.0 (ядро 5.10+). Ядра GKI 1.0 и non-GKI не поддерживаются.
+- YukiSU поддерживает только устройства `arm64-v8a`.
+- YukiZygisk поддерживает сборку и внедрение для обеих ABI: `arm64-v8a` и `armeabi-v7a`.
 
 ## Установка
 
@@ -51,33 +46,33 @@
 
 ## Устранение неполадок
 
-1. Устройство зависает после удаления приложения менеджера?
+1. Устройство зависает после удаления менеджера?
    Удалите _com.sony.playmemories.mobile_
 
-## Спонсоры
+## Поддержать проект
 
-- [Anatdx](https://afd.anatdx.moe) (мейнтейнер YukiSU)
-- [ShirkNeko](https://afdian.com/a/shirkneko) (мейнтейнер SukiSU)
+- [Anatdx](https://afd.anatdx.moe) (сопровождающий YukiSU)
+- [ShirkNeko](https://afdian.com/a/shirkneko) (сопровождающий SukiSU)
 - [weishu](https://github.com/sponsors/tiann) (автор KernelSU)
 
 ## Лицензия
 
-- Файлы в каталоге «kernel» распространяются под [GPL-2.0-only](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html).
-- Всё остальное — под [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html).
+- Файлы в каталоге “kernel” распространяются по лицензии [GPL-2.0-only](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html).
+- Все остальные части, не указанные выше, распространяются по лицензии [GPL-3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ## Благодарности
 
-- [KernelSU](https://github.com/tiann/KernelSU): исходный проект
-- Монтирование модулей: предоставляется установленным пользователем внешним MetaModule
-- [MKSU](https://github.com/5ec1cff/KernelSU): Magic Mount
-- [RKSU](https://github.com/rsuntk/KernelsU): поддержка non-GKI
-- [KernelPatch](https://github.com/bmax121/KernelPatch): KernelPatch — ключевая часть реализации модуля ядра APatch
+- [KernelSU](https://github.com/tiann/KernelSU): вышестоящий проект
+- ~~[MKSU](https://github.com/5ec1cff/KernelSU): Magic Mount~~
+- ~~[RKSU](https://github.com/rsuntk/KernelsU): поддержка non-GKI~~
+- ~~[KernelPatch](https://github.com/bmax121/KernelPatch): KernelPatch является ключевой частью реализации модуля ядра APatch~~
 
 <details>
 <summary>Благодарности KernelSU</summary>
 
-- [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/): идея KernelSU
-- [Magisk](https://github.com/topjohnwu/Magisk): инструмент для root
+- [Kernel-Assisted Superuser](https://git.zx2c4.com/kernel-assisted-superuser/about/): источник идеи KernelSU
+- [Magisk](https://github.com/topjohnwu/Magisk): мощный root-инструмент
 - [genuine](https://github.com/brevent/genuine/): проверка подписи APK v2
-- [Diamorphine](https://github.com/m0nad/Diamorphine): приёмы rootkit
+- [Diamorphine](https://github.com/m0nad/Diamorphine): некоторые техники rootkit
+
 </details>

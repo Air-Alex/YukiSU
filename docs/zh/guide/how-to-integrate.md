@@ -1,57 +1,52 @@
 # 集成指导
 
-YukiSU 可以集成到 GKI 和 non-GKI 内核源码树中，但当前驱动仅支持可加载内核模块路径（`CONFIG_KSU=m`），不再支持内置 `CONFIG_KSU=y`。
-
-有些 OEM 定制可能导致多达 50% 的内核代码超出内核树代码，而非来自上游 Linux 内核或 ACK。因此，non-GKI 内核的定制特性导致了严重的内核碎片化，而且我们缺乏构建它们的通用方法。因此，我们无法提供 non-GKI 内核的启动映像。
-
-前提条件：开源的、可启动的内核。
+YukiSU 当前仅支持可加载内核模块（`CONFIG_KSU=m`），不再支持内置 `CONFIG_KSU=y`。
 
 ## Hook 方法
 
-1. **TSR syscall hook:**
+**TSR hook:**
 
-   - 可加载内核模块 (LKM) 的默认路径。适用于 GKI 2.0 内核（`5.10+`）以及兼容的源码集成内核。
-   - 需要 `CONFIG_KPROBES=y`、`CONFIG_KRETPROBES=y` 与 `CONFIG_HAVE_SYSCALL_TRACEPOINTS=y`。
+- 可加载内核模块 (LKM) 的默认路径。适用于 GKI 2.0 内核（`5.10+`）以及兼容的源码集成内核。
+- 需要 `CONFIG_KPROBES=y`、`CONFIG_KRETPROBES=y` 与 `CONFIG_HAVE_SYSCALL_TRACEPOINTS=y`。
 
-2. **按设备移植 hook:**
+### 如何使用自定义内核源码树编译 YukiSU LKM
 
-   - [请参阅此存储库以获取更多信息](https://github.com/rksuorg/kernel_patches)
-   - 部分 non-GKI 内核会关闭所需 hook 基础设施，或带有较重的 OEM 改动。
-   - 参考 [kernelsu手册](https://github.com/tiann/KernelSU/blob/main/website/docs/guide/how-to-integrate-for-non-gki.md#manually-modify-the-kernel-source)
-   - 参考 [`guide/how-to-integrate.md`](how-to-integrate.md)
-   - 可选参考 [backslashxx的钩子](https://github.com/backslashxx/KernelSU/issues/5)
+大部分情况下，由 CI 使用 [ddk](https://github.com/Ylarod/ddk) 编译的 LKM 可以在绝大多数设备上加载。但如果您的设备无法加载，您可能需要使用您设备对应的内核源码和构建配置自行构建 LKM。
 
-### 如何将 YukiSU 内核驱动程序添加到内核源代码中
-
-YukiSU 现在使用 **统一代码库**，面向 GKI 与按设备源码集成的 LKM 构建。不需要单独的分支。
-
+> **注意：这不是将 YukiSU 集成进内核。**
+>
+> 请确保您的内核构建树已经使用与设备内核匹配的配置完成构建，并且其中存在 `vmlinux`。
+>
+> 确保您的环境中拥有可用的 Clang、LLVM 和 Git。
+>
 ```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
+# 指向已经完成配置和构建的内核构建树。
+# 如果内核使用 O=out 构建，这里通常应指向 out 目录，而不是源码目录。
+export KDIR=<您的内核构建树目录>
+
+export CLANG_PATH=<您的 Clang/LLVM bin 目录>
+export PATH=$CLANG_PATH:$PATH
+
+export CROSS_COMPILE=aarch64-linux-gnu-
+export ARCH=arm64
+export LLVM=1
+export LLVM_IAS=1
+
+git clone https://github.com/Anatdx/YukiSU
+cd YukiSU/kernel
+
+test -f include/uapi/supercall.h
+
+make CONFIG_KSU=m \
+    CONFIG_KSU_SUPERKEY=y \
+    CONFIG_KSU_YUKIZYGISK=y \
+    CC=clang
+
+llvm-strip -d kernelsu.ko
 ```
 
-或指定标签/提交：
+编译完成后，生成的 LKM 位于：
 
-```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s v1.2.0
+```text
+YukiSU/kernel/kernelsu.ko
 ```
-
-清理：
-
-```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s -- --cleanup
-```
-
-### 所需的内核配置选项
-
-#### LKM（可加载内核模块）模式：
-
-```
-CONFIG_KSU=m
-CONFIG_KPROBES=y
-CONFIG_HAVE_KPROBES=y
-CONFIG_KPROBE_EVENTS=y
-CONFIG_KRETPROBES=y
-CONFIG_HAVE_SYSCALL_TRACEPOINTS=y
-```
-
-YukiSU 不支持内置 `CONFIG_KSU=y`；请选择 `m`。

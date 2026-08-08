@@ -10,11 +10,4 @@
 
 ## 通过安装内核进行安装
 
-请参阅 [KernelSU 文档 - GKI 模式安装](https://kernelsu.org/guide/installation.html#gki-mode-installation)
-
-虽然某些设备可以使用 LKM 模式安装，但无法使用 GKI 内核将其安装到设备上；因此，需要手动修改内核进行编译。例如：
-
-- 欧珀（一加、真我）
-- 魅族
-
-具体可以参考SukiSU的文档进行操作，您能找到这个文档说明您也不简单，应该是懂点操作的（x
+抱歉，YukiSU 不支持 built-in。

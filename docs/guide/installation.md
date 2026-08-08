@@ -1,37 +1,13 @@
-# Installation
+# Installation Guide
 
-You can go to [KernelSU Documentation - Installation](https://kernelsu.org/guide/installation.html) for a reference on how to install it, here are just additional instructions.
+You can refer to the [KernelSU Documentation - Installation](https://kernelsu.org/guide/installation.html) for information on how to install it. The following is only additional information.
 
-## Installation by loading the Loadable Kernel Module(LKM)
+## Installation via Loadable Kernel Module (LKM)
 
-See [KernelSU Documentation - LKM Installation](https://kernelsu.org/guide/installation.html#lkm-installation)
+Please refer to the [KernelSU Documentation - LKM Installation](https://kernelsu.org/guide/installation.html#lkm-installation).
 
-Beginning with **Android™** (trademark meaning licensed Google Mobile Services) 12, devices shipping with kernel version 5.10 or higher must ship with the GKI kernel. You may be able to use LKM mode.
+Starting from Android 12, devices with kernel version 5.10 or higher must use a GKI kernel. Therefore, you may be able to use LKM mode.
 
-## Installation by installing the kernel
+## Installation via Kernel Installation
 
-See [KernelSU Documentation - GKI mode Installation](https://kernelsu.org/guide/installation.html#gki-mode-installation)
-
-We provide pre-built kernels for you to use:
-
-- [ShirkNeko flavor kernel](https://github.com/ShirkNeko/GKI_KernelSU_SUSFS) (add ZRAM compression algorithm patch, KPM. Works on many devices.)
-
-> **Note:** These external kernels may still include SUSFS. YukiSU itself does not bundle SUSFS or a mounting backend; install a compatible external MetaModule if needed.
-
-Although some devices can be installed using LKM mode, they cannot be installed on the device by using the GKI kernel; therefore, the kernel needs to be modified manually to compile it. For example:
-
-- OPPO(OnePlus, REALME)
-- Meizu
-
-Also, we provide pre-built kernels for your OnePlus device to use:
-
-- [ShirkNeko/Action_OnePlus_MKSU_SUSFS](https://github.com/ShirkNeko/Action_OnePlus_MKSU_SUSFS) (add ZRAM compression algorithm patch, KPM.)
-
-> **Note:** The repository name still contains "SUSFS", but YukiSU does not bundle SUSFS or a mounting backend.
-
-Using the link above, Fork into GitHub Action, fill in the build parameters, compile, and finally flush in the zip with the AnyKernel3 suffix.
-
-> [!Note]
->
-> - You only need to fill in the first two parts of the version number, e.g. `5.10`, `6.1`...
-> - Make sure you know the processor designation, kernel version, etc. before you use it.
+Sorry, YukiSU does not support built-in mode.

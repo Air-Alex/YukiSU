@@ -1,57 +1,52 @@
-# Integration Guidance
+# Integration Guide
 
-YukiSU can be integrated into GKI and non-GKI kernel source trees, but the current driver supports only the loadable kernel module path (`CONFIG_KSU=m`). Built-in `CONFIG_KSU=y` is no longer supported.
-
-Certain OEM customisations may result in up to 50% of kernel code originating outside the kernel tree, rather than from upstream Linux or ACK. Consequently, the bespoke features of non-GKI kernels cause significant kernel fragmentation, and we lack a universal method for building them. Therefore, we cannot provide boot images for non-GKI kernels.
-
-Prerequisite: An open-source, bootable kernel.
+YukiSU currently supports loadable kernel modules only (`CONFIG_KSU=m`) and no longer supports built-in `CONFIG_KSU=y`.
 
 ## Hook Methods
 
-1. **TSR syscall hook:**
+**TSR hook:**
 
-   - Default path for loadable kernel modules (LKM). Supported on GKI 2.0 kernels (`5.10+`) and compatible source-integrated kernels.
-   - Requires `CONFIG_KPROBES=y`, `CONFIG_KRETPROBES=y`, and `CONFIG_HAVE_SYSCALL_TRACEPOINTS=y`.
+- The default path for loadable kernel modules (LKM). Suitable for GKI 2.0 kernels (`5.10+`) and compatible kernels integrated from source.
+- Requires `CONFIG_KPROBES=y`, `CONFIG_KRETPROBES=y`, and `CONFIG_HAVE_SYSCALL_TRACEPOINTS=y`.
 
-2. **Device-specific hook porting:**
+### How to Build the YukiSU LKM Using a Custom Kernel Source Tree
 
-   - [Refer to this repository for further details](https://github.com/rksuorg/kernel_patches)
-   - Some non-GKI kernels disable the required hook infrastructure or carry heavy OEM changes.
-   - Refer to the [kernelsu manual](https://github.com/tiann/KernelSU/blob/main/website/docs/guide/how-to-integrate-for-non-gki.md#manually-modify-the-kernel-source)
-   - Refer to [`guide/how-to-integrate.md`](how-to-integrate.md)
-   - Optional reference: [backslashxx hooks](https://github.com/backslashxx/KernelSU/issues/5)
+In most cases, the LKM built by CI using [ddk](https://github.com/Ylarod/ddk) can be loaded on the vast majority of devices. However, if your device cannot load it, you may need to build the LKM yourself using the kernel source and build configuration corresponding to your device.
 
-### How to add the YukiSU kernel driver to the kernel source code
-
-YukiSU now uses a **unified codebase** for LKM builds across GKI and device-specific source trees. No separate branches are needed.
+> **Note: This is not integrating YukiSU into the kernel.**
+>
+> Make sure your kernel build tree has already been built with a configuration matching your device kernel, and that `vmlinux` exists in it.
+>
+> Make sure Clang, LLVM, and Git are available in your environment.
 
 ```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s main
+# Point to the kernel build tree that has already been configured and built.
+# If the kernel is built with O=out, this should usually point to the out directory rather than the source directory.
+export KDIR=<your kernel build tree directory>
+
+export CLANG_PATH=<your Clang/LLVM bin directory>
+export PATH=$CLANG_PATH:$PATH
+
+export CROSS_COMPILE=aarch64-linux-gnu-
+export ARCH=arm64
+export LLVM=1
+export LLVM_IAS=1
+
+git clone https://github.com/Anatdx/YukiSU
+cd YukiSU/kernel
+
+test -f include/uapi/supercall.h
+
+make CONFIG_KSU=m \
+    CONFIG_KSU_SUPERKEY=y \
+    CONFIG_KSU_YUKIZYGISK=y \
+    CC=clang
+
+llvm-strip -d kernelsu.ko
 ```
 
-Or specify a tag/commit:
+After the build is complete, the generated LKM is located at:
 
-```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s v1.2.0
+```text
+YukiSU/kernel/kernelsu.ko
 ```
-
-To cleanup:
-
-```sh
-curl -LSs "https://raw.githubusercontent.com/Anatdx/YukiSU/main/kernel/setup.sh" | bash -s -- --cleanup
-```
-
-### Required Kernel Config Options
-
-#### For LKM (Loadable Kernel Module) mode:
-
-```
-CONFIG_KSU=m
-CONFIG_KPROBES=y
-CONFIG_HAVE_KPROBES=y
-CONFIG_KPROBE_EVENTS=y
-CONFIG_KRETPROBES=y
-CONFIG_HAVE_SYSCALL_TRACEPOINTS=y
-```
-
-YukiSU does not support built-in `CONFIG_KSU=y`; choose `m`.
