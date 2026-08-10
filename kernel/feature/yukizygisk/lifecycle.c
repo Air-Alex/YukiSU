@@ -1,7 +1,9 @@
 #include <linux/cred.h>
+#include <linux/errno.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/spinlock.h>
+#include <linux/string.h>
 #include <linux/tracepoint.h>
 #include <linux/types.h>
 
@@ -27,6 +29,15 @@ struct yz_lifecycle_child {
 static struct yz_lifecycle_child
     yz_lifecycle_children[YZ_LIFECYCLE_MAX_CHILDREN];
 static DEFINE_SPINLOCK(yz_lifecycle_lock);
+
+static void yz_lifecycle_reset(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&yz_lifecycle_lock, flags);
+	memset(yz_lifecycle_children, 0, sizeof(yz_lifecycle_children));
+	spin_unlock_irqrestore(&yz_lifecycle_lock, flags);
+}
 
 /* yz_lifecycle_lock must be held. */
 static int yz_lifecycle_slot_of(pid_t pid)
@@ -58,12 +69,17 @@ static void yz_lifecycle_track(pid_t pid)
 
 #ifdef CONFIG_TRACEPOINTS
 
+static bool yz_lifecycle_fork_registered;
+static bool yz_lifecycle_free_registered;
+
 static void yz_lifecycle_on_fork(void *data, struct task_struct *parent,
 				 struct task_struct *child)
 {
 	bool from_zygote;
 
 	(void)data;
+	if (!READ_ONCE(yukizygisk_enabled))
+		return;
 
 	/* Track process leaders, not zygote worker threads. */
 	if (child->pid != child->tgid)
@@ -88,6 +104,8 @@ static void yz_lifecycle_on_free(void *data, struct task_struct *p)
 	int i;
 
 	(void)data;
+	if (!READ_ONCE(yukizygisk_enabled))
+		return;
 
 	if (p->pid != p->tgid)
 		return;
@@ -107,16 +125,22 @@ static void yz_lifecycle_on_free(void *data, struct task_struct *p)
 	}
 }
 
-void yz_lifecycle_init(void)
+int yz_lifecycle_enable(void)
 {
-	int ret = register_trace_sched_process_fork(yz_lifecycle_on_fork, NULL);
+	int ret;
+
+	if (yz_lifecycle_fork_registered && yz_lifecycle_free_registered)
+		return 0;
+
+	ret = register_trace_sched_process_fork(yz_lifecycle_on_fork, NULL);
 
 	if (ret) {
 		pr_err(
 		    "yukizygisk: fork tracepoint registration failed err=%d\n",
 		    ret);
-		return;
+		return ret;
 	}
+	yz_lifecycle_fork_registered = true;
 
 	ret = register_trace_sched_process_free(yz_lifecycle_on_free, NULL);
 	if (ret) {
@@ -125,28 +149,45 @@ void yz_lifecycle_init(void)
 		    ret);
 		unregister_trace_sched_process_fork(yz_lifecycle_on_fork, NULL);
 		tracepoint_synchronize_unregister();
-		return;
+		yz_lifecycle_fork_registered = false;
+		return ret;
 	}
+	yz_lifecycle_free_registered = true;
 
 	pr_info("yukizygisk: lifecycle tracking enabled\n");
+	return 0;
 }
 
-void yz_lifecycle_exit(void)
+void yz_lifecycle_disable(void)
 {
-	unregister_trace_sched_process_fork(yz_lifecycle_on_fork, NULL);
-	unregister_trace_sched_process_free(yz_lifecycle_on_free, NULL);
-	tracepoint_synchronize_unregister();
+	bool unregistered = false;
+
+	if (yz_lifecycle_free_registered) {
+		unregister_trace_sched_process_free(yz_lifecycle_on_free, NULL);
+		yz_lifecycle_free_registered = false;
+		unregistered = true;
+	}
+	if (yz_lifecycle_fork_registered) {
+		unregister_trace_sched_process_fork(yz_lifecycle_on_fork, NULL);
+		yz_lifecycle_fork_registered = false;
+		unregistered = true;
+	}
+	if (unregistered)
+		tracepoint_synchronize_unregister();
+	yz_lifecycle_reset();
 }
 
 #else /* !CONFIG_TRACEPOINTS */
 
-void yz_lifecycle_init(void)
+int yz_lifecycle_enable(void)
 {
 	pr_warn("yukizygisk: lifecycle tracking requires CONFIG_TRACEPOINTS\n");
+	return -EOPNOTSUPP;
 }
 
-void yz_lifecycle_exit(void)
+void yz_lifecycle_disable(void)
 {
+	yz_lifecycle_reset();
 }
 
 #endif /* CONFIG_TRACEPOINTS */
@@ -160,6 +201,8 @@ void ksu_yukizygisk_on_setresuid(uid_t old_uid, uid_t new_uid)
 	int i;
 
 	(void)old_uid;
+	if (!READ_ONCE(yukizygisk_enabled))
+		return;
 
 	if (new_uid < 10000) /* app uids only */
 		return;

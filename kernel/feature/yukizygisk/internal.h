@@ -57,14 +57,18 @@ extern u64 yz_dlopen32_off;
 extern u64 yz_dlsym32_off;
 extern const struct ksu_feature_handler yukizygisk_feature_handler;
 
+int yz_feature_set_enabled(bool enabled);
+int yz_feature_enable_early(void);
 void yz_exec_init(void);
 void yz_exec_exit(void);
+int yz_exec_enable(void);
+void yz_exec_disable(void);
 void yz_events_init(void);
 void yz_events_exit(void);
 void yz_emit_specialize(u32 pid, u32 appid);
 void yz_emit_safemode(u32 pid, u32 crashes);
-void yz_lifecycle_init(void);
-void yz_lifecycle_exit(void);
+int yz_lifecycle_enable(void);
+void yz_lifecycle_disable(void);
 void yz_fd_handoff_init(void);
 void yz_fd_handoff_exit(void);
 void yz_fd_handoff_release(pid_t pid);
@@ -98,6 +102,7 @@ bool yz_parse_zygote_args(struct mm_struct *mm, char *socket_name,
 			  size_t socket_name_len);
 
 bool yz_early_native_active(void);
+void yz_early_native_disable(void);
 bool yz_match_early_native_target(const char *filename, char *label,
 				  size_t label_len, u8 *target_type);
 const char *yz_early_loader_path(bool compat);

@@ -248,6 +248,15 @@ bool yz_early_native_active(void)
 	return active;
 }
 
+void yz_early_native_disable(void)
+{
+	mutex_lock(&yz_early_native_lock);
+	yz_early_native_enabled = false;
+	yz_early_native_loaded = true;
+	yz_early_native_count = 0;
+	mutex_unlock(&yz_early_native_lock);
+}
+
 bool yz_match_early_native_target(const char *filename, char *label,
 				  size_t label_len, u8 *target_type)
 {

@@ -49,6 +49,7 @@ typedef struct linux_binprm yz_bprm_arg_t;
 static void yz_bprm_committed_creds(yz_bprm_arg_t *bprm);
 static struct ksu_lsm_hook yz_exec_hook = KSU_LSM_HOOK_INIT(
     bprm_committed_creds, YZ_BPRM_HOOK_TARGET, yz_bprm_committed_creds, 0);
+static bool yz_exec_hook_registered;
 
 typedef void (*bprm_committed_creds_fn)(yz_bprm_arg_t *bprm);
 
@@ -166,6 +167,11 @@ void ksu_yukizygisk_observe_execve(const struct pt_regs *regs)
 	unsigned long addr;
 	long ret;
 
+	if (!READ_ONCE(yukizygisk_enabled)) {
+		yz_feature_enable_early();
+		return;
+	}
+
 	if (!filename_user || !*filename_user)
 		return;
 
@@ -263,34 +269,51 @@ static void __nocfi yz_bprm_committed_creds(yz_bprm_arg_t *bprm)
 
 void yz_exec_init(void)
 {
-#if YZ_ENABLE_LSM_INJECTOR
-	int ret = ksu_register_lsm_hook(&yz_exec_hook);
-
-	if (ret)
-		pr_err("yukizygisk: exec injection hook registration failed "
-		       "err=%d\n",
-		       ret);
-	else {
-		pr_info("yukizygisk: exec injection hook registered abi=%s "
-			"resolver=%s\n",
-			YZ_BPRM_HOOK_ABI, YZ_BPRM_HOOK_CFI);
-	}
-#else
-	pr_info("yukizygisk: exec injection disabled at build time\n");
-#endif
-
 	if (ksu_register_feature_handler(&yukizygisk_feature_handler))
 		pr_err("yukizygisk: feature handler registration failed\n");
 	else
 		pr_info("yukizygisk: feature handler registered\n");
 }
 
+int yz_exec_enable(void)
+{
+#if YZ_ENABLE_LSM_INJECTOR
+	int ret;
+
+	if (yz_exec_hook_registered)
+		return 0;
+
+	ret = ksu_register_lsm_hook(&yz_exec_hook);
+	if (ret) {
+		pr_err("yukizygisk: exec injection hook registration failed "
+		       "err=%d\n",
+		       ret);
+		return ret;
+	}
+	yz_exec_hook_registered = true;
+	pr_info("yukizygisk: exec injection hook registered abi=%s "
+		"resolver=%s\n",
+		YZ_BPRM_HOOK_ABI, YZ_BPRM_HOOK_CFI);
+	return 0;
+#else
+	pr_err("yukizygisk: exec injection disabled at build time\n");
+	return -EOPNOTSUPP;
+#endif
+}
+
+void yz_exec_disable(void)
+{
+#if YZ_ENABLE_LSM_INJECTOR
+	if (yz_exec_hook_registered) {
+		ksu_unregister_lsm_hook(&yz_exec_hook);
+		yz_exec_hook_registered = false;
+	}
+#endif
+}
+
 void yz_exec_exit(void)
 {
+	yz_exec_disable();
 	yz_cleanup_module_policies();
 	ksu_unregister_feature_handler(KSU_FEATURE_YUKIZYGISK);
-	WRITE_ONCE(yukizygisk_enabled, false);
-#if YZ_ENABLE_LSM_INJECTOR
-	ksu_unregister_lsm_hook(&yz_exec_hook);
-#endif
 }

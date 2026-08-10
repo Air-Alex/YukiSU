@@ -1,17 +1,65 @@
+#include <linux/compiler.h>
+#include <linux/mutex.h>
+
 #include "internal.h"
+#include "klog.h" // IWYU pragma: keep
+
+static DEFINE_MUTEX(yz_feature_lock);
+
+int yz_feature_enable_early(void)
+{
+	int ret = 0;
+
+	mutex_lock(&yz_feature_lock);
+	if (!READ_ONCE(yukizygisk_enabled) && yz_early_native_active())
+		ret = yz_exec_enable();
+	mutex_unlock(&yz_feature_lock);
+	return ret;
+}
+
+int yz_feature_set_enabled(bool enabled)
+{
+	int ret = 0;
+
+	mutex_lock(&yz_feature_lock);
+	if (enabled && READ_ONCE(yukizygisk_enabled))
+		goto out;
+
+	if (enabled) {
+		ret = yz_exec_enable();
+		if (ret)
+			goto out;
+
+		ret = yz_lifecycle_enable();
+		if (ret) {
+			yz_exec_disable();
+			goto out;
+		}
+		WRITE_ONCE(yukizygisk_enabled, true);
+	} else {
+		WRITE_ONCE(yukizygisk_enabled, false);
+		yz_early_native_disable();
+		yz_lifecycle_disable();
+		yz_exec_disable();
+	}
+
+	pr_info("yukizygisk: enabled=%d\n", enabled);
+out:
+	mutex_unlock(&yz_feature_lock);
+	return ret;
+}
 
 void ksu_yukizygisk_init(void)
 {
-	yz_exec_init();
 	yz_events_init();
-	yz_lifecycle_init();
 	yz_fd_handoff_init();
+	yz_exec_init();
 }
 
 void ksu_yukizygisk_exit(void)
 {
+	yz_feature_set_enabled(false);
 	yz_exec_exit();
-	yz_lifecycle_exit();
 	yz_events_exit();
 	yz_fd_handoff_exit();
 }

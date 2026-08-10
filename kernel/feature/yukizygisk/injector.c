@@ -241,6 +241,10 @@ static void yz_inject_tw_func(struct callback_head *cb)
 	u8 runtime_kind =
 	    native ? YZ_RUNTIME_KIND_NATIVE : YZ_RUNTIME_KIND_ZYGOTE;
 
+	if (!READ_ONCE(yukizygisk_enabled) &&
+	    !(native && tw->early_native && yz_early_native_active()))
+		goto out;
+
 #ifdef CONFIG_COMPAT
 	compat = is_compat_task();
 #endif
@@ -318,7 +322,8 @@ static void yz_inject_tw_func(struct callback_head *cb)
 	}
 
 	/* Prepare the loader before replacing AT_ENTRY. */
-	if ((yukizygisk_enabled || (native && tw->early_native)) &&
+	if ((READ_ONCE(yukizygisk_enabled) ||
+	     (native && tw->early_native && yz_early_native_active())) &&
 	    at_entry_uaddr && at_entry_uval == saved && saved) {
 		/* Trampolines load the staged library, then resume AT_ENTRY. */
 		static const u32 tmpl[] = {
@@ -609,8 +614,12 @@ out:
 void yz_schedule_injection(bool native, u8 target_type, bool early_native,
 			   const char *label)
 {
-	struct yz_inject_tw *tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
+	struct yz_inject_tw *tw;
 
+	if (!READ_ONCE(yukizygisk_enabled) &&
+	    !(native && early_native && yz_early_native_active()))
+		return;
+	tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
 	if (!tw)
 		return;
 

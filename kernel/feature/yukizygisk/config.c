@@ -89,9 +89,7 @@ static int yukizygisk_feature_get(u64 *value)
 
 static int yukizygisk_feature_set(u64 value)
 {
-	WRITE_ONCE(yukizygisk_enabled, value != 0);
-	pr_info("yukizygisk: enabled=%d\n", yukizygisk_enabled);
-	return 0;
+	return yz_feature_set_enabled(value != 0);
 }
 
 const struct ksu_feature_handler yukizygisk_feature_handler = {
