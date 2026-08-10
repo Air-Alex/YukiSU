@@ -5,6 +5,7 @@
 #include "../log.hpp"
 #include "../utils.hpp"
 #include "tools.hpp"
+#include "lkm_image.hpp"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -398,6 +399,11 @@ void clean_backup(const std::string& current_sha1) {
 
 }  // namespace
 
+bool inject_superkey_into_lkm(const std::string& lkm_path, const std::string& superkey,
+                              bool signature_bypass) {
+    return inject_superkey_to_lkm(lkm_path, superkey, signature_bypass);
+}
+
 // Parse boot patch arguments
 struct BootPatchArgs {
     std::string boot_image;         // -b, --boot
@@ -601,10 +607,8 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     // Get or detect KMI
     std::string kmi = parsed.kmi;
     const bool needs_automatic_lkm = parsed.module.empty();
-    const bool needs_automatic_partition =
-        parsed.boot_image.empty() && parsed.partition.empty();
-    if (kmi.empty() && parsed.ota &&
-        (needs_automatic_lkm || needs_automatic_partition)) {
+    const bool needs_automatic_partition = parsed.boot_image.empty() && parsed.partition.empty();
+    if (kmi.empty() && parsed.ota && (needs_automatic_lkm || needs_automatic_partition)) {
         const std::string target_boot = "/dev/block/by-name/boot" + ota_slot;
         printf("- Trying to auto detect KMI version from %s\n", target_boot.c_str());
         kmi = parse_kmi_from_boot(magiskboot, workdir, target_boot);
@@ -1265,93 +1269,43 @@ int boot_restore(const std::vector<std::string>& args) {
         return 1;
     }
 
-    // Find ramdisk
-    std::string ramdisk;
-    const std::vector<std::string> ramdisk_candidates = {workdir + "/ramdisk.cpio",
-                                                         workdir + "/vendor_ramdisk/init_boot.cpio",
-                                                         workdir + "/vendor_ramdisk/ramdisk.cpio"};
-
-    for (const auto& candidate : ramdisk_candidates) {
-        if (access(candidate.c_str(), R_OK) == 0) {
-            ramdisk = candidate;
-            break;
-        }
-    }
-
-    if (ramdisk.empty()) {
-        LOGE("No compatible ramdisk found");
-        cleanup();
-        return 1;
-    }
-
-    // Check if patched by KernelSU
-    if (!is_kernelsu_patched(magiskboot, workdir, ramdisk)) {
-        LOGE("Boot image is not patched by KernelSU");
-        cleanup();
-        return 1;
-    }
-
     std::string new_boot;
     bool from_backup = false;
+    bool direct_restore = false;
 
-    // Try to find backup
-    auto backup_exists = exec_command_magiskboot(
-        magiskboot, {"cpio", ramdisk, "exists " + std::string(BACKUP_FILENAME)}, workdir);
-    if (backup_exists.exit_code == 0) {
-        // Extract backup sha1
-        const std::string backup_file = workdir + "/" + BACKUP_FILENAME;
-        exec_command_magiskboot(
-            magiskboot,
-            {"cpio", ramdisk, "extract " + std::string(BACKUP_FILENAME) + " " + backup_file},
-            workdir);
-
-        auto sha_content = read_file(backup_file);
-        if (sha_content) {
-            const std::string sha = trim(*sha_content);
-            const std::string backup_path =
-                std::string(KSU_BACKUP_DIR) + KSU_BACKUP_FILE_PREFIX + sha;
-
-            if (access(backup_path.c_str(), R_OK) == 0) {
-                new_boot = backup_path;
-                from_backup = true;
-                clean_backup(sha);
-            } else {
-                printf("- Warning: no backup %s found!\n", backup_path.c_str());
-            }
+    // Direct-LKM images have no ramdisk payload to restore. Remove the
+    // capsule and restore the three original kernel call sites in-place.
+    const std::vector<std::string> kernel_candidates = {workdir + "/kernel",
+                                                        workdir + "/kernel.img"};
+    for (const auto& candidate : kernel_candidates) {
+        std::ifstream kernel_in(candidate, std::ios::binary);
+        if (!kernel_in)
+            continue;
+        std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
+                                               std::istreambuf_iterator<char>());
+        auto raw_info =
+            boot::lkm_image::parse_arm64_image(kernel_bytes.data(), kernel_bytes.size());
+        if (!raw_info)
+            continue;
+        auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
+        if (!restored) {
+            if (restored.error().code == boot::lkm_image::ErrorCode::kInvalidArgument)
+                continue;
+            LOGE("Direct-LKM restore failed: %s", restored.error().message.c_str());
+            cleanup();
+            return 1;
         }
-    } else {
-        printf("- Backup info is absent!\n");
-    }
-
-    // If no backup, manually remove KernelSU
-    if (!from_backup) {
-        // Remove kernelsu.ko
-        do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kernelsu.ko");
-
-        // Remove the legacy embedded module if present.
-        auto legacy_kasumi_exists =
-            exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists kasumi.ko"}, workdir);
-        if (legacy_kasumi_exists.exit_code == 0) {
-            do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kasumi.ko");
+        std::ofstream kernel_out(candidate, std::ios::binary | std::ios::trunc);
+        if (!kernel_out ||
+            (!restored.value().empty() &&
+             !kernel_out.write(reinterpret_cast<const char*>(restored.value().data()),
+                               static_cast<std::streamsize>(restored.value().size())))) {
+            LOGE("Failed to write restored kernel");
+            cleanup();
+            return 1;
         }
-
-        // Restore init if init.real exists
-        auto init_real_exists =
-            exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists init.real"}, workdir);
-        if (init_real_exists.exit_code == 0) {
-            do_cpio_cmd(magiskboot, workdir, ramdisk, "mv init.real init");
-        }
-
-        // Repack (must run in workdir where unpack output files are)
-        // Output filename must match input format: boot -> new-boot.img, init_boot ->
-        // new-init_boot.img
-        const bool is_init_boot_restore =
-            (!parsed.boot_image.empty() &&
-             parsed.boot_image.find("init_boot") != std::string::npos) ||
-            (!bootdevice.empty() && bootdevice.find("init_boot") != std::string::npos);
-        const std::string out_img =
-            workdir + "/" + (is_init_boot_restore ? "new-init_boot.img" : "new-boot.img");
-        printf("- Repacking boot image\n");
+        const std::string out_img = workdir + "/new-boot.img";
+        printf("- Removing direct-LKM capsule\n");
         auto repack_result =
             exec_command_magiskboot(magiskboot, {"repack", bootimage, out_img}, workdir);
         if (repack_result.exit_code != 0) {
@@ -1360,6 +1314,104 @@ int boot_restore(const std::vector<std::string>& args) {
             return 1;
         }
         new_boot = out_img;
+        direct_restore = true;
+        break;
+    }
+
+    if (!direct_restore) {
+        // Find ramdisk
+        std::string ramdisk;
+        const std::vector<std::string> ramdisk_candidates = {
+            workdir + "/ramdisk.cpio", workdir + "/vendor_ramdisk/init_boot.cpio",
+            workdir + "/vendor_ramdisk/ramdisk.cpio"};
+
+        for (const auto& candidate : ramdisk_candidates) {
+            if (access(candidate.c_str(), R_OK) == 0) {
+                ramdisk = candidate;
+                break;
+            }
+        }
+
+        if (ramdisk.empty()) {
+            LOGE("No compatible ramdisk found");
+            cleanup();
+            return 1;
+        }
+
+        // Check if patched by KernelSU
+        if (!is_kernelsu_patched(magiskboot, workdir, ramdisk)) {
+            LOGE("Boot image is not patched by KernelSU");
+            cleanup();
+            return 1;
+        }
+
+        // Try to find backup
+        auto backup_exists = exec_command_magiskboot(
+            magiskboot, {"cpio", ramdisk, "exists " + std::string(BACKUP_FILENAME)}, workdir);
+        if (backup_exists.exit_code == 0) {
+            // Extract backup sha1
+            const std::string backup_file = workdir + "/" + BACKUP_FILENAME;
+            exec_command_magiskboot(
+                magiskboot,
+                {"cpio", ramdisk, "extract " + std::string(BACKUP_FILENAME) + " " + backup_file},
+                workdir);
+
+            auto sha_content = read_file(backup_file);
+            if (sha_content) {
+                const std::string sha = trim(*sha_content);
+                const std::string backup_path =
+                    std::string(KSU_BACKUP_DIR) + KSU_BACKUP_FILE_PREFIX + sha;
+
+                if (access(backup_path.c_str(), R_OK) == 0) {
+                    new_boot = backup_path;
+                    from_backup = true;
+                    clean_backup(sha);
+                } else {
+                    printf("- Warning: no backup %s found!\n", backup_path.c_str());
+                }
+            }
+        } else {
+            printf("- Backup info is absent!\n");
+        }
+
+        // If no backup, manually remove KernelSU
+        if (!from_backup) {
+            // Remove kernelsu.ko
+            do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kernelsu.ko");
+
+            // Remove the legacy embedded module if present.
+            auto legacy_kasumi_exists =
+                exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists kasumi.ko"}, workdir);
+            if (legacy_kasumi_exists.exit_code == 0) {
+                do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kasumi.ko");
+            }
+
+            // Restore init if init.real exists
+            auto init_real_exists =
+                exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists init.real"}, workdir);
+            if (init_real_exists.exit_code == 0) {
+                do_cpio_cmd(magiskboot, workdir, ramdisk, "mv init.real init");
+            }
+
+            // Repack (must run in workdir where unpack output files are)
+            // Output filename must match input format: boot -> new-boot.img, init_boot ->
+            // new-init_boot.img
+            const bool is_init_boot_restore =
+                (!parsed.boot_image.empty() &&
+                 parsed.boot_image.find("init_boot") != std::string::npos) ||
+                (!bootdevice.empty() && bootdevice.find("init_boot") != std::string::npos);
+            const std::string out_img =
+                workdir + "/" + (is_init_boot_restore ? "new-init_boot.img" : "new-boot.img");
+            printf("- Repacking boot image\n");
+            auto repack_result =
+                exec_command_magiskboot(magiskboot, {"repack", bootimage, out_img}, workdir);
+            if (repack_result.exit_code != 0) {
+                LOGE("magiskboot repack failed");
+                cleanup();
+                return 1;
+            }
+            new_boot = out_img;
+        }
     }
 
     // Output restored image
@@ -1548,8 +1600,7 @@ int boot_info_supported_kmis() {
 
 int boot_info_is_ab_device() {
     auto ab_update = getprop("ro.build.ab_update");
-    const bool is_ab = ab_update && trim(*ab_update) == "true" &&
-                       !get_slot_suffix(false).empty();
+    const bool is_ab = ab_update && trim(*ab_update) == "true" && !get_slot_suffix(false).empty();
     printf("%s\n", is_ab ? "true" : "false");
     return 0;
 }

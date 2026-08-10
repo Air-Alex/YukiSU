@@ -28,4 +28,8 @@ std::string choose_boot_partition(const std::string& kmi, bool ota,
                                   bool is_replace_kernel = false);
 std::string get_slot_suffix(bool ota);
 
+// Patch the embedded SuperKey state in an LKM before it is loaded.
+bool inject_superkey_into_lkm(const std::string& lkm_path, const std::string& superkey,
+                              bool signature_bypass);
+
 }  // namespace ksud

@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "boot/boot_patch_v2.hpp"
 #include "assets.hpp"
 #include "boot/boot_patch.hpp"
 #include "boot/ramdisk_editor.hpp"
@@ -163,6 +164,7 @@ void print_usage() {
     printf("  sulogd         Run sulog reader daemon\n");
     printf("  msud           Run magisk-compat su prompt daemon\n");
     printf("  boot-patch     Patch boot image\n");
+    printf("  boot-patch-v2  Patch boot.img with direct LKM injection (or flash boot with --flash)\n");
     printf("  boot-restore   Restore boot image\n");
     printf("  boot-info      Show boot information\n");
     printf("  ramdisk-editor Run a persistent ramdisk CPIO editor session\n");
@@ -1039,6 +1041,8 @@ int cli_run(int argc, char** argv) {
         return 1;
     } else if (cmd == "boot-patch") {
         return boot_patch(args);
+    } else if (cmd == "boot-patch-v2") {
+        return boot_patch_v2(args);
     } else if (cmd == "boot-restore") {
         return boot_restore(args);
     } else if (cmd == "boot-info") {

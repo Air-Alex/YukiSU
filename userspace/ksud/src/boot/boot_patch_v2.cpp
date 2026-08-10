@@ -1,0 +1,922 @@
+#include "boot_patch_v2.hpp"
+
+#include "../assets.hpp"
+#include "../log.hpp"
+#include "../utils.hpp"
+#include "boot_patch.hpp"
+#include "lkm_image.hpp"
+#include "tools.hpp"
+
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cerrno>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <limits>
+#include <new>
+#include <optional>
+
+namespace fs = std::filesystem;
+
+namespace ksud {
+namespace {
+
+struct BootPatchV2Args {
+    std::string boot;
+    std::string module;
+    std::string output;
+    std::string magiskboot;
+    std::string superkey;
+    bool force = false;
+    bool flash = false;
+    bool ota = false;
+    bool signature_bypass = false;
+    bool valid = true;
+};
+
+constexpr std::array<std::uint8_t, 8> kLkmCapsuleMagic = {
+    'K', 'S', 'U', 'L', 'K', 'M', '1', 0,
+};
+constexpr std::uint32_t kLkmCapsuleVersion = 1;
+constexpr std::uint32_t kLkmCapsuleHeaderSize = 96;
+constexpr std::size_t kLkmCapsuleFixupEntrySize = 16;
+
+bool has_direct_lkm_capsule(const std::vector<std::uint8_t>& kernel) {
+    auto image_info = boot::lkm_image::parse_arm64_image(kernel);
+    if (!image_info || image_info.value().image_size > kernel.size()) {
+        return false;
+    }
+    const std::size_t image_size = image_info.value().image_size;
+    if (image_size < kLkmCapsuleHeaderSize) {
+        return false;
+    }
+    for (std::size_t offset = 64; offset <= image_size - kLkmCapsuleHeaderSize; offset += 16) {
+        if (!std::equal(kLkmCapsuleMagic.begin(), kLkmCapsuleMagic.end(),
+                        kernel.begin() + static_cast<std::ptrdiff_t>(offset))) {
+            continue;
+        }
+        auto version = boot::lkm_image::read_u32_le(kernel.data(), kernel.size(), offset + 8);
+        auto header_size = boot::lkm_image::read_u32_le(kernel.data(), kernel.size(), offset + 12);
+        auto capsule_size = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 16);
+        auto module_offset =
+            boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 24);
+        auto module_size = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 32);
+        auto fixup_offset = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 40);
+        auto fixup_count = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 48);
+        auto flags = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 56);
+        if (!version || !header_size || !capsule_size || !module_offset || !module_size ||
+            !fixup_offset || !fixup_count || !flags || version.value() != kLkmCapsuleVersion ||
+            header_size.value() != kLkmCapsuleHeaderSize ||
+            (flags.value() & ~std::uint64_t{1}) != 0 ||
+            capsule_size.value() < header_size.value() ||
+            capsule_size.value() > std::numeric_limits<std::size_t>::max() ||
+            module_offset.value() < header_size.value() ||
+            module_offset.value() > capsule_size.value() ||
+            module_size.value() > capsule_size.value() - module_offset.value() ||
+            fixup_offset.value() < module_offset.value() ||
+            fixup_offset.value() > capsule_size.value() ||
+            fixup_count.value() >
+                (capsule_size.value() - fixup_offset.value()) / kLkmCapsuleFixupEntrySize) {
+            continue;
+        }
+        const std::size_t capsule_size_native = static_cast<std::size_t>(capsule_size.value());
+        if (capsule_size_native > image_size || offset > image_size - capsule_size_native ||
+            offset + capsule_size_native != image_size || module_offset.value() % 16 != 0 ||
+            fixup_offset.value() % 16 != 0) {
+            continue;
+        }
+        if (offset > std::numeric_limits<std::size_t>::max() - 16) {
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+BootPatchV2Args parse_args(const std::vector<std::string>& args) {
+    BootPatchV2Args result;
+    for (std::size_t index = 0; index < args.size(); ++index) {
+        const std::string& argument = args[index];
+        auto take_value = [&](std::string& destination) {
+            if (index + 1 >= args.size()) {
+                result.valid = false;
+                return;
+            }
+            destination = args[++index];
+            if (destination.empty())
+                result.valid = false;
+        };
+        if (argument == "-b" || argument == "--boot") {
+            take_value(result.boot);
+        } else if (argument == "-m" || argument == "--module") {
+            take_value(result.module);
+        } else if (argument == "-o" || argument == "--output" || argument == "--out") {
+            take_value(result.output);
+        } else if (argument == "--magiskboot") {
+            take_value(result.magiskboot);
+        } else if (argument == "--superkey") {
+            take_value(result.superkey);
+        } else if (argument == "--force") {
+            result.force = true;
+        } else if (argument == "--flash") {
+            result.flash = true;
+        } else if (argument == "--ota") {
+            result.ota = true;
+        } else if (argument == "--signature-bypass") {
+            result.signature_bypass = true;
+        } else {
+            result.valid = false;
+        }
+    }
+    return result;
+}
+
+std::optional<std::vector<std::uint8_t>> read_binary(const fs::path& path) {
+    if (path.empty())
+        return std::nullopt;
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream)
+        return std::nullopt;
+    stream.seekg(0, std::ios::end);
+    const std::streamoff length = stream.tellg();
+    if (length < 0 ||
+        static_cast<std::uintmax_t>(length) >
+            static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()) ||
+        static_cast<std::uintmax_t>(length) >
+            static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max()))
+        return std::nullopt;
+    stream.clear();
+    stream.seekg(0, std::ios::beg);
+    if (!stream)
+        return std::nullopt;
+    std::vector<std::uint8_t> data;
+    try {
+        data.resize(static_cast<std::size_t>(length));
+    } catch (const std::bad_alloc&) {
+        return std::nullopt;
+    }
+    if (!data.empty() &&
+        !stream.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(length)))
+        return std::nullopt;
+    return data;
+}
+
+bool write_binary(const fs::path& path, const std::vector<std::uint8_t>& data) {
+    if (path.empty() ||
+        data.size() > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max()))
+        return false;
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream)
+        return false;
+    if (!data.empty())
+        stream.write(reinterpret_cast<const char*>(data.data()),
+                     static_cast<std::streamsize>(data.size()));
+    return stream.good();
+}
+
+fs::path weak_absolute(const fs::path& path) {
+    std::error_code error;
+    const fs::path absolute = fs::absolute(path, error);
+    if (error)
+        return path;
+    return absolute.lexically_normal();
+}
+
+bool same_path(const fs::path& left, const fs::path& right) {
+    if (left.empty() || right.empty())
+        return false;
+    std::error_code error;
+    if (fs::exists(left, error) && !error && fs::exists(right, error) && !error) {
+        const bool equivalent = fs::equivalent(left, right, error);
+        if (!error && equivalent)
+            return true;
+    }
+    error.clear();
+    const fs::path left_canonical = fs::weakly_canonical(left, error);
+    if (error)
+        return weak_absolute(left) == weak_absolute(right);
+    error.clear();
+    const fs::path right_canonical = fs::weakly_canonical(right, error);
+    if (error)
+        return weak_absolute(left) == weak_absolute(right);
+    return left_canonical == right_canonical;
+}
+
+bool looks_like_non_boot_partition(const fs::path& path) {
+    std::string name = path.filename().string();
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    return name.find("init_boot") != std::string::npos ||
+           name.find("vendor_boot") != std::string::npos;
+}
+
+std::optional<fs::path> make_workdir() {
+#ifdef _WIN32
+    std::error_code error;
+    fs::path base = fs::temp_directory_path(error);
+    if (error)
+        base = fs::current_path(error);
+    for (unsigned int attempt = 0; attempt < 32; ++attempt) {
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        fs::path candidate =
+            base / ("yukisu-boot-v2-" + std::to_string(stamp) + "-" + std::to_string(attempt));
+        if (fs::create_directories(candidate, error) && !error)
+            return candidate;
+    }
+    return std::nullopt;
+#else
+    std::array<char, 96> pattern{};
+    const char* tmp = std::getenv("TMPDIR");
+    const std::string base = (tmp != nullptr && *tmp != '\0') ? tmp : "/data/local/tmp";
+    const int written =
+        std::snprintf(pattern.data(), pattern.size(), "%s/yukisu-boot-v2-XXXXXX", base.c_str());
+    if (written < 0 || static_cast<std::size_t>(written) >= pattern.size())
+        return std::nullopt;
+    char* created = mkdtemp(pattern.data());
+    if (created == nullptr)
+        return std::nullopt;
+    return fs::path(created);
+#endif
+}
+
+bool find_unpacked_kernel(const fs::path& workdir, fs::path* kernel) {
+    for (const char* name : {"kernel", "kernel.img"}) {
+        const fs::path candidate = workdir / name;
+        std::error_code error;
+        if (fs::is_regular_file(candidate, error) && !error) {
+            *kernel = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool cpio_entry_exists(const std::string& magiskboot, const fs::path& workdir,
+                       const fs::path& ramdisk, const char* entry) {
+    const auto result = exec_command_magiskboot(
+        magiskboot, {"cpio", ramdisk.string(), "exists " + std::string(entry)}, workdir.string());
+    return result.exit_code == 0;
+}
+
+bool run_cpio_command(const std::string& magiskboot, const fs::path& workdir,
+                      const fs::path& ramdisk, const std::string& command) {
+    const auto result =
+        exec_command_magiskboot(magiskboot, {"cpio", ramdisk.string(), command}, workdir.string());
+    if (result.exit_code == 0)
+        return true;
+    LOGE("boot-patch-v2: cpio command failed: %s", command.c_str());
+    if (!result.stderr_str.empty())
+        LOGE("%s", result.stderr_str.c_str());
+    return false;
+}
+
+bool ramdisk_is_magisk_patched(const std::string& magiskboot, const fs::path& workdir,
+                               const fs::path& ramdisk) {
+    const auto test =
+        exec_command_magiskboot(magiskboot, {"cpio", ramdisk.string(), "test"}, workdir.string());
+    if (test.exit_code != 1)
+        return false;
+    return cpio_entry_exists(magiskboot, workdir, ramdisk, "init.magisk.rc") ||
+           cpio_entry_exists(magiskboot, workdir, ramdisk, "overlay.d");
+}
+
+std::optional<bool> clean_legacy_ramdisks(const std::string& magiskboot, const fs::path& workdir) {
+    const std::array<fs::path, 3> candidates = {
+        workdir / "ramdisk.cpio",
+        workdir / "vendor_ramdisk" / "ramdisk.cpio",
+        workdir / "vendor_ramdisk" / "init_boot.cpio",
+    };
+    constexpr std::array<const char*, 9> legacy_entries = {
+        "kernelsu.ko",      "ksuinit",        "ksu_config",       "ksu_allow_shell", "kasumi.ko",
+        "force_debuggable", "adb_debug.prop", "stock_image.sha1", "init.real",
+    };
+    bool changed = false;
+    for (const auto& ramdisk : candidates) {
+        std::error_code error;
+        if (!fs::is_regular_file(ramdisk, error) || error)
+            continue;
+        bool has_legacy = false;
+        for (const char* entry : legacy_entries) {
+            if (cpio_entry_exists(magiskboot, workdir, ramdisk, entry)) {
+                has_legacy = true;
+                break;
+            }
+        }
+        if (!has_legacy)
+            continue;
+        if (ramdisk_is_magisk_patched(magiskboot, workdir, ramdisk)) {
+            LOGE("boot-patch-v2: refusing to rewrite a Magisk-patched ramdisk");
+            return std::nullopt;
+        }
+
+        const bool has_kernelsu = cpio_entry_exists(magiskboot, workdir, ramdisk, "kernelsu.ko");
+        const bool has_original_init = cpio_entry_exists(magiskboot, workdir, ramdisk, "init.real");
+        if (has_kernelsu && !has_original_init) {
+            LOGE("boot-patch-v2: legacy KernelSU ramdisk has no init.real; refusing cleanup");
+            return std::nullopt;
+        }
+        if (has_original_init) {
+            // magiskboot's cpio mv is fail-closed on destination collisions. The
+            // legacy loader owns init, so remove that replacement before restoring
+            // the original init.real entry.
+            if (cpio_entry_exists(magiskboot, workdir, ramdisk, "init") &&
+                !run_cpio_command(magiskboot, workdir, ramdisk, "rm init")) {
+                return std::nullopt;
+            }
+            if (!run_cpio_command(magiskboot, workdir, ramdisk, "mv init.real init")) {
+                return std::nullopt;
+            }
+        }
+        for (const char* entry : legacy_entries) {
+            if (std::strcmp(entry, "init.real") == 0)
+                continue;
+            if (cpio_entry_exists(magiskboot, workdir, ramdisk, entry) &&
+                !run_cpio_command(magiskboot, workdir, ramdisk, "rm " + std::string(entry))) {
+                return std::nullopt;
+            }
+        }
+        changed = true;
+        printf("- Removed legacy KernelSU ramdisk payload from %s\n", ramdisk.string().c_str());
+    }
+    return changed;
+}
+
+struct CleanedRamdiskImage {
+    bool changed = false;
+    fs::path repacked;
+};
+
+std::optional<CleanedRamdiskImage> clean_legacy_ramdisk_image(const std::string& magiskboot,
+                                                              const fs::path& source,
+                                                              const fs::path& workdir,
+                                                              const std::string& output_name) {
+    std::error_code error;
+    if (!fs::create_directories(workdir, error) && error)
+        return std::nullopt;
+    const auto unpack =
+        exec_command_magiskboot(magiskboot, {"unpack", source.string()}, workdir.string());
+    if (unpack.exit_code != 0) {
+        LOGE("boot-patch-v2: failed to unpack ramdisk cleanup image: %s", source.string().c_str());
+        if (!unpack.stderr_str.empty())
+            LOGE("%s", unpack.stderr_str.c_str());
+        return std::nullopt;
+    }
+    const auto changed = clean_legacy_ramdisks(magiskboot, workdir);
+    if (!changed)
+        return std::nullopt;
+    if (!*changed)
+        return CleanedRamdiskImage{};
+
+    const fs::path repacked = workdir / output_name;
+    const auto repack = exec_command_magiskboot(
+        magiskboot, {"repack", source.string(), repacked.string()}, workdir.string());
+    error.clear();
+    if (repack.exit_code != 0 || !fs::is_regular_file(repacked, error) || error) {
+        LOGE("boot-patch-v2: failed to repack cleaned ramdisk image: %s", source.string().c_str());
+        if (!repack.stderr_str.empty())
+            LOGE("%s", repack.stderr_str.c_str());
+        return std::nullopt;
+    }
+    return CleanedRamdiskImage{true, repacked};
+}
+
+bool flash_partition_image(const fs::path& image, const std::string& device) {
+    if (image.empty() || device.empty())
+        return false;
+    const auto set_rw = exec_command({"blockdev", "--setrw", device});
+    if (set_rw.exit_code != 0)
+        LOGW("boot-patch-v2: blockdev --setrw failed for %s; continuing", device.c_str());
+    if (!exec_dd(image.string(), device)) {
+        LOGE("boot-patch-v2: failed to flash %s", device.c_str());
+        return false;
+    }
+    return true;
+}
+
+std::optional<std::vector<std::uint8_t>> load_module(const BootPatchV2Args& args,
+                                                     const std::vector<std::uint8_t>& kernel,
+                                                     const fs::path& workdir) {
+    if (!args.module.empty()) {
+        auto module = read_binary(args.module);
+        if (!module)
+            LOGE("boot-patch-v2: failed to read module: %s", args.module.c_str());
+        return module;
+    }
+    const auto kmi = boot::lkm_image::detect_kmi(kernel);
+    if (!kmi) {
+        LOGE("boot-patch-v2: failed to detect KMI from linux_banner");
+        return std::nullopt;
+    }
+    const std::string asset_name = *kmi + "_kernelsu.ko";
+    const fs::path extracted_module = workdir / "embedded-kernelsu.ko";
+    if (!copy_asset_to_file(asset_name, extracted_module.string())) {
+        LOGE("boot-patch-v2: failed to extract embedded module for KMI %s", kmi->c_str());
+        return std::nullopt;
+    }
+    auto module = read_binary(extracted_module);
+    if (!module) {
+        LOGE("boot-patch-v2: failed to read extracted module for KMI %s", kmi->c_str());
+        return std::nullopt;
+    }
+    printf("- Using embedded LKM: %s\n", asset_name.c_str());
+    return module;
+}
+
+void print_report(const boot::lkm_image::InjectionReport& report) {
+    printf("- Kernel: %s\n", report.kernel_release.c_str());
+    printf("- Kallsyms: %s (%zu symbols)\n", report.kallsyms_layout.c_str(), report.kallsyms_count);
+    if (report.btf_offset) {
+        printf("- vmlinux BTF: offset 0x%zx, size 0x%zx, %zu types\n", *report.btf_offset,
+               report.btf_size.value_or(0), report.btf_type_count);
+    } else {
+        printf("- vmlinux BTF: not selected; using built-in GKI ABI\n");
+    }
+    printf("- load_info: storage=%llu, hdr=%llu, len=%llu\n",
+           static_cast<unsigned long long>(report.gki_abi.load_info_storage_size),
+           static_cast<unsigned long long>(report.gki_abi.load_info_hdr_offset),
+           static_cast<unsigned long long>(report.gki_abi.load_info_len_offset));
+    if (report.code_size != 0) {
+        printf("- Bootstrap: offset 0x%zx, %zu bytes\n", report.code_offset, report.code_size);
+        printf("- Memblock patch: offset 0x%zx\n", report.memblock_call_offset);
+    } else {
+        printf("- Bootstrap: existing direct-LKM bootstrap retained\n");
+    }
+    printf("- PAGE_OFFSET: 0x%llx\n", static_cast<unsigned long long>(report.page_offset));
+    printf("- Module fixups: %zu, unresolved: %zu\n", report.fixup_count, report.unresolved.size());
+    if (!report.unresolved.empty()) {
+        printf("- Native resolver symbols: ");
+        for (std::size_t index = 0; index < report.unresolved.size(); ++index)
+            printf("%s%s", index == 0 ? "" : ", ", report.unresolved[index].c_str());
+        printf("\n");
+    }
+    printf("- Patched Image size: 0x%zx\n", report.image_size);
+}
+
+}  // namespace
+
+int boot_patch_v2(const std::vector<std::string>& args) {
+    const BootPatchV2Args parsed = parse_args(args);
+    const bool device_mode = parsed.flash;
+    if (!parsed.valid || (parsed.ota && !device_mode) ||
+        (!device_mode && (parsed.boot.empty() || parsed.output.empty())) ||
+        (device_mode && (!parsed.boot.empty() || !parsed.output.empty()))) {
+        LOGE("Usage: ksud boot-patch-v2 --boot <boot.img> [--module <kernelsu.ko>] "
+             "--output <patched.img> [--superkey <key>] [--signature-bypass] [--force]\n"
+             "       ksud boot-patch-v2 --flash [--ota] [--module <kernelsu.ko>] "
+             "[--superkey <key>] [--signature-bypass]");
+        return 1;
+    }
+    const fs::path module_path(parsed.module);
+    std::error_code error;
+    if (!parsed.module.empty()) {
+        error.clear();
+        if (!fs::is_regular_file(module_path, error)) {
+            if (error) {
+                LOGE("boot-patch-v2: failed to inspect module %s: %s", parsed.module.c_str(),
+                     error.message().c_str());
+            } else {
+                LOGE("boot-patch-v2: module does not exist: %s", parsed.module.c_str());
+            }
+            return 1;
+        }
+    }
+
+    auto workdir = make_workdir();
+    if (!workdir) {
+        LOGE("boot-patch-v2: failed to create a temporary directory");
+        return 1;
+    }
+    const fs::path& work = *workdir;
+    const auto cleanup = [&work]() {
+        std::error_code cleanup_error;
+        fs::remove_all(work, cleanup_error);
+        if (cleanup_error)
+            LOGW("boot-patch-v2: failed to remove temporary directory %s: %s",
+                 work.string().c_str(), cleanup_error.message().c_str());
+    };
+
+    fs::path input_path;
+    fs::path requested_input_path;
+    fs::path file_backup_path;
+    const fs::path output_path(parsed.output);
+    std::string boot_device;
+    std::string init_boot_device;
+    if (device_mode) {
+        const std::string slot = get_slot_suffix(parsed.ota);
+        if (parsed.ota && slot.empty()) {
+            LOGE("boot-patch-v2: failed to resolve the inactive slot");
+            cleanup();
+            return 1;
+        }
+        boot_device = "/dev/block/by-name/boot" + slot;
+        const fs::path current_boot = work / "boot-current.img";
+        if (access(boot_device.c_str(), R_OK) != 0 ||
+            !exec_dd(boot_device, current_boot.string())) {
+            LOGE("boot-patch-v2: failed to read %s", boot_device.c_str());
+            cleanup();
+            return 1;
+        }
+        const fs::path persistent_backup =
+            fs::path("/data/adb/ksu") / ("boot-patch-v2-original" + slot + ".img");
+        std::error_code backup_error;
+        const bool backup_exists =
+            fs::is_regular_file(persistent_backup, backup_error) && !backup_error;
+        if (backup_exists) {
+            input_path = work / "boot-original.img";
+            if (!exec_dd(persistent_backup.string(), input_path.string())) {
+                LOGE("boot-patch-v2: failed to read original boot backup %s",
+                     persistent_backup.string().c_str());
+                cleanup();
+                return 1;
+            }
+            printf("- Reusing original boot backup: %s\n", persistent_backup.string().c_str());
+        } else {
+            if (!ensure_dir_exists("/data/adb/ksu") ||
+                !exec_dd(current_boot.string(), persistent_backup.string())) {
+                LOGE("boot-patch-v2: failed to save original boot backup: %s",
+                     persistent_backup.string().c_str());
+                cleanup();
+                return 1;
+            }
+            input_path = current_boot;
+            printf("- Saved original boot backup: %s\n", persistent_backup.string().c_str());
+        }
+        init_boot_device = "/dev/block/by-name/init_boot" + slot;
+    } else {
+        input_path = fs::path(parsed.boot);
+        requested_input_path = input_path;
+        error.clear();
+        if (!fs::is_regular_file(input_path, error)) {
+            if (error) {
+                LOGE("boot-patch-v2: failed to inspect boot image %s: %s", parsed.boot.c_str(),
+                     error.message().c_str());
+            } else {
+                LOGE("boot-patch-v2: boot image does not exist: %s", parsed.boot.c_str());
+            }
+            cleanup();
+            return 1;
+        }
+        if (looks_like_non_boot_partition(input_path)) {
+            LOGE("boot-patch-v2: refusing init_boot/vendor_boot; this command only patches "
+                 "boot.img");
+            cleanup();
+            return 1;
+        }
+    }
+
+    if (!device_mode) {
+        error.clear();
+        const fs::file_status output_status = fs::symlink_status(output_path, error);
+        if (error) {
+            LOGE("boot-patch-v2: failed to inspect output path %s: %s", parsed.output.c_str(),
+                 error.message().c_str());
+            cleanup();
+            return 1;
+        }
+        const bool output_exists = output_status.type() != fs::file_type::not_found;
+        if (output_exists) {
+            error.clear();
+            if (!fs::is_regular_file(output_path, error)) {
+                if (error) {
+                    LOGE("boot-patch-v2: failed to inspect output path %s: %s",
+                         parsed.output.c_str(), error.message().c_str());
+                } else {
+                    LOGE("boot-patch-v2: output exists but is not a regular file: %s",
+                         parsed.output.c_str());
+                }
+                cleanup();
+                return 1;
+            }
+            if (same_path(requested_input_path.empty() ? input_path : requested_input_path,
+                          output_path) ||
+                (!parsed.module.empty() && same_path(module_path, output_path))) {
+                LOGE("boot-patch-v2: refusing to overwrite an input file");
+                cleanup();
+                return 1;
+            }
+            if (!parsed.force) {
+                LOGE("boot-patch-v2: output exists; use --force: %s", parsed.output.c_str());
+                cleanup();
+                return 1;
+            }
+        }
+    }
+
+    if (!device_mode) {
+        const fs::path backup_path = fs::path(parsed.boot + ".yukisu-original.img");
+        file_backup_path = backup_path;
+        std::error_code backup_error;
+        const bool backup_exists = fs::is_regular_file(backup_path, backup_error) && !backup_error;
+        if (backup_exists) {
+            input_path = work / "boot-original.img";
+            std::error_code copy_error;
+            fs::copy_file(backup_path, input_path, fs::copy_options::overwrite_existing,
+                          copy_error);
+            if (copy_error) {
+                LOGE("boot-patch-v2: failed to read original boot backup %s: %s",
+                     backup_path.string().c_str(), copy_error.message().c_str());
+                cleanup();
+                return 1;
+            }
+            printf("- Reusing original boot backup: %s\n", backup_path.string().c_str());
+        } else {
+            std::error_code copy_error;
+            fs::copy_file(requested_input_path, backup_path, fs::copy_options::none, copy_error);
+            if (copy_error) {
+                LOGE("boot-patch-v2: failed to save original boot backup %s: %s",
+                     backup_path.string().c_str(), copy_error.message().c_str());
+                cleanup();
+                return 1;
+            }
+            printf("- Saved original boot backup: %s\n", backup_path.string().c_str());
+        }
+    }
+
+    {
+        const auto source_data = read_binary(input_path);
+        if (!source_data) {
+            LOGE("boot-patch-v2: failed to read boot image: %s", input_path.string().c_str());
+            cleanup();
+            return 1;
+        }
+        const auto boot_info = boot::lkm_image::parse_boot_image(*source_data);
+        if (!boot_info) {
+            LOGE("boot-patch-v2: input must be a valid AOSP boot image; init_boot and "
+                 "vendor_boot are not supported: %s",
+                 boot_info.error().message.c_str());
+            cleanup();
+            return 1;
+        }
+        if (boot_info.value().kernel.empty()) {
+            LOGE("boot-patch-v2: boot image does not contain a kernel");
+            cleanup();
+            return 1;
+        }
+    }
+
+    const std::string magiskboot = find_magiskboot(parsed.magiskboot, work.string());
+    if (magiskboot.empty()) {
+        cleanup();
+        return 1;
+    }
+    printf("- Reading boot image: %s\n", input_path.string().c_str());
+    const auto unpack =
+        exec_command_magiskboot(magiskboot, {"unpack", input_path.string()}, work.string());
+    if (unpack.exit_code != 0) {
+        LOGE("boot-patch-v2: magiskboot unpack failed (%d)", unpack.exit_code);
+        if (!unpack.stderr_str.empty())
+            LOGE("%s", unpack.stderr_str.c_str());
+        cleanup();
+        return 1;
+    }
+    const auto legacy_cleanup = clean_legacy_ramdisks(magiskboot, work);
+    if (!legacy_cleanup) {
+        LOGE("boot-patch-v2: failed to clean legacy KernelSU ramdisk payload");
+        cleanup();
+        return 1;
+    }
+
+    std::optional<CleanedRamdiskImage> cleaned_init_boot;
+    if (device_mode) {
+        struct stat init_boot_stat{};
+        if (stat(init_boot_device.c_str(), &init_boot_stat) == 0) {
+            const fs::path init_boot_source = work / "init_boot-input.img";
+            if (!exec_dd(init_boot_device, init_boot_source.string())) {
+                LOGE("boot-patch-v2: failed to read %s", init_boot_device.c_str());
+                cleanup();
+                return 1;
+            }
+            cleaned_init_boot = clean_legacy_ramdisk_image(
+                magiskboot, init_boot_source, work / "init_boot_cleanup", "new-init_boot.img");
+            if (!cleaned_init_boot) {
+                LOGE("boot-patch-v2: failed to clean %s", init_boot_device.c_str());
+                cleanup();
+                return 1;
+            }
+        } else if (errno != ENOENT) {
+            LOGE("boot-patch-v2: failed to inspect %s: %s", init_boot_device.c_str(),
+                 std::strerror(errno));
+            cleanup();
+            return 1;
+        }
+    }
+    fs::path kernel_path;
+    if (!find_unpacked_kernel(work, &kernel_path)) {
+        LOGE("boot-patch-v2: unpacked boot image has no kernel");
+        cleanup();
+        return 1;
+    }
+    auto kernel = read_binary(kernel_path);
+    if (!kernel) {
+        LOGE("boot-patch-v2: failed to read unpacked kernel");
+        cleanup();
+        return 1;
+    }
+    const bool already_patched = has_direct_lkm_capsule(*kernel);
+    auto module = load_module(parsed, *kernel, work);
+    if (!module) {
+        cleanup();
+        return 1;
+    }
+    const fs::path module_for_injection = work / "module-for-injection.ko";
+    if (!write_binary(module_for_injection, *module)) {
+        LOGE("boot-patch-v2: failed to stage module for injection");
+        cleanup();
+        return 1;
+    }
+    if (!parsed.superkey.empty())
+        printf("- Injecting SuperKey into LKM\n");
+    else if (parsed.signature_bypass)
+        LOGW("boot-patch-v2: --signature-bypass requires --superkey; ignoring");
+    if (!inject_superkey_into_lkm(module_for_injection.string(), parsed.superkey,
+                                  parsed.signature_bypass)) {
+        LOGE("boot-patch-v2: failed to inject SuperKey data into LKM");
+        cleanup();
+        return 1;
+    }
+    module = read_binary(module_for_injection);
+    if (!module) {
+        LOGE("boot-patch-v2: failed to read SuperKey-patched LKM");
+        cleanup();
+        return 1;
+    }
+    LOGW("boot-patch-v2: early PID 1 loading uses only the imgpatch marker; "
+         "allow_shell/norc/UTS boot options are not applied");
+    printf("- Recovering kallsyms/BTF and injecting LKM\n");
+    if (already_patched)
+        printf("- Existing direct-LKM bootstrap found; replacing its module capsule\n");
+    auto injected = already_patched ? boot::lkm_image::replace_capsule_module(*kernel, *module)
+                                    : boot::lkm_image::inject_image(*kernel, *module);
+    if (!injected) {
+        LOGE("boot-patch-v2: injection failed: %s", injected.error().message.c_str());
+        cleanup();
+        return 1;
+    }
+    if (!write_binary(kernel_path, injected.value().image)) {
+        LOGE("boot-patch-v2: failed to write patched kernel");
+        cleanup();
+        return 1;
+    }
+    const fs::path repacked = work / "new-boot.img";
+    const auto repack = exec_command_magiskboot(
+        magiskboot, {"repack", input_path.string(), repacked.string()}, work.string());
+    error.clear();
+    const bool repacked_regular = fs::is_regular_file(repacked, error);
+    if (repack.exit_code != 0 || !repacked_regular || error) {
+        LOGE("boot-patch-v2: magiskboot repack failed (%d)", repack.exit_code);
+        if (!repack.stderr_str.empty())
+            LOGE("%s", repack.stderr_str.c_str());
+        if (error)
+            LOGE("boot-patch-v2: failed to inspect repacked image: %s", error.message().c_str());
+        cleanup();
+        return 1;
+    }
+
+    if (device_mode) {
+        if (!flash_partition_image(repacked, boot_device)) {
+            cleanup();
+            return 1;
+        }
+        const bool init_boot_changed = cleaned_init_boot.has_value() && cleaned_init_boot->changed;
+        if (init_boot_changed &&
+            !flash_partition_image(cleaned_init_boot->repacked, init_boot_device)) {
+            LOGE("boot-patch-v2: init_boot cleanup flash failed; restoring boot");
+            if (!flash_partition_image(input_path, boot_device))
+                LOGE("boot-patch-v2: failed to restore boot after partial flash");
+            cleanup();
+            return 1;
+        }
+        print_report(injected.value().report);
+        printf("- Flashed direct-kernel patch to %s\n", boot_device.c_str());
+        if (init_boot_changed)
+            printf("- Cleared legacy KernelSU ramdisk from %s\n", init_boot_device.c_str());
+        printf("- Patch successfully\n");
+        printf("- Done!\n");
+        cleanup();
+        return 0;
+    }
+
+    const fs::path parent =
+        output_path.parent_path().empty() ? fs::path(".") : output_path.parent_path();
+    error.clear();
+    fs::create_directories(parent, error);
+    if (error) {
+        LOGE("boot-patch-v2: failed to create output directory: %s", error.message().c_str());
+        cleanup();
+        return 1;
+    }
+    error.clear();
+    if (!fs::is_directory(parent, error)) {
+        if (error) {
+            LOGE("boot-patch-v2: failed to inspect output directory: %s", error.message().c_str());
+        } else {
+            LOGE("boot-patch-v2: output parent is not a directory: %s", parent.string().c_str());
+        }
+        cleanup();
+        return 1;
+    }
+    const fs::path output_backup = fs::path(parsed.output + ".yukisu-original.img");
+    if (!same_path(file_backup_path, output_backup)) {
+        error.clear();
+        fs::copy_file(file_backup_path, output_backup, fs::copy_options::overwrite_existing, error);
+        if (error) {
+            LOGE("boot-patch-v2: failed to save output's original boot backup %s: %s",
+                 output_backup.string().c_str(), error.message().c_str());
+            cleanup();
+            return 1;
+        }
+    }
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const fs::path temporary = parent / (".yukisu-boot-v2-" + output_path.filename().string() +
+                                         "." + std::to_string(stamp) + ".tmp");
+    error.clear();
+    const fs::file_status temporary_status = fs::symlink_status(temporary, error);
+    if (error || temporary_status.type() != fs::file_type::not_found) {
+        if (error) {
+            LOGE("boot-patch-v2: failed to inspect temporary output: %s", error.message().c_str());
+        } else {
+            LOGE("boot-patch-v2: temporary output already exists: %s", temporary.string().c_str());
+        }
+        cleanup();
+        return 1;
+    }
+    error.clear();
+    const bool copied = fs::copy_file(repacked, temporary, fs::copy_options::none, error);
+    if (!copied || error) {
+        LOGE("boot-patch-v2: failed to stage output image: %s", error.message().c_str());
+        std::error_code remove_error;
+        fs::remove(temporary, remove_error);
+        cleanup();
+        return 1;
+    }
+    error.clear();
+    const fs::file_status final_output_status = fs::symlink_status(output_path, error);
+    if (error) {
+        LOGE("boot-patch-v2: failed to recheck output path: %s", error.message().c_str());
+        std::error_code remove_error;
+        fs::remove(temporary, remove_error);
+        cleanup();
+        return 1;
+    }
+    if (final_output_status.type() != fs::file_type::not_found) {
+        if (same_path(input_path, output_path) ||
+            (!parsed.module.empty() && same_path(module_path, output_path))) {
+            LOGE("boot-patch-v2: refusing to overwrite an input file");
+            std::error_code remove_error;
+            fs::remove(temporary, remove_error);
+            cleanup();
+            return 1;
+        }
+        if (!parsed.force) {
+            LOGE("boot-patch-v2: output appeared while patching; use --force: %s",
+                 parsed.output.c_str());
+            std::error_code remove_error;
+            fs::remove(temporary, remove_error);
+            cleanup();
+            return 1;
+        }
+        if (final_output_status.type() != fs::file_type::regular &&
+            final_output_status.type() != fs::file_type::symlink) {
+            LOGE("boot-patch-v2: refusing to replace a non-file output: %s", parsed.output.c_str());
+            std::error_code remove_error;
+            fs::remove(temporary, remove_error);
+            cleanup();
+            return 1;
+        }
+        error.clear();
+        fs::remove(output_path, error);
+        if (error) {
+            LOGE("boot-patch-v2: failed to replace output: %s", error.message().c_str());
+            std::error_code remove_error;
+            fs::remove(temporary, remove_error);
+            cleanup();
+            return 1;
+        }
+    }
+    error.clear();
+    fs::rename(temporary, output_path, error);
+    if (error) {
+        LOGE("boot-patch-v2: failed to install output image: %s", error.message().c_str());
+        std::error_code remove_error;
+        fs::remove(temporary, remove_error);
+        cleanup();
+        return 1;
+    }
+    print_report(injected.value().report);
+    printf("- Output: %s\n", output_path.string().c_str());
+    printf("- Patch successfully\n");
+    printf("- Done!\n");
+    cleanup();
+    return 0;
+}
+
+}  // namespace ksud

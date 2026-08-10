@@ -282,6 +282,26 @@ add_custom_command(
     COMMENT "Generating embedded assets..."
 )
 
+# The boot-patch-v2 bootstrap is deliberately kept as a small AArch64 ET_REL
+# object.  Compile it with the same Android clang as ksud and convert it to a
+# checked C++ byte array so the production tree remains C++-only.
+set(LKM_BOOTSTRAP_SOURCE ${CMAKE_SOURCE_DIR}/src/boot/lkm_image_bootstrap.S)
+set(LKM_BOOTSTRAP_OBJECT ${GENERATED_DIR}/lkm_image_bootstrap.o)
+set(LKM_BOOTSTRAP_CPP ${GENERATED_DIR}/lkm_image_bootstrap_data.cpp)
+add_custom_command(
+    OUTPUT ${LKM_BOOTSTRAP_CPP}
+    COMMAND ${CMAKE_C_COMPILER} --target=aarch64-linux-android -c -nostdlib
+            -o ${LKM_BOOTSTRAP_OBJECT} ${LKM_BOOTSTRAP_SOURCE}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/embed_lkm_bootstrap.py
+            ${LKM_BOOTSTRAP_OBJECT} ${LKM_BOOTSTRAP_CPP}
+    DEPENDS ${LKM_BOOTSTRAP_SOURCE}
+            ${CMAKE_SOURCE_DIR}/src/boot/lkm_image_bootstrap.hpp
+            ${CMAKE_SOURCE_DIR}/scripts/embed_lkm_bootstrap.py
+    BYPRODUCTS ${LKM_BOOTSTRAP_OBJECT}
+    COMMENT "Embedding the boot-patch-v2 AArch64 bootstrap"
+    VERBATIM
+)
+
 # third_party tools: compile into ksud for multi-call
 set(MAGISKTOOLS_ALONE_DIR ${CMAKE_SOURCE_DIR}/third_party)
 set(MAGISKBOOT_ALONE_DIR ${MAGISKTOOLS_ALONE_DIR}/MagiskbootAlone)
@@ -352,6 +372,11 @@ set(KSUD_OUR_SOURCES
     src/module/module_config.cpp
     src/module/metamodule.cpp
     src/boot/boot_patch.cpp
+    src/boot/boot_patch_v2.cpp
+    src/boot/boot_image_btf.cpp
+    src/boot/lkm_image_core.cpp
+    src/boot/lkm_image_bootstrap_linker.cpp
+    src/boot/lkm_image.cpp
     src/boot/ramdisk_editor.cpp
     src/boot/tools.cpp
     src/boot/apk_sign.cpp
@@ -445,7 +470,7 @@ yukisu_enable_clang_tidy(ksud_our_objs CXX)
 
 # Generated compressed asset bytes are compiled into ksud, but are not useful
 # clang-tidy input. Keep them separate from the hand-written first-party code.
-add_library(ksud_generated_objs OBJECT ${ASSETS_CPP})
+add_library(ksud_generated_objs OBJECT ${ASSETS_CPP} ${LKM_BOOTSTRAP_CPP})
 target_include_directories(ksud_generated_objs PRIVATE ${KSUD_INCLUDE_DIRS})
 target_compile_definitions(ksud_generated_objs PRIVATE ${KSUD_DEFINES})
 
