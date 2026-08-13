@@ -1,15 +1,18 @@
 #include "solist.hpp"
 #include "log.hpp"
 
+#include <climits>
 #include <elf.h>
 #include <fcntl.h>
 #include <link.h>
+#include <sys/auxv.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -27,11 +30,18 @@ namespace {
 #define SLOGE(...) ZLOGE(__VA_ARGS__)
 #define SLOGI(...) ZLOGI(__VA_ARGS__)
 
-constexpr size_t kSoinfoNextOff = 5 * sizeof(void *);
 constexpr int kMaxWalk = 2000; /* guard against a wrong offset / cyclic list */
 /* Android bionic CFI shadow format. */
 constexpr uintptr_t kCfiShadowGranularity = 18;
 constexpr uintptr_t kCfiShadowEntrySize = sizeof(uint16_t);
+
+inline uintptr_t elf_runtime_address(ElfW(Addr) load_bias, ElfW(Addr) value) {
+  return static_cast<uintptr_t>(load_bias + value);
+}
+
+inline uintptr_t elf_load_bias(uintptr_t mapped, ElfW(Addr) value) {
+  return static_cast<uintptr_t>(static_cast<ElfW(Addr)>(mapped) - value);
+}
 
 using realpath_fn = const char *(*)(void *);
 using guard_fn = void (*)(void *);
@@ -73,49 +83,160 @@ public:
     const size_t plen = strlen(prefix);
     for (size_t i = 0; i < sym_cnt_; ++i) {
       const ElfW(Sym) &s = symtab_[i];
-      if (s.st_name == 0 || s.st_value == 0)
+      if (s.st_name == 0 || s.st_name >= strtab_sz_ || s.st_value == 0 ||
+          s.st_shndx == SHN_UNDEF)
         continue;
       const char *name = strtab_ + s.st_name;
-      if (strncmp(name, prefix, plen) == 0)
-        return base_ + s.st_value;
+      if (memchr(name, '\0', strtab_sz_ - s.st_name) == nullptr ||
+          strncmp(name, prefix, plen) != 0)
+        continue;
+      uintptr_t address =
+          elf_runtime_address(static_cast<ElfW(Addr)>(load_bias_), s.st_value);
+#if defined(__arm__)
+      uintptr_t mapped_address = address & ~static_cast<uintptr_t>(1);
+#else
+      uintptr_t mapped_address = address;
+#endif
+      if (runtime_contains(mapped_address))
+        return address;
     }
     return 0;
   }
 
-  [[nodiscard]] uintptr_t base() const { return base_; }
-
 private:
-  bool find_linker_base() {
-    FILE *fp = fopen("/proc/self/maps", "re");
-    if (fp == nullptr)
-      return false;
-    char line[512];
-    while (fgets(line, sizeof(line), fp) != nullptr) {
-#if defined(__LP64__)
-      if (strstr(line, "/linker64") == nullptr)
+  static bool file_range_valid(uint64_t offset, uint64_t size,
+                               size_t file_size) {
+    return offset <= file_size && size <= file_size - offset;
+  }
+
+  static bool valid_ident(const unsigned char *ident) {
+    return memcmp(ident, ELFMAG, SELFMAG) == 0 &&
+           ident[EI_CLASS] == (sizeof(void *) == 8 ? ELFCLASS64 : ELFCLASS32) &&
+           ident[EI_DATA] == ELFDATA2LSB && ident[EI_VERSION] == EV_CURRENT;
+  }
+
+  static bool valid_machine(ElfW(Half) machine) {
+#if defined(__aarch64__)
+    return machine == EM_AARCH64;
+#elif defined(__arm__)
+    return machine == EM_ARM;
 #else
-      if (strstr(line, "/linker") == nullptr ||
-          strstr(line, "/linker64") != nullptr)
-#endif // #if defined(__LP64__)
+    (void)machine;
+    return false;
+#endif
+  }
+
+  [[nodiscard]] bool runtime_contains(uintptr_t address) const {
+    for (size_t i = 0; i < runtime_phnum_; ++i) {
+      const ElfW(Phdr) &ph = runtime_phdr_[i];
+      if (ph.p_type != PT_LOAD)
         continue;
-      unsigned long start = 0;
-      if (sscanf(line, "%lx-", &start) != 1)
+      uintptr_t start =
+          elf_runtime_address(static_cast<ElfW(Addr)>(load_bias_), ph.p_vaddr);
+      if (ph.p_memsz > UINTPTR_MAX - start)
         continue;
-      base_ = start;
-      const char *slash = strchr(line, '/');
-      if (slash != nullptr) {
-        size_t n = strlen(slash);
-        while (n > 0 && (slash[n - 1] == '\n' || slash[n - 1] == ' '))
-          --n;
-        if (n < sizeof(path_)) {
-          memcpy(path_, slash, n);
-          path_[n] = '\0';
-        }
-      }
+      if (address >= start && address < start + ph.p_memsz)
+        return true;
+    }
+    return false;
+  }
+
+  bool runtime_phdr_matches(const ElfW(Ehdr) * eh,
+                            const ElfW(Phdr) * phdr) const {
+    if (eh->e_phnum != runtime_phnum_)
+      return false;
+    for (size_t i = 0; i < runtime_phnum_; ++i) {
+      const ElfW(Phdr) &a = runtime_phdr_[i];
+      const ElfW(Phdr) &b = phdr[i];
+      if (a.p_type != b.p_type || a.p_flags != b.p_flags ||
+          a.p_offset != b.p_offset || a.p_vaddr != b.p_vaddr ||
+          a.p_filesz != b.p_filesz || a.p_memsz != b.p_memsz ||
+          a.p_align != b.p_align)
+        return false;
+    }
+    return true;
+  }
+
+  bool find_linker_base() {
+    constexpr uint64_t kMaxProgramHeaderBytes = 64ULL * 1024ULL;
+    uintptr_t linker_base = static_cast<uintptr_t>(getauxval(AT_BASE));
+    if (linker_base == 0)
+      return false;
+
+    const auto *eh = reinterpret_cast<const ElfW(Ehdr) *>(linker_base);
+    if (!valid_ident(eh->e_ident) || !valid_machine(eh->e_machine) ||
+        eh->e_type != ET_DYN || eh->e_version != EV_CURRENT ||
+        eh->e_ehsize != sizeof(ElfW(Ehdr)) ||
+        eh->e_phentsize != sizeof(ElfW(Phdr)) || eh->e_phnum == 0 ||
+        eh->e_phnum > 128 || eh->e_phoff > kMaxProgramHeaderBytes ||
+        static_cast<uint64_t>(eh->e_phnum) * sizeof(ElfW(Phdr)) >
+            kMaxProgramHeaderBytes - eh->e_phoff ||
+        eh->e_phoff > UINTPTR_MAX - linker_base)
+      return false;
+
+    runtime_phdr_ =
+        reinterpret_cast<const ElfW(Phdr) *>(linker_base + eh->e_phoff);
+    runtime_phnum_ = eh->e_phnum;
+    for (size_t i = 0; i < runtime_phnum_; ++i) {
+      const ElfW(Phdr) &ph = runtime_phdr_[i];
+      if (ph.p_type != PT_LOAD)
+        continue;
+      uintptr_t mapped =
+          elf_runtime_address(static_cast<ElfW(Addr)>(linker_base),
+                              static_cast<ElfW(Addr)>(ph.p_offset));
+      load_bias_ = elf_load_bias(mapped, ph.p_vaddr);
       break;
     }
-    (void)fclose(fp);
-    return base_ != 0 && path_[0] != '\0';
+    if (load_bias_ == 0)
+      return false;
+
+    uintptr_t main_phdr_addr = static_cast<uintptr_t>(getauxval(AT_PHDR));
+    size_t main_phnum = static_cast<size_t>(getauxval(AT_PHNUM));
+    size_t main_phent = static_cast<size_t>(getauxval(AT_PHENT));
+    if (main_phdr_addr == 0 || main_phnum == 0 || main_phnum > 128 ||
+        main_phent != sizeof(ElfW(Phdr)))
+      return false;
+
+    const auto *main_phdr =
+        reinterpret_cast<const ElfW(Phdr) *>(main_phdr_addr);
+    uintptr_t main_bias = 0;
+    bool have_main_bias = false;
+    const ElfW(Phdr) *interp_phdr = nullptr;
+    for (size_t i = 0; i < main_phnum; ++i) {
+      if (main_phdr[i].p_type == PT_PHDR) {
+        main_bias = elf_load_bias(main_phdr_addr, main_phdr[i].p_vaddr);
+        have_main_bias = true;
+      } else if (main_phdr[i].p_type == PT_INTERP) {
+        interp_phdr = &main_phdr[i];
+      }
+    }
+    if (!have_main_bias || interp_phdr == nullptr ||
+        interp_phdr->p_filesz < 2 || interp_phdr->p_filesz > sizeof(path_))
+      return false;
+
+    bool interp_mapped = false;
+    for (size_t i = 0; i < main_phnum; ++i) {
+      const ElfW(Phdr) &ph = main_phdr[i];
+      if (ph.p_type != PT_LOAD || interp_phdr->p_vaddr < ph.p_vaddr)
+        continue;
+      uint64_t relative = interp_phdr->p_vaddr - ph.p_vaddr;
+      if (relative <= ph.p_memsz &&
+          interp_phdr->p_filesz <= ph.p_memsz - relative) {
+        interp_mapped = true;
+        break;
+      }
+    }
+    if (!interp_mapped)
+      return false;
+
+    const char *interp = reinterpret_cast<const char *>(elf_runtime_address(
+        static_cast<ElfW(Addr)>(main_bias), interp_phdr->p_vaddr));
+    size_t path_len = strnlen(interp, interp_phdr->p_filesz);
+    if (path_len == 0 || path_len >= interp_phdr->p_filesz ||
+        path_len >= sizeof(path_) || interp[0] != '/')
+      return false;
+    memcpy(path_, interp, path_len + 1);
+    return true;
   }
 
   bool map_and_parse() {
@@ -124,7 +245,8 @@ private:
       return false;
     struct stat st{};
     if (fstat(fd, &st) != 0 || st.st_size < 0 ||
-        static_cast<uint64_t>(st.st_size) < sizeof(ElfW(Ehdr))) {
+        static_cast<uint64_t>(st.st_size) < sizeof(ElfW(Ehdr)) ||
+        static_cast<uint64_t>(st.st_size) > SIZE_MAX) {
       close(fd);
       return false;
     }
@@ -136,43 +258,57 @@ private:
 
     const auto *base = static_cast<const uint8_t *>(map_);
     const auto *eh = reinterpret_cast<const ElfW(Ehdr) *>(base);
-    if (memcmp(eh->e_ident, ELFMAG, SELFMAG) != 0 ||
-        eh->e_ident[EI_CLASS] !=
-            (sizeof(void *) == 8 ? ELFCLASS64 : ELFCLASS32))
+    if (!valid_ident(eh->e_ident) || !valid_machine(eh->e_machine) ||
+        eh->e_type != ET_DYN || eh->e_version != EV_CURRENT ||
+        eh->e_ehsize != sizeof(ElfW(Ehdr)) ||
+        eh->e_phentsize != sizeof(ElfW(Phdr)) || eh->e_phnum == 0 ||
+        eh->e_phnum > 128 ||
+        !file_range_valid(
+            eh->e_phoff,
+            static_cast<uint64_t>(eh->e_phnum) * sizeof(ElfW(Phdr)), map_sz_) ||
+        eh->e_shentsize != sizeof(ElfW(Shdr)) || eh->e_shnum == 0 ||
+        !file_range_valid(
+            eh->e_shoff,
+            static_cast<uint64_t>(eh->e_shnum) * sizeof(ElfW(Shdr)), map_sz_))
+      return false;
+
+    const auto *ph = reinterpret_cast<const ElfW(Phdr) *>(base + eh->e_phoff);
+    if (!runtime_phdr_matches(eh, ph))
       return false;
 
     const auto *sh = reinterpret_cast<const ElfW(Shdr) *>(base + eh->e_shoff);
     for (size_t i = 0; i < eh->e_shnum; ++i) {
       if (sh[i].sh_type != SHT_SYMTAB)
         continue;
-      if (sh[i].sh_link >= eh->e_shnum)
+      if (sh[i].sh_link >= eh->e_shnum ||
+          sh[i].sh_entsize != sizeof(ElfW(Sym)) ||
+          sh[i].sh_size % sizeof(ElfW(Sym)) != 0 ||
+          !file_range_valid(sh[i].sh_offset, sh[i].sh_size, map_sz_))
+        return false;
+      const ElfW(Shdr) &str = sh[sh[i].sh_link];
+      if (str.sh_type != SHT_STRTAB || str.sh_size == 0 ||
+          !file_range_valid(str.sh_offset, str.sh_size, map_sz_))
         return false;
       symtab_ = reinterpret_cast<const ElfW(Sym) *>(base + sh[i].sh_offset);
       sym_cnt_ = sh[i].sh_size / sizeof(ElfW(Sym));
-      strtab_ =
-          reinterpret_cast<const char *>(base + sh[sh[i].sh_link].sh_offset);
-      return true;
+      strtab_ = reinterpret_cast<const char *>(base + str.sh_offset);
+      strtab_sz_ = str.sh_size;
+      return strtab_[0] == '\0' && strtab_[strtab_sz_ - 1] == '\0';
     }
     return false; /* stripped .symtab -- give up */
   }
 
-  uintptr_t base_ = 0;
-  char path_[256] = {};
+  uintptr_t load_bias_ = 0;
+  const ElfW(Phdr) *runtime_phdr_ = nullptr;
+  size_t runtime_phnum_ = 0;
+  char path_[PATH_MAX] = {};
   void *map_ = MAP_FAILED;
   size_t map_sz_ = 0;
   const ElfW(Sym) *symtab_ = nullptr;
   const char *strtab_ = nullptr;
+  size_t strtab_sz_ = 0;
   size_t sym_cnt_ = 0;
 };
-
-inline void *soinfo_next(void *si) {
-  return *reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(si) +
-                                    kSoinfoNextOff);
-}
-inline void soinfo_set_next(void *si, void *next) {
-  *reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(si) + kSoinfoNextOff) =
-      next;
-}
 
 /* Runtime soinfo unload glue. */
 size_t g_size_off = 0, g_next_off = 0, g_ctor_off = 0;
@@ -183,6 +319,7 @@ realpath_fn g_realpath_u = nullptr;
 realpath_fn g_soname_u = nullptr;
 guard_fn g_pdg_ctor_u = nullptr, g_pdg_dtor_u = nullptr;
 void *g_solist_head = nullptr;
+void **g_solist_head_slot = nullptr;
 bool g_unload_done = false, g_unload_ok = false;
 
 constexpr size_t kSizeBlockRange = 1024; /* bytes scanned for soinfo fields */
@@ -192,6 +329,10 @@ constexpr size_t kSizeMin = 0x100;
 inline void *u_next(void *si) {
   return *reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(si) +
                                     g_next_off);
+}
+inline void u_set_next(void *si, void *next) {
+  *reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(si) + g_next_off) =
+      next;
 }
 inline size_t u_size(void *si) {
   return *reinterpret_cast<size_t *>(reinterpret_cast<uintptr_t>(si) +
@@ -296,7 +437,8 @@ bool u_init() {
     return false;
   }
 
-  g_solist_head = *reinterpret_cast<void **>(head_var);
+  g_solist_head_slot = reinterpret_cast<void **>(head_var);
+  g_solist_head = *g_solist_head_slot;
   void *somain = *reinterpret_cast<void **>(somain_var);
   void *vdso = vdso_var != 0 ? *reinterpret_cast<void **>(vdso_var) : nullptr;
   if (g_solist_head == nullptr || somain == nullptr)
@@ -325,43 +467,17 @@ bool u_init() {
 } // namespace
 
 int hide_from_solist(const char *path_substr) {
-  LinkerSyms syms;
-  if (!syms.init()) {
-    SLOGE("solist: cannot resolve linker .symtab; skip hiding");
+  if (!u_init() || g_solist_head_slot == nullptr) {
+    SLOGE("solist: linker state unavailable; skip hiding");
     return 0;
   }
 
-  uintptr_t head_var = syms.find("__dl__ZL8solinker");
-  if (head_var == 0)
-    head_var = syms.find("__dl__ZL6solist");
-  auto realpath = reinterpret_cast<realpath_fn>(
-      syms.find("__dl__ZNK6soinfo12get_realpathEv"));
-  guard_fn pdg_ctor =
-      reinterpret_cast<guard_fn>(syms.find("__dl__ZN18ProtectedDataGuardC2Ev"));
-  if (pdg_ctor == nullptr)
-    pdg_ctor = reinterpret_cast<guard_fn>(
-        syms.find("__dl__ZN18ProtectedDataGuardC1Ev"));
-  guard_fn pdg_dtor =
-      reinterpret_cast<guard_fn>(syms.find("__dl__ZN18ProtectedDataGuardD2Ev"));
-  if (pdg_dtor == nullptr)
-    pdg_dtor = reinterpret_cast<guard_fn>(
-        syms.find("__dl__ZN18ProtectedDataGuardD1Ev"));
-
-  if (head_var == 0 || realpath == nullptr || pdg_ctor == nullptr ||
-      pdg_dtor == nullptr) {
-    SLOGE("solist: missing symbols (head=%d realpath=%d guard=%d); skip",
-          head_var != 0, realpath != nullptr,
-          pdg_ctor != nullptr && pdg_dtor != nullptr);
-    return 0;
-  }
-
-  void **head_slot = reinterpret_cast<void **>(head_var);
-  void *head = *head_slot;
+  void *head = *g_solist_head_slot;
   if (head == nullptr)
     return 0;
 
   /* Sanity-check the solist head. */
-  const char *head_path = realpath(head);
+  const char *head_path = g_realpath_u(head);
   if (head_path == nullptr || strstr(head_path, "linker") == nullptr) {
     SLOGE("solist: head realpath '%s' not linker-like; skip hiding",
           head_path != nullptr ? head_path : "(null)");
@@ -370,19 +486,19 @@ int hide_from_solist(const char *path_substr) {
 
   int hidden = 0;
   char guard_obj[16] = {}; /* dummy `this`; guard touches only linker globals */
-  pdg_ctor(guard_obj);     /* unlock the protected linker data once */
+  g_pdg_ctor_u(guard_obj); /* unlock the protected linker data once */
 
   void *prev = nullptr;
   void *cur = head;
   for (int i = 0; i < kMaxWalk && cur != nullptr; ++i) {
-    void *next = soinfo_next(cur);
-    const char *p = realpath(cur);
+    void *next = u_next(cur);
+    const char *p = g_realpath_u(cur);
     if (p != nullptr && strstr(p, path_substr) != nullptr) {
       SLOGI("solist: unlinking %s", p);
       if (prev == nullptr)
-        *head_slot = next; /* head matched: update the linker's head var */
+        *g_solist_head_slot = next;
       else
-        soinfo_set_next(prev, next);
+        u_set_next(prev, next);
       ++hidden;
       /* prev stays; cur removed */
     } else {
@@ -391,11 +507,14 @@ int hide_from_solist(const char *path_substr) {
     cur = next;
   }
 
-  pdg_dtor(guard_obj); /* re-lock */
+  g_pdg_dtor_u(guard_obj); /* re-lock */
+  g_solist_head = *g_solist_head_slot;
 
   SLOGI("solist: hid %d entry(ies) matching '%s'", hidden, path_substr);
   return hidden;
 }
+
+bool prepare_linker() { return u_init(); }
 
 int drop_module_from_solist(const char *path_substr, bool dry_run,
                             bool keep_mapped) {
@@ -612,6 +731,123 @@ static int anonymize_ranges(const MapRange *ranges, int nr) {
     }
     ++done;
   }
+  return done;
+}
+
+struct LoadedObjectScan {
+  uintptr_t address = 0;
+  MapRange ranges[64]{};
+  int count = 0;
+};
+
+void add_loaded_range(LoadedObjectScan *scan, uintptr_t start, uintptr_t end,
+                      int prot) {
+  if (scan->count >= static_cast<int>(std::size(scan->ranges)) || end <= start)
+    return;
+  scan->ranges[scan->count++] = {start, end, prot};
+}
+
+int collect_loaded_object(dl_phdr_info *info, size_t, void *data) {
+  auto *scan = static_cast<LoadedObjectScan *>(data);
+  const size_t pg = page_size();
+  if (pg == 0)
+    return 0;
+
+  bool contains = false;
+  for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+    const ElfW(Phdr) &ph = info->dlpi_phdr[i];
+    if (ph.p_type != PT_LOAD)
+      continue;
+    uintptr_t start = elf_runtime_address(info->dlpi_addr, ph.p_vaddr);
+    if (ph.p_memsz > UINTPTR_MAX - start)
+      continue;
+    if (scan->address >= start && scan->address < start + ph.p_memsz) {
+      contains = true;
+      break;
+    }
+  }
+  if (!contains)
+    return 0;
+
+  uintptr_t relro_start = 0;
+  uintptr_t relro_end = 0;
+  for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+    const ElfW(Phdr) &ph = info->dlpi_phdr[i];
+    if (ph.p_type != PT_GNU_RELRO)
+      continue;
+    uintptr_t start = elf_runtime_address(info->dlpi_addr, ph.p_vaddr);
+    if (ph.p_memsz > UINTPTR_MAX - start ||
+        start + ph.p_memsz > UINTPTR_MAX - (pg - 1))
+      continue;
+    relro_start = page_down(start, pg);
+    relro_end = page_up(start + ph.p_memsz, pg);
+    break;
+  }
+
+  for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+    const ElfW(Phdr) &ph = info->dlpi_phdr[i];
+    if (ph.p_type != PT_LOAD || ph.p_filesz == 0)
+      continue;
+    uintptr_t file_start = elf_runtime_address(info->dlpi_addr, ph.p_vaddr);
+    if (ph.p_filesz > UINTPTR_MAX - file_start ||
+        file_start + ph.p_filesz > UINTPTR_MAX - (pg - 1))
+      continue;
+    uintptr_t start = page_down(file_start, pg);
+    uintptr_t end = page_up(file_start + ph.p_filesz, pg);
+    int prot = (ph.p_flags & PF_R ? PROT_READ : 0) |
+               (ph.p_flags & PF_W ? PROT_WRITE : 0) |
+               (ph.p_flags & PF_X ? PROT_EXEC : 0);
+
+    uintptr_t protected_start = std::max(start, relro_start);
+    uintptr_t protected_end = std::min(end, relro_end);
+    if (relro_end <= relro_start || protected_end <= protected_start) {
+      add_loaded_range(scan, start, end, prot);
+      continue;
+    }
+    add_loaded_range(scan, start, protected_start, prot);
+    add_loaded_range(scan, protected_start, protected_end, prot & ~PROT_WRITE);
+    add_loaded_range(scan, protected_end, end, prot);
+  }
+  return 1;
+}
+
+int normalize_loaded_ranges(MapRange *ranges, int count) {
+  std::sort(ranges, ranges + count, [](const MapRange &a, const MapRange &b) {
+    return a.start < b.start || (a.start == b.start && a.end < b.end);
+  });
+  int output = 0;
+  for (int i = 0; i < count; ++i) {
+    MapRange range = ranges[i];
+    if (output > 0 && range.start < ranges[output - 1].end)
+      range.start = ranges[output - 1].end;
+    if (range.end <= range.start)
+      continue;
+    if (output > 0 && ranges[output - 1].end == range.start &&
+        ranges[output - 1].prot == range.prot) {
+      ranges[output - 1].end = range.end;
+      continue;
+    }
+    ranges[output++] = range;
+  }
+  return output;
+}
+
+int spoof_loaded_object_maps(uintptr_t address, bool private_only) {
+  if (address == 0)
+    return 0;
+#if defined(__arm__)
+  address &= ~static_cast<uintptr_t>(1);
+#endif
+  LoadedObjectScan scan;
+  scan.address = address;
+  if (dl_iterate_phdr(collect_loaded_object, &scan) == 0 || scan.count == 0)
+    return 0;
+  if (!private_only)
+    SLOGI("maps-spoof: loaded objects are private mappings");
+  scan.count = normalize_loaded_ranges(scan.ranges, scan.count);
+  int done = anonymize_ranges(scan.ranges, scan.count);
+  SLOGI("maps-spoof: anonymized %d/%d loaded-object segment(s)", done,
+        scan.count);
   return done;
 }
 

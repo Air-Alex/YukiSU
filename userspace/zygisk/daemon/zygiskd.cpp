@@ -11,9 +11,7 @@
 #include <fcntl.h>
 #include <linux/netlink.h>
 #include <poll.h>
-#include <sched.h>
 #include <sys/mman.h>
-#include <sys/mount.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -34,7 +32,6 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -668,75 +665,6 @@ bool ensure_native_companion(uint32_t idx) {
   return c.has_entry;
 }
 
-static bool yz_mi_parse(const std::string &line, std::string &root,
-                        std::string &target, std::string &source) {
-  std::istringstream iss(line);
-  std::vector<std::string> tok;
-  std::string t;
-  while (iss >> t)
-    tok.push_back(t);
-  if (tok.size() < 7)
-    return false;
-  size_t dash = 0;
-  bool found = false;
-  for (size_t i = 5; i < tok.size(); ++i)
-    if (tok[i] == "-") {
-      dash = i;
-      found = true;
-      break;
-    }
-  if (!found || dash + 2 >= tok.size())
-    return false;
-  root = tok[3];
-  target = tok[4];
-  source = tok[dash + 2]; /* dash+1 = fstype, dash+2 = mount source */
-  return true;
-}
-
-static void yz_umount_root_in_ns() {
-  std::ifstream f("/proc/self/mountinfo");
-  if (!f.is_open())
-    return;
-  std::vector<std::string> targets;
-  std::string line;
-  while (std::getline(f, line)) {
-    std::string root, target, source;
-    if (!yz_mi_parse(line, root, target, source))
-      continue;
-    bool should =
-        source == "KSU" || source == "magisk" || source == "APatch" ||
-        target.compare(0, sizeof("/data/adb/") - 1, "/data/adb/") == 0 ||
-        root.compare(0, sizeof("/adb/modules") - 1, "/adb/modules") == 0;
-    if (should)
-      targets.push_back(target);
-  }
-  for (auto it = targets.rbegin(); it != targets.rend(); ++it)
-    umount2(it->c_str(), MNT_DETACH);
-}
-
-static bool yz_revert_app_mounts(pid_t app_pid) {
-  if (app_pid <= 0)
-    return false;
-  pid_t child = fork();
-  if (child < 0)
-    return false;
-  if (child == 0) {
-    char path[64];
-    (void)snprintf(path, sizeof(path), "/proc/%d/ns/mnt", app_pid);
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0)
-      _exit(1);
-    if (setns(fd, CLONE_NEWNS) != 0)
-      _exit(2);
-    close(fd);
-    yz_umount_root_in_ns();
-    _exit(0);
-  }
-  int st = 0;
-  waitpid(child, &st, 0);
-  return WIFEXITED(st) && WEXITSTATUS(st) == 0;
-}
-
 uint32_t query_flags(uint32_t uid) {
   uint32_t flags = 0;
   if (ksud::uid_granted_root(uid))
@@ -935,44 +863,6 @@ void handle_client(int client) {
   }
   case zygiskd::Request::GetConfig: {
     write_exact(client, &g_yz_config, sizeof(g_yz_config));
-    break;
-  }
-  case zygiskd::Request::RevertMount: {
-    struct ucred cr{};
-    socklen_t crlen = sizeof(cr);
-    uint8_t ok = 0;
-    if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
-        cr.pid > 0)
-      ok = yz_revert_app_mounts(cr.pid) ? 1 : 0;
-    write_exact(client, &ok, sizeof(ok));
-    break;
-  }
-  case zygiskd::Request::SelfDestruct: {
-    uint8_t n = 0;
-    if (!reader.read_exact(&n, sizeof(n)) || n == 0 || n > YZ_MAX_UNMAP_SEGS)
-      break;
-    struct ucred cr{};
-    socklen_t crlen = sizeof(cr);
-    uint8_t ok = 0;
-    if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
-        cr.pid > 0) {
-      yz_unmap_pid_cmd ucmd{};
-      ucmd.pid = static_cast<uint32_t>(cr.pid);
-      ucmd.n_segs = n;
-      bool good = true;
-      for (uint8_t i = 0; i < n; ++i)
-        if (!reader.read_exact(&ucmd.addr[i], sizeof(ucmd.addr[i])) ||
-            !reader.read_exact(&ucmd.size[i], sizeof(ucmd.size[i]))) {
-          good = false;
-          break;
-        }
-      if (good) {
-        yz_umount_pid_cmd mcmd{};
-        mcmd.pid = ucmd.pid;
-        ok = ksud::ksuctl(KSU_IOCTL_YZ_UMOUNT_PID, &mcmd) == 0 ? 1 : 0;
-      }
-    }
-    write_exact(client, &ok, sizeof(ok));
     break;
   }
   case zygiskd::Request::PatchText: {

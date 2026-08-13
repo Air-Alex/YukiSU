@@ -12,8 +12,7 @@ enum class Request : uint8_t {
   ConnectCompanion = 4,
   GetModuleDir = 5,
   GetConfig = 6, // -> struct yz_config (runtime config from yzconfig.json)
-  RevertMount = 8,
-  SelfDestruct = 9,
+  // 8-9 reserved
   Log = 10,
   PatchText = 11,
   ReportZygote = 12,

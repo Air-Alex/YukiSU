@@ -1,3 +1,5 @@
+#include <lsplt.hpp>
+
 #include "hook.hpp"
 #include "log.hpp"
 #include "solist.hpp"
@@ -90,26 +92,12 @@ void api_plt_hook_register_byname(const char *path_regex, const char *symbol,
   regex_t re;
   if (regcomp(&re, path_regex, REG_NOSUB) != 0)
     return;
-  FILE *f = fopen("/proc/self/maps", "re");
-  if (f == nullptr) {
-    regfree(&re);
-    return;
-  }
-  char line[512];
-  while (fgets(line, sizeof(line), f) != nullptr) {
-    unsigned long start = 0, end = 0, off = 0, inode = 0;
-    unsigned int maj = 0, min = 0;
-    char perms[8] = {}, path[256] = {};
-    if (sscanf(line, "%lx-%lx %7s %lx %x:%x %lu %255s", &start, &end, perms,
-               &off, &maj, &min, &inode, path) != 8)
+  for (const auto &map : lsplt::MapInfo::ScanCached()) {
+    if (map.offset != 0 || !(map.perms & PROT_READ) || map.inode == 0)
       continue;
-    if (off != 0 || perms[0] != 'r' || inode == 0)
-      continue;
-    if (regexec(&re, path, 0, nullptr, 0) == 0)
-      zygisk_plt_hook_register(makedev(maj, min), static_cast<ino_t>(inode),
-                               symbol, new_func, old_func);
+    if (regexec(&re, map.path.c_str(), 0, nullptr, 0) == 0)
+      zygisk_plt_hook_register(map.dev, map.inode, symbol, new_func, old_func);
   }
-  (void)fclose(f);
   regfree(&re);
 }
 
@@ -492,7 +480,8 @@ void load_modules_impl(JNIEnv *env) {
           LOGI("module %u using system linker fallback", i);
           entry = reinterpret_cast<module_entry_fn>(
               dlsym(handle, "zygisk_module_entry"));
-          int anonymized = yuki::solist::spoof_fd_maps(mfd, true);
+          int anonymized = yuki::solist::spoof_loaded_object_maps(
+              reinterpret_cast<uintptr_t>(entry), true);
           LOGI("module %u system fallback anonymized %d segment(s)", i,
                anonymized);
         }
@@ -613,20 +602,6 @@ void hide_injection() {
   }
 }
 
-/* denylist_mode=2 mount cleanup. */
-static void yz_revert_self_mounts() {
-  int s = connect_zygiskd();
-  if (s < 0)
-    return;
-  uint8_t req = static_cast<uint8_t>(ZdRequest::RevertMount);
-  uint8_t ack = 0;
-  if (write(s, &req, 1) == 1 && read_all(s, &ack, 1) && ack)
-    LOGI("revert-mount: module mounts reverted via zygiskd");
-  else
-    LOGE("revert-mount: zygiskd revert request failed");
-  close(s);
-}
-
 void run_app_post_impl(const zygisk::AppSpecializeArgs *args) {
   auto *mut = const_cast<zygisk::AppSpecializeArgs *>(args);
   AppSpecializeArgs_v1 v1args(mut);
@@ -715,6 +690,8 @@ static void core_start(const char *self_path) {
   const uint32_t runtime_generation =
       zd_get_runtime_generation(YZ_RUNTIME_KIND_ZYGOTE);
   LOGI("core start, self=%s", self_path ? self_path : "(null)");
+  if (!yuki::solist::prepare_linker())
+    LOGE("linker internals unavailable; solist cleanup disabled");
   if (zygisk_hook_bootstrap(self_path))
     zd_report_zygote(runtime_generation);
   zd_restore_load_policy();
@@ -1065,8 +1042,6 @@ int zygisk_inject_decision(int uid) {
   return dec;
 }
 
-void zygisk_revert_mounts() { yz_revert_self_mounts(); }
-
 /* Find the core mapping range. */
 static bool yz_find_self_range(uintptr_t *base, size_t *size) {
   if (g_self_base == 0 || g_self_size == 0)
@@ -1079,39 +1054,6 @@ static bool yz_find_self_range(uintptr_t *base, size_t *size) {
   return true;
 }
 
-/* Report self-unmap segments to zygiskd. */
-static bool yz_report_self_unmap() {
-  uint64_t addr[YZ_MAX_UNMAP_SEGS];
-  uint64_t size[YZ_MAX_UNMAP_SEGS];
-  int n = 0;
-  uintptr_t cbase = 0;
-  size_t csize = 0;
-  if (yz_find_self_range(&cbase, &csize) && cbase != 0 && csize != 0) {
-    addr[n] = cbase;
-    size[n] = csize;
-    n++;
-  }
-  if (n == 0)
-    return false;
-  int sock = connect_zygiskd();
-  if (sock < 0)
-    return false;
-  uint8_t req = static_cast<uint8_t>(ZdRequest::SelfDestruct);
-  uint8_t n8 = static_cast<uint8_t>(n);
-  uint8_t ack = 0;
-  bool ok = write(sock, &req, 1) == 1 && write(sock, &n8, 1) == 1;
-  for (int i = 0; ok && i < n; ++i)
-    ok = write(sock, &addr[i], sizeof(addr[i])) ==
-             static_cast<ssize_t>(sizeof(addr[i])) &&
-         write(sock, &size[i], sizeof(size[i])) ==
-             static_cast<ssize_t>(sizeof(size[i]));
-  if (ok)
-    ok = read_all(sock, &ack, 1) && ack != 0;
-  close(sock);
-  LOGI("self-unmap: reported %d seg(s) to zygiskd ok=%d", n, (int)ok);
-  return ok;
-}
-
 extern "C" [[noreturn]] void yz_self_unmap_tail(void *base, size_t size);
 
 // Non-weak so __cxa_finalize targets only this DSO.
@@ -1120,7 +1062,7 @@ static inline void yz_finalize_self_dso() {
   __cxa_finalize(static_cast<void *>(&__dso_handle));
 }
 
-void zygisk_self_destruct(JNIEnv *env, bool isolated, bool revert_mounts) {
+void zygisk_self_destruct(JNIEnv *env, bool isolated) {
   const bool fully_inline_hooked = zygisk_specialize_fully_inline_hooked();
   const bool hooks_removed = zygisk_self_unhook(env);
   bool can_unmap = fully_inline_hooked && hooks_removed;
@@ -1132,11 +1074,6 @@ void zygisk_self_destruct(JNIEnv *env, bool isolated, bool revert_mounts) {
   if (!isolated) {
     yuki::solist::hide_from_solist("libzygisk");
     yuki::solist::hide_from_solist("libyukilinker");
-    if (revert_mounts) {
-      bool reverted = yz_report_self_unmap();
-      if (!reverted)
-        yz_revert_self_mounts();
-    }
   }
   if (!fully_inline_hooked)
     LOGE("self-unmap unavailable: specialize used RegisterNatives fallback");

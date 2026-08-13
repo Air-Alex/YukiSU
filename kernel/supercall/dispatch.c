@@ -1227,35 +1227,6 @@ static int do_yz_allow_module_load_policy(void __user *arg)
 	return ret;
 }
 
-static int do_yz_umount_pid(void __user *arg)
-{
-	struct yz_umount_pid_cmd cmd;
-	struct task_struct *task;
-	int ret;
-
-	if (copy_from_user(&cmd, arg, sizeof(cmd)))
-		return -EFAULT;
-
-	rcu_read_lock();
-	task = get_pid_task(find_vpid(cmd.pid), PIDTYPE_PID);
-	rcu_read_unlock();
-	if (!task)
-		return -ESRCH;
-
-	if (!is_appuid(task_uid(task).val)) {
-		pr_info("yukizygisk: module unmount rejected pid=%u uid=%u\n",
-			cmd.pid, task_uid(task).val);
-		put_task_struct(task);
-		return -EPERM;
-	}
-
-	ret = ksu_umount_task_modules(task);
-	put_task_struct(task);
-	pr_info("yukizygisk: module unmount request pid=%u err=%d\n", cmd.pid,
-		ret);
-	return ret;
-}
-
 struct yz_unmap_tw {
 	struct callback_head cb;
 	unsigned long addr[YZ_MAX_UNMAP_SEGS];
@@ -1613,10 +1584,6 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_YZ_ALLOW_MODULE_LOAD_POLICY,
      .name = "YZ_ALLOW_MODULE_LOAD_POLICY",
      .handler = do_yz_allow_module_load_policy,
-     .perm_check = only_root},
-    {.cmd = KSU_IOCTL_YZ_UMOUNT_PID,
-     .name = "YZ_UMOUNT_PID",
-     .handler = do_yz_umount_pid,
      .perm_check = only_root},
     {.cmd = KSU_IOCTL_YZ_UNMAP_PID,
      .name = "YZ_UNMAP_PID",

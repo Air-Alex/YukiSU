@@ -47,11 +47,7 @@ struct yz_yukilinker_cmd {
   __u32 enabled;
 };
 
-#define KSU_IOCTL_YZ_UMOUNT_PID _IOC(_IOC_WRITE, 'K', 54, 0)
-
-struct yz_umount_pid_cmd {
-  __u32 pid;
-};
+/* Command 54 is reserved. */
 
 #define KSU_IOCTL_YZ_UNMAP_PID _IOC(_IOC_WRITE, 'K', 55, 0)
 
