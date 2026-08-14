@@ -166,6 +166,7 @@ jobs:
           done
         fi
     - name: Import GPG key
+      if: github.event_name != 'pull_request'
       env:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -176,6 +177,7 @@ jobs:
         rm -f key.asc
 
     - name: Sign ksud with GPG
+      if: github.event_name != 'pull_request'
       run: |
         cd userspace/ksud/build
         echo "Signing ksud..."
@@ -197,3 +199,4 @@ jobs:
         path: |
           userspace/ksud/build/ksud
           userspace/ksud/build/ksud.sig
+        if-no-files-found: ignore
