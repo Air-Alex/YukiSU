@@ -18,11 +18,10 @@
 
 DEFINE_STATIC_KEY_FALSE(ksu_adb_root);
 
-static long is_exec_adbd(struct pt_regs *regs)
+static long is_exec_adbd(const char __user *filename_user)
 {
 	static const char kAdbd[] = "/adbd";
 	static const size_t kAdbdLen = sizeof(kAdbd) - 1;
-	char __user *filename_user = (char __user *)PT_REGS_PARM1(regs);
 	char buf[40];
 	char __user *fn;
 	long ret;
@@ -66,7 +65,7 @@ static long is_libadbroot_ok(void)
 	return 1;
 }
 
-static long setup_ld_preload(struct pt_regs *regs)
+static long setup_ld_preload(struct pt_regs *regs, unsigned long *envp_p)
 {
 	static const char kLdPreload[] =
 	    "LD_PRELOAD=/data/adb/ksu/lib/libadbroot.so";
@@ -78,7 +77,6 @@ static long setup_ld_preload(struct pt_regs *regs)
 	unsigned long envp;
 	unsigned long ld_preload_p;
 	unsigned long ld_library_path_p;
-	unsigned long *envp_p = (unsigned long *)&PT_REGS_PARM3(regs);
 	unsigned long *tmp_env_p = NULL;
 	unsigned long *tmp_env_p2 = NULL;
 	size_t env_count = 0;
@@ -179,11 +177,13 @@ out_release_env_p:
 	return ret;
 }
 
-static long do_ksu_adb_root_handle_execve(struct pt_regs *regs)
+static long do_ksu_adb_root_handle_execve(const char __user *filename_user,
+					  struct pt_regs *regs,
+					  unsigned long *envp_p)
 {
 	long ret;
 
-	if (likely(is_exec_adbd(regs) != 1)) {
+	if (likely(is_exec_adbd(filename_user) != 1)) {
 		return 0;
 	}
 
@@ -191,7 +191,7 @@ static long do_ksu_adb_root_handle_execve(struct pt_regs *regs)
 		return 0;
 	}
 
-	ret = setup_ld_preload(regs);
+	ret = setup_ld_preload(regs, envp_p);
 	if (ret) {
 		return ret;
 	}
@@ -204,7 +204,19 @@ static long do_ksu_adb_root_handle_execve(struct pt_regs *regs)
 long ksu_adb_root_handle_execve(struct pt_regs *regs)
 {
 	if (static_branch_unlikely(&ksu_adb_root)) {
-		return do_ksu_adb_root_handle_execve(regs);
+		return do_ksu_adb_root_handle_execve(
+		    (const char __user *)PT_REGS_PARM1(regs), regs,
+		    (unsigned long *)&PT_REGS_PARM3(regs));
+	}
+	return 0;
+}
+
+long ksu_adb_root_handle_execveat(struct pt_regs *regs)
+{
+	if (static_branch_unlikely(&ksu_adb_root)) {
+		return do_ksu_adb_root_handle_execve(
+		    (const char __user *)PT_REGS_PARM2(regs), regs,
+		    (unsigned long *)&PT_REGS_SYSCALL_PARM4(regs));
 	}
 	return 0;
 }

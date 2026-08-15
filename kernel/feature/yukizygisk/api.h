@@ -15,6 +15,7 @@ struct yz_safemode_status_cmd;
 void ksu_yukizygisk_init(void);
 void ksu_yukizygisk_exit(void);
 void ksu_yukizygisk_observe_execve(const struct pt_regs *regs);
+void ksu_yukizygisk_observe_execveat(const struct pt_regs *regs);
 
 int ksu_yukizygisk_handoff_module_fds(void __user *arg);
 void ksu_yukizygisk_emit_reload(void);

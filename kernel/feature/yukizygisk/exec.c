@@ -152,14 +152,12 @@ static bool yz_parse_exec_argv(struct yz_user_arg_ptr argv, char *socket_name,
 	return found;
 }
 
-void ksu_yukizygisk_observe_execve(const struct pt_regs *regs)
+static void
+ksu_yukizygisk_observe_exec(const char __user *filename_user,
+			    const char __user *const __user *argv_user)
 {
-	const char __user **filename_user =
-	    (const char __user **)&PT_REGS_PARM1(regs);
-	const char __user *const __user *__argv =
-	    (const char __user *const __user *)PT_REGS_PARM2(regs);
 	struct yz_user_arg_ptr argv = {
-	    .native = __argv,
+	    .native = argv_user,
 	};
 	char path[64];
 	char socket_name[32];
@@ -172,10 +170,10 @@ void ksu_yukizygisk_observe_execve(const struct pt_regs *regs)
 		return;
 	}
 
-	if (!filename_user || !*filename_user)
+	if (!filename_user)
 		return;
 
-	addr = untagged_addr((unsigned long)*filename_user);
+	addr = untagged_addr((unsigned long)filename_user);
 	fn = (const char __user *)addr;
 
 	memset(path, 0, sizeof(path));
@@ -191,6 +189,20 @@ void ksu_yukizygisk_observe_execve(const struct pt_regs *regs)
 		pr_info("yukizygisk: zygote exec detected pid=%d socket=%s "
 			"comm=%s file=%s\n",
 			current->pid, socket_name, current->comm, path);
+}
+
+void ksu_yukizygisk_observe_execve(const struct pt_regs *regs)
+{
+	ksu_yukizygisk_observe_exec(
+	    (const char __user *)PT_REGS_PARM1(regs),
+	    (const char __user *const __user *)PT_REGS_PARM2(regs));
+}
+
+void ksu_yukizygisk_observe_execveat(const struct pt_regs *regs)
+{
+	ksu_yukizygisk_observe_exec(
+	    (const char __user *)PT_REGS_PARM2(regs),
+	    (const char __user *const __user *)PT_REGS_PARM3(regs));
 }
 
 static bool yz_is_app_process_path(const char *filename)

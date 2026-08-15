@@ -230,24 +230,22 @@ void ksu_handle_execveat_ksud(const char *filename, struct user_arg_ptr *argv,
 	}
 }
 
-void ksu_execve_hook_ksud(const struct pt_regs *regs)
+static void
+ksu_execve_hook_ksud_common(const char __user *filename_user,
+			    const char __user *const __user *argv_user)
 {
-	const char __user **filename_user =
-	    (const char __user **)&PT_REGS_PARM1(regs);
-	const char __user *const __user *__argv =
-	    (const char __user *const __user *)PT_REGS_PARM2(regs);
 	struct user_arg_ptr argv = {
-	    .native = __argv,
+	    .native = argv_user,
 	};
 	char path[32];
 	const char __user *fn;
 	long ret;
 	unsigned long addr;
 
-	if (!filename_user || !*filename_user)
+	if (!filename_user)
 		return;
 
-	addr = untagged_addr((unsigned long)*filename_user);
+	addr = untagged_addr((unsigned long)filename_user);
 	fn = (const char __user *)addr;
 
 	memset(path, 0, sizeof(path));
@@ -258,6 +256,20 @@ void ksu_execve_hook_ksud(const struct pt_regs *regs)
 	}
 
 	ksu_handle_execveat_ksud(path, &argv, NULL, NULL);
+}
+
+void ksu_execve_hook_ksud(const struct pt_regs *regs)
+{
+	ksu_execve_hook_ksud_common(
+	    (const char __user *)PT_REGS_PARM1(regs),
+	    (const char __user *const __user *)PT_REGS_PARM2(regs));
+}
+
+void ksu_execveat_hook_ksud(const struct pt_regs *regs)
+{
+	ksu_execve_hook_ksud_common(
+	    (const char __user *)PT_REGS_PARM2(regs),
+	    (const char __user *const __user *)PT_REGS_PARM3(regs));
 }
 
 // ---------------------------------------------------------------
