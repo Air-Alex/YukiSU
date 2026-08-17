@@ -11,6 +11,7 @@ int boot_restore(const std::vector<std::string>& args);
 
 // Boot info functions
 int boot_info_current_kmi();
+int boot_info_target_kmi(bool ota, const std::string& boot_image);
 int boot_info_supported_kmis();
 int boot_info_is_ab_device();
 int boot_info_default_partition();

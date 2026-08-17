@@ -525,6 +525,7 @@ int cmd_boot_info(const std::vector<std::string>& args) {
         printf("USAGE: ksud boot-info <SUBCOMMAND>\n\n");
         printf("SUBCOMMANDS:\n");
         printf("  current-kmi         Show current KMI\n");
+        printf("  target-kmi [--ota | --boot PATH]  Show patch target KMI\n");
         printf("  supported-kmis      Show supported KMIs\n");
         printf("  is-ab-device        Check A/B device\n");
         printf("  default-partition   Show default partition\n");
@@ -537,6 +538,14 @@ int cmd_boot_info(const std::vector<std::string>& args) {
 
     if (subcmd == "current-kmi") {
         return boot_info_current_kmi();
+    } else if (subcmd == "target-kmi") {
+        const bool ota = args.size() == 2 && args[1] == "--ota";
+        const bool boot_image = args.size() == 3 && args[1] == "--boot" && !args[2].empty();
+        if (args.size() != 1 && !ota && !boot_image) {
+            printf("USAGE: ksud boot-info target-kmi [--ota | --boot PATH]\n");
+            return 1;
+        }
+        return boot_info_target_kmi(ota, boot_image ? args[2] : "");
     } else if (subcmd == "supported-kmis") {
         return boot_info_supported_kmis();
     } else if (subcmd == "is-ab-device") {

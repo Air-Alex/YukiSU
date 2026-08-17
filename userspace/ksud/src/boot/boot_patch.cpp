@@ -348,9 +348,9 @@ std::string parse_kmi_from_kernel_file(const std::string& kernel_path) {
 
 std::string parse_kmi_from_boot(const std::string& magiskboot, const std::string& workdir,
                                 const std::string& boot_path) {
-    const std::string detect_dir = workdir + "/ota_kmi";
+    const std::string detect_dir = workdir + "/target_kmi";
     if (!ensure_clean_dir(detect_dir)) {
-        LOGE("Failed to create OTA KMI detection directory");
+        LOGE("Failed to create target KMI detection directory");
         return "";
     }
 
@@ -358,8 +358,7 @@ std::string parse_kmi_from_boot(const std::string& magiskboot, const std::string
     if (unpack_result.exit_code != 0) {
         // Kernel is extracted before ramdisk. Some legacy ramdisks can still make magiskboot
         // abort after a valid kernel file has already been written, so try that file first.
-        LOGW("Inactive slot boot unpack exited with %d: %s", unpack_result.exit_code,
-             boot_path.c_str());
+        LOGW("Target boot unpack exited with %d: %s", unpack_result.exit_code, boot_path.c_str());
         if (!unpack_result.stderr_str.empty()) {
             LOGW("magiskboot stderr: %s", unpack_result.stderr_str.c_str());
         }
@@ -368,7 +367,7 @@ std::string parse_kmi_from_boot(const std::string& magiskboot, const std::string
     const std::string kernel_path = detect_dir + "/kernel";
     const std::string kmi = parse_kmi_from_kernel_file(kernel_path);
     if (kmi.empty()) {
-        LOGE("Failed to get KMI from inactive slot boot image");
+        LOGE("Failed to get KMI from target boot image");
     }
     return kmi;
 }
@@ -1485,6 +1484,50 @@ int boot_info_current_kmi() {
     const std::string kmi = get_current_kmi();
     if (kmi.empty()) {
         printf("Failed to get current KMI\n");
+        return 1;
+    }
+    printf("%s\n", kmi.c_str());
+    return 0;
+}
+
+int boot_info_target_kmi(bool ota, const std::string& boot_image) {
+    if (!ota && boot_image.empty())
+        return boot_info_current_kmi();
+
+    std::string target_boot = boot_image;
+    if (ota) {
+        const std::string slot = get_slot_suffix(true);
+        if (slot.empty()) {
+            printf("Failed to obtain a valid inactive slot suffix\n");
+            return 1;
+        }
+        target_boot = "/dev/block/by-name/boot" + slot;
+    }
+
+    std::array<char, 32> tmpdir_buf{};
+    (void)strncpy(tmpdir_buf.data(), "/data/local/tmp/KernelSU_XXXXXX", tmpdir_buf.size() - 1);
+    tmpdir_buf[tmpdir_buf.size() - 1] = '\0';
+    const char* tmpdir = mkdtemp(tmpdir_buf.data());
+    if (!tmpdir) {
+        LOGE("Failed to create temp directory for target KMI detection");
+        return 1;
+    }
+
+    const std::string workdir = tmpdir;
+    const std::string magiskboot = find_magiskboot("", workdir);
+    std::string kmi;
+    if (!magiskboot.empty()) {
+        kmi = parse_kmi_from_boot(magiskboot, workdir, target_boot);
+    }
+
+    std::error_code ec;
+    fs::remove_all(workdir, ec);
+    if (ec) {
+        LOGW("Failed to remove target KMI directory %s: %s", workdir.c_str(), ec.message().c_str());
+    }
+
+    if (kmi.empty()) {
+        printf("Failed to get target KMI\n");
         return 1;
     }
     printf("%s\n", kmi.c_str());

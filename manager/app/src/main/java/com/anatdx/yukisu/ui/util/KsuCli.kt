@@ -1282,13 +1282,13 @@ fun uninstallPermanently(
 @Parcelize
 sealed class LkmSelection : Parcelable {
     data class LkmUri(val uri: Uri) : LkmSelection()
-    data class KmiString(val value: String) : LkmSelection()
     data object KmiNone : LkmSelection()
 }
 
 fun installBoot(
     bootUri: Uri?,
     lkm: LkmSelection,
+    targetKmi: String,
     ota: Boolean,
     partition: String?,
     allowShell: Boolean = false,
@@ -1300,6 +1300,11 @@ fun installBoot(
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
 ): Boolean {
+    if (!targetKmi.matches(kmiPattern)) {
+        onStderr("Invalid target KMI: $targetKmi")
+        onFinish(false, 1)
+        return false
+    }
     val pendingUtsBoot = getPendingUtsBootTemplate()
     val pendingUtsBootExists = hasPendingUtsBootConfigFile()
     if (pendingUtsBootExists && pendingUtsBoot == null) {
@@ -1372,14 +1377,11 @@ fun installBoot(
             cmd += " -m ${lkmFile.absolutePath}"
         }
 
-        is LkmSelection.KmiString -> {
-            cmd += " --kmi ${lkm.value}"
-        }
-
         LkmSelection.KmiNone -> {
             // do nothing
         }
     }
+    cmd += " --kmi $targetKmi"
 
     // output dir
     val downloadsDir =
@@ -1447,14 +1449,49 @@ fun rootAvailable(): Boolean {
 }
 
 
-suspend fun getCurrentKmi(): String = withContext(Dispatchers.IO) {
-    ksudReadString("boot-info current-kmi")
-        .takeIf { it.matches(Regex("""(?:android\d+-)?\d+\.\d+""")) }
-        .orEmpty()
+private val kmiPattern = Regex("""(?:android\d+-)?\d+\.\d+""")
+
+internal fun parseDetectedKmi(lines: List<String>): String =
+    lines.filter { it.matches(kmiPattern) }.singleOrNull().orEmpty()
+
+suspend fun getTargetKmi(ota: Boolean, bootUri: Uri?): String = withContext(Dispatchers.IO) {
+    var bootFile: File? = null
+    try {
+        val args = when {
+            ota -> "boot-info target-kmi --ota"
+            bootUri != null -> {
+                val input = ksuApp.contentResolver.openInputStream(bootUri)
+                    ?: return@withContext ""
+                val targetFile = File(ksuApp.cacheDir, "target-kmi.img")
+                bootFile = targetFile
+                input.use { source ->
+                    targetFile.outputStream().use { output -> source.copyTo(output) }
+                }
+                "boot-info target-kmi --boot ${shellQuoteArgument(targetFile.absolutePath)}"
+            }
+            else -> "boot-info target-kmi"
+        }
+        parseDetectedKmi(ksudReadLines(args))
+    } finally {
+        bootFile?.delete()
+    }
 }
 
 suspend fun getSupportedKmis(): List<String> = withContext(Dispatchers.IO) {
     ksudReadLines("boot-info supported-kmis")
+        .filter { it.matches(kmiPattern) }
+        .distinct()
+}
+
+internal fun isKmiSupported(currentKmi: String, supportedKmis: List<String>): Boolean =
+    currentKmi.isNotBlank() && currentKmi in supportedKmis
+
+internal fun resolveTargetKmi(
+    detectedKmi: String,
+    supportedKmis: List<String>,
+    customLkm: Boolean,
+): String? = detectedKmi.takeIf {
+    it.isNotBlank() && (customLkm || isKmiSupported(it, supportedKmis))
 }
 
 suspend fun isAbDevice(): Boolean = withContext(Dispatchers.IO) {

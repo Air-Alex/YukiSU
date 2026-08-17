@@ -893,6 +893,7 @@ sealed class FlashIt : Parcelable {
     data class FlashBoot(
         val boot: Uri? = null,
         val lkm: LkmSelection,
+        val targetKmi: String,
         val ota: Boolean,
         val partition: String? = null,
         val allowShell: Boolean = false,
@@ -939,6 +940,7 @@ fun flashIt(
         is FlashIt.FlashBoot -> installBoot(
             flashIt.boot,
             flashIt.lkm,
+            flashIt.targetKmi,
             flashIt.ota,
             flashIt.partition,
             flashIt.allowShell,

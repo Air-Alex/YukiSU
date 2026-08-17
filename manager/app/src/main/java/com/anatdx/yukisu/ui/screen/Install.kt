@@ -82,6 +82,7 @@ import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -105,6 +106,7 @@ fun InstallScreen(
     val loadingDialog = rememberLoadingDialog()
     var installMethod by remember { mutableStateOf<InstallMethod?>(null) }
     var lkmSelection by remember { mutableStateOf<LkmSelection>(LkmSelection.KmiNone) }
+    var isResolvingKmi by remember { mutableStateOf(false) }
     var showRebootDialog by remember { mutableStateOf(false) }
 
     val seLinuxStatus by produceState(initialValue = resources.getString(R.string.selinux_status_unknown)) {
@@ -197,19 +199,18 @@ fun InstallScreen(
         }
     }
 
-    val onInstall = {
-        installMethod?.let { method ->
+    val onInstall: (InstallMethod, LkmSelection, String) -> Unit =
+        onInstall@ { method, selectedLkm, targetKmi ->
             if (
                 utsBootRepatch &&
                 method !is InstallMethod.DirectInstall &&
                 method !is InstallMethod.DirectInstallToInactiveSlot
             ) {
-                return@let
+                return@onInstall
             }
             val isOta = method is InstallMethod.DirectInstallToInactiveSlot
-            // An untouched dropdown is only a presentation of ksud's current
-            // recommendation. Keep the argument absent so ksud can make the
-            // trusted KMI decision itself (especially for the inactive slot).
+            // An untouched dropdown only presents ksud's current partition
+            // recommendation. Let ksud choose from the resolved KMI.
             val partitionSelection = if (utsBootRepatch) {
                 if (hasCustomSelected) {
                     partitionsState.getOrNull(partitionSelectionIndex)
@@ -225,11 +226,12 @@ fun InstallScreen(
                 } else {
                     null
                 },
-                lkm = if (utsBootRepatch && lkmSelection is LkmSelection.LkmUri) {
+                lkm = if (utsBootRepatch && selectedLkm is LkmSelection.LkmUri) {
                     LkmSelection.KmiNone
                 } else {
-                    lkmSelection
+                    selectedLkm
                 },
+                targetKmi = targetKmi,
                 ota = isOta,
                 partition = partitionSelection,
                 allowShell = allowShell,
@@ -242,25 +244,44 @@ fun InstallScreen(
             )
             navigator.navigate(FlashScreenDestination(flashIt))
         }
-        Unit
-    }
-
-    val currentKmi by produceState(initialValue = "") {
-        value = getCurrentKmi()
-    }
 
     val selectKmiDialog = rememberSelectKmiDialog { kmi ->
-        kmi?.let {
-            lkmSelection = LkmSelection.KmiString(it)
-            onInstall()
+        val method = installMethod
+        if (kmi != null && method != null) {
+            onInstall(method, lkmSelection, kmi)
         }
     }
 
     val onClickNext = {
-        if (lkmSelection == LkmSelection.KmiNone && currentKmi.isBlank()) {
-            selectKmiDialog.show()
-        } else {
-            onInstall()
+        val method = installMethod
+        if (method != null && !isResolvingKmi) {
+            isResolvingKmi = true
+            loadingDialog.show()
+            coroutineScope.launch {
+                val kmi = try {
+                    val ota = method is InstallMethod.DirectInstallToInactiveSlot
+                    val bootUri = (method as? InstallMethod.SelectFile)?.uri
+                    val detectedKmi = getTargetKmi(ota, bootUri)
+                    resolveTargetKmi(
+                        detectedKmi = detectedKmi,
+                        supportedKmis = getSupportedKmis(),
+                        customLkm = lkmSelection is LkmSelection.LkmUri,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    null
+                } finally {
+                    isResolvingKmi = false
+                    loadingDialog.hide()
+                }
+
+                if (kmi == null) {
+                    selectKmiDialog.show()
+                } else {
+                    onInstall(method, lkmSelection, kmi)
+                }
+            }
         }
     }
 
@@ -801,7 +822,7 @@ fun InstallScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .defaultMinSize(minHeight = if (isExpressiveUi) 56.dp else 0.dp),
-                    enabled = installMethod != null,
+                    enabled = installMethod != null && !isResolvingKmi,
                     onClick = onClickNext,
                     shape = if (isExpressiveUi) {
                         MaterialTheme.shapes.extraLarge
