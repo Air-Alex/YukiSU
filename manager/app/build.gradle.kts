@@ -1,5 +1,6 @@
 @file:Suppress("UnstableApiUsage")
 
+import com.google.protobuf.gradle.id
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.BuiltArtifactsLoader
 import com.android.build.gradle.tasks.PackageAndroidArtifact
@@ -20,9 +21,28 @@ plugins {
     alias(libs.plugins.agp.app)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.protobuf)
     id("kotlin-parcelize")
 
 
+}
+
+protobuf {
+    protoc {
+        artifact = libs.protobuf.protoc.get().toString()
+    }
+    generateProtoTasks {
+        ofNonTest().forEach { task ->
+            task.builtins {
+                id("java") {
+                    option("lite")
+                }
+                id("kotlin") {
+                    option("lite")
+                }
+            }
+        }
+    }
 }
 
 @CacheableTask
@@ -220,6 +240,9 @@ dependencies {
     implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.transition)
     implementation(libs.okhttp)
+    implementation(libs.commons.compress)
+    implementation(libs.xz)
+    implementation(libs.protobuf.kotlin.lite)
 
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)

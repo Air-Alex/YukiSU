@@ -32,6 +32,9 @@ appcompat = "1.7.1"
 exifinterface = "1.4.2"
 transition = "1.7.0"
 okhttp = "5.4.0"
+protobuf = "4.35.1"
+commons-compress = "1.28.0"
+xz = "1.12"
 
 [plugins]
 agp-app = { id = "com.android.application", version.ref = "agp" }
@@ -40,6 +43,7 @@ agp-lib = { id = "com.android.library", version.ref = "agp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+protobuf = { id = "com.google.protobuf", version = "0.10.0" }
 
 lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version.ref = "cmaker" }
 
@@ -94,6 +98,10 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
 androidx-transition = { group = "androidx.transition", name = "transition", version.ref = "transition" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
+xz = { module = "org.tukaani:xz", version.ref = "xz" }
 
 
 mmrl-webui = { group = "com.github.MMRLApp.MMRL", name = "webui", version.ref = "mmrl" }

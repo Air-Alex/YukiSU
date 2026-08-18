@@ -56,3 +56,7 @@
 -keep class com.anatdx.yukisu.data.repository.RepositoryModule { *; }
 -keep class com.anatdx.yukisu.data.repository.RepositorySnapshot { *; }
 -keep class com.anatdx.yukisu.data.repository.InstalledModuleBinding { *; }
+
+# Protobuf and commons-compress
+-shrinkunusedprotofields
+-dontwarn com.github.luben.zstd.**
