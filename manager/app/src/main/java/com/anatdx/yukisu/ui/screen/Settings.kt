@@ -105,6 +105,9 @@ fun SettingScreen(navigator: DestinationsNavigator) {
     var autoJailbreak by rememberSaveable {
         mutableStateOf(MagicaHelper.isAutoJailbreakEnabled(context))
     }
+    var useSoftReboot by rememberSaveable {
+        mutableStateOf(isSoftRebootEnabled(context))
+    }
     val isLateLoadMode = remember {
         runCatching { Natives.isLateLoadMode }.getOrDefault(false)
     }
@@ -532,7 +535,19 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
-                    // 更多设置
+                    SwitchItem(
+                        icon = Icons.Filled.RestartAlt,
+                        title = stringResource(R.string.settings_soft_reboot),
+                        summary = stringResource(R.string.settings_soft_reboot_summary),
+                        enabled = !isLateLoadMode,
+                        checked = isLateLoadMode || useSoftReboot,
+                        onCheckedChange = { enabled ->
+                            setSoftRebootEnabled(context, enabled)
+                            useSoftReboot = enabled
+                        }
+                    )
+
+                    // More settings
                     SettingItem(
                         icon = Icons.Filled.Settings,
                         title = stringResource(R.string.more_settings),

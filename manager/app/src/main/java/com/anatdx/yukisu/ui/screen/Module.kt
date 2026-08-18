@@ -819,7 +819,8 @@ private fun ModuleList(
     val failedDisable = stringResource(R.string.module_failed_to_disable)
     val failedUninstall = stringResource(R.string.module_uninstall_failed)
     val successUninstall = stringResource(R.string.module_uninstall_success)
-    val reboot = stringResource(R.string.reboot)
+    val softReboot = isSoftRebootPreferred(context)
+    val reboot = stringResource(if (softReboot) R.string.reboot_soft else R.string.reboot)
     val rebootToApply = stringResource(R.string.reboot_to_apply)
     val moduleStr = stringResource(R.string.module)
     val uninstall = stringResource(R.string.uninstall)
@@ -963,7 +964,7 @@ private fun ModuleList(
             duration = SnackbarDuration.Long
         )
         if (result == SnackbarResult.ActionPerformed) {
-            reboot()
+            reboot(if (softReboot) "soft_reboot" else "")
         }
     }
 
@@ -1050,7 +1051,7 @@ private fun ModuleList(
                                             duration = SnackbarDuration.Long
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
-                                            reboot()
+                                            reboot(if (softReboot) "soft_reboot" else "")
                                         }
                                     }
                                 } else {
