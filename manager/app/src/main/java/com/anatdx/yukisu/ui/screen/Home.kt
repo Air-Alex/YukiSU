@@ -177,6 +177,21 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         }
                     }
                 }
+                val isImagePatchMode by produceState(
+                    initialValue = false,
+                    key1 = viewModel.systemStatus.ksuVersion
+                ) {
+                    while (true) {
+                        value = withContext(Dispatchers.IO) {
+                            if (viewModel.systemStatus.ksuVersion == null) {
+                                false
+                            } else {
+                                runCatching { Natives.isImagePatchMode }.getOrDefault(false)
+                            }
+                        }
+                        delay(15_000)
+                    }
+                }
                 SuperKeyDialog(
                     state = superKeyDialog,
                     onAuthenticate = { superKey ->
@@ -272,6 +287,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         },
                         isSignatureOk = isSignatureOk,
                         isLateLoadMode = isLateLoadMode,
+                        isImagePatchMode = isImagePatchMode,
                         canJailbreak = viewModel.systemStatus.ksuVersion == null &&
                             viewModel.systemInfo.seLinuxStatus == stringResource(R.string.selinux_status_permissive),
                         onJailbreak = {
@@ -578,6 +594,7 @@ private fun StatusCard(
     needsSuperKeyAuth: Boolean = false,
     isSignatureOk: Boolean = false,
     isLateLoadMode: Boolean = false,
+    isImagePatchMode: Boolean = false,
     canJailbreak: Boolean = false,
     onClickInstall: () -> Unit = {},
     onSuperKeyAuth: () -> Unit = {},
@@ -620,9 +637,10 @@ private fun StatusCard(
                     )
 
                     Column(Modifier.padding(start = 20.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
                                 text = workingModeText,
@@ -630,11 +648,7 @@ private fun StatusCard(
                                 color = MaterialTheme.colorScheme.primary,
                             )
 
-                            Spacer(Modifier.width(8.dp))
-
-                            // 认证模式标签：根据签名/SuperKey 状态组合显示
                             when {
-                                // 签名 OK 且 SuperKey 已通过：两个徽章
                                 isSignatureOk && isSuperKeyMode -> {
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
@@ -648,7 +662,6 @@ private fun StatusCard(
                                             color = MaterialTheme.colorScheme.onSecondary
                                         )
                                     }
-                                    Spacer(Modifier.width(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
                                         color = MaterialTheme.colorScheme.tertiary,
@@ -661,9 +674,7 @@ private fun StatusCard(
                                             color = MaterialTheme.colorScheme.onTertiary
                                         )
                                     }
-                                    Spacer(Modifier.width(6.dp))
                                 }
-                                // 只有签名：仅 Signature 徽章
                                 isSignatureOk && !isSuperKeyMode -> {
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
@@ -677,9 +688,7 @@ private fun StatusCard(
                                             color = MaterialTheme.colorScheme.onSecondary
                                         )
                                     }
-                                    Spacer(Modifier.width(6.dp))
                                 }
-                                // 签名未启用 / 失败，但 SuperKey 模式：仅 SuperKey 徽章
                                 !isSignatureOk && isSuperKeyMode -> {
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
@@ -693,9 +702,7 @@ private fun StatusCard(
                                             color = MaterialTheme.colorScheme.onTertiary
                                         )
                                     }
-                                    Spacer(Modifier.width(6.dp))
                                 }
-                                // 其它情况（例如都没有）：不显示认证徽章
                             }
 
                             if (isLateLoadMode) {
@@ -711,10 +718,23 @@ private fun StatusCard(
                                         color = MaterialTheme.colorScheme.onTertiary
                                     )
                                 }
-                                Spacer(Modifier.width(6.dp))
                             }
 
-                            // 架构标签（缓存避免重复 syscall）
+                            if (isImagePatchMode) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier
+                                ) {
+                                    Text(
+                                        text = stringResource(id = R.string.home_imgpatch_tag),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        color = MaterialTheme.colorScheme.onSecondary
+                                    )
+                                }
+                            }
+
                             val machine = remember { Os.uname().machine }
                             if (machine != "aarch64") {
                                 Surface(

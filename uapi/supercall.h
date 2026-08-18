@@ -80,6 +80,15 @@ struct ksu_get_info_cmd {
   __u32 features; // Output: max feature ID supported
 };
 
+#define KSU_LOAD_MODE_RAMDISK 1
+#define KSU_LOAD_MODE_IMAGE_PATCH 2
+#define KSU_LOAD_MODE_LATE 3
+
+struct ksu_get_load_mode_cmd {
+  __u32 mode;
+  __u32 flags;
+};
+
 struct ksu_report_event_cmd {
   __u32 event;
 };
@@ -292,6 +301,7 @@ struct ksu_magisk_persist_cmd {
 #define KSU_IOCTL_GET_UTS_VIEW_CONFIG _IOR('K', 243, struct ksu_uts_view_config)
 #define KSU_IOCTL_SET_UTS_VIEW_CONFIG _IOW('K', 244, struct ksu_uts_view_config)
 #define KSU_IOCTL_GET_UTS_VIEW_STATUS _IOR('K', 245, struct ksu_uts_view_status)
+#define KSU_IOCTL_GET_LOAD_MODE _IOR('K', 246, struct ksu_get_load_mode_cmd)
 
 #define KSU_IOCTL_SUPERKEY_AUTH _IOC(_IOC_READ | _IOC_WRITE, 'K', 107, 0)
 #define KSU_IOCTL_SUPERKEY_STATUS _IOC(_IOC_READ, 'K', 108, 0)

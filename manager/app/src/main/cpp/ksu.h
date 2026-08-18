@@ -43,6 +43,7 @@ bool is_safe_mode();
 
 bool is_manager();
 bool is_late_load_mode();
+bool is_image_patch_mode();
 
 void get_full_version(char *buff);
 

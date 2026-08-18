@@ -102,6 +102,21 @@ static int do_get_info(void __user *arg)
 	return 0;
 }
 
+static int do_get_load_mode(void __user *arg)
+{
+	struct ksu_get_load_mode_cmd cmd = {.mode = KSU_LOAD_MODE_RAMDISK,
+						    .flags = 0};
+
+	if (ksu_late_loaded)
+		cmd.mode = KSU_LOAD_MODE_LATE;
+	else if (ksu_imgpatch_loaded)
+		cmd.mode = KSU_LOAD_MODE_IMAGE_PATCH;
+
+	if (copy_to_user(arg, &cmd, sizeof(cmd)))
+		return -EFAULT;
+	return 0;
+}
+
 static int do_report_event(void __user *arg)
 {
 	struct ksu_report_event_cmd cmd;
@@ -1405,6 +1420,10 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_GET_INFO,
      .name = "GET_INFO",
      .handler = do_get_info,
+     .perm_check = always_allow},
+    {.cmd = KSU_IOCTL_GET_LOAD_MODE,
+     .name = "GET_LOAD_MODE",
+     .handler = do_get_load_mode,
      .perm_check = always_allow},
     {.cmd = KSU_IOCTL_REPORT_EVENT,
      .name = "REPORT_EVENT",

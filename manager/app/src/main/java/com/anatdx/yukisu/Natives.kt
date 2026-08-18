@@ -84,6 +84,9 @@ object Natives {
 
     val isLateLoadMode: Boolean
         external get
+
+    val isImagePatchMode: Boolean
+        external get
     val isManager: Boolean
         external get
 

@@ -39,6 +39,9 @@ struct InjectionResult {
     InjectionReport report;
 };
 
+// Mark a KernelSU module as being loaded by the direct image patch path.
+Result<void> mark_module_image_patch(std::vector<std::uint8_t>* module);
+
 Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_image,
                                      const std::vector<std::uint8_t>& module);
 

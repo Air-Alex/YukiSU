@@ -71,6 +71,9 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 
 struct cred *ksu_cred;
 bool ksu_late_loaded;
+bool ksu_imgpatch_loaded;
+u32 ksu_boot_load_mode __read_mostly = KSU_LOAD_MODE_RAMDISK;
+module_param_named(imgpatch, ksu_imgpatch_loaded, bool, 0);
 
 #ifdef CONFIG_KSU_DEBUG
 bool allow_shell = true;
@@ -127,6 +130,8 @@ int __init kernelsu_init(void)
 
 	pr_info("KernelSU LKM initializing, version: %u\n", KSU_VERSION);
 	ksu_late_loaded = (current->pid != 1);
+	ksu_imgpatch_loaded = ksu_imgpatch_loaded ||
+			      ksu_boot_load_mode == KSU_LOAD_MODE_IMAGE_PATCH;
 #ifdef CONFIG_KSU_DEBUG
 	pr_alert(
 	    "*************************************************************");

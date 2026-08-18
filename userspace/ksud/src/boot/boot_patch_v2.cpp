@@ -241,7 +241,7 @@ std::optional<fs::path> make_workdir() {
         std::snprintf(pattern.data(), pattern.size(), "%s/yukisu-boot-v2-XXXXXX", base.c_str());
     if (written < 0 || static_cast<std::size_t>(written) >= pattern.size())
         return std::nullopt;
-    char* created = mkdtemp(pattern.data());
+    const char* created = mkdtemp(pattern.data());
     if (created == nullptr)
         return std::nullopt;
     return fs::path(created);
@@ -746,6 +746,13 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     module = read_binary(module_for_injection);
     if (!module) {
         LOGE("boot-patch-v2: failed to read SuperKey-patched LKM");
+        cleanup();
+        return 1;
+    }
+    const auto marked_module = boot::lkm_image::mark_module_image_patch(&*module);
+    if (!marked_module) {
+        LOGE("boot-patch-v2: failed to mark the LKM load mode: %s",
+             marked_module.error().message.c_str());
         cleanup();
         return 1;
     }

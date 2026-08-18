@@ -42,6 +42,8 @@ constexpr std::uint32_t kShtNobits = 8;
 constexpr std::uint16_t kEtRel = 1;
 constexpr std::uint16_t kMachineAarch64 = 183;
 constexpr std::uint16_t kShnUndef = 0;
+constexpr std::uint32_t kLoadModeRamdisk = 1;
+constexpr std::uint32_t kLoadModeImagePatch = 2;
 
 template <typename T>
 Result<T> failure(ErrorCode code, std::string message) {
@@ -739,19 +741,17 @@ std::optional<std::string> read_c_string(const std::vector<std::uint8_t>& data, 
     return std::string(reinterpret_cast<const char*>(data.data() + offset), end - offset);
 }
 
-Result<std::pair<std::vector<Fixup>, std::vector<std::string>>> collect_module_fixups(
-    const std::vector<std::uint8_t>& module, const SymbolMap& symbols,
-    std::uint64_t image_base_address, std::size_t image_size) {
+Result<std::vector<ElfSection>> parse_module_sections(const std::vector<std::uint8_t>& module) {
     if (module.size() < 64 || module[0] != 0x7f || module[1] != 'E' || module[2] != 'L' ||
         module[3] != 'F' || module[4] != 2 || module[5] != 1)
-        return failure<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
-            ErrorCode::kInvalidArgument, "module is not a little-endian ELF64 object");
+        return failure<std::vector<ElfSection>>(ErrorCode::kInvalidArgument,
+                                                "module is not a little-endian ELF64 object");
     std::uint16_t type = 0;
     std::uint16_t machine = 0;
     if (!read_u16(module, 16, &type) || !read_u16(module, 18, &machine) || type != kEtRel ||
         machine != kMachineAarch64)
-        return failure<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
-            ErrorCode::kUnsupported, "module must be an AArch64 ET_REL object");
+        return failure<std::vector<ElfSection>>(ErrorCode::kUnsupported,
+                                                "module must be an AArch64 ET_REL object");
     std::uint64_t section_offset_u64 = 0;
     std::uint16_t section_entry_size = 0;
     std::uint16_t section_count = 0;
@@ -759,15 +759,15 @@ Result<std::pair<std::vector<Fixup>, std::vector<std::string>>> collect_module_f
         !read_u16(module, 60, &section_count) ||
         section_offset_u64 > std::numeric_limits<std::size_t>::max() || section_entry_size < 64 ||
         section_count == 0)
-        return failure<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
-            ErrorCode::kInvalidArgument, "module section table is malformed");
+        return failure<std::vector<ElfSection>>(ErrorCode::kInvalidArgument,
+                                                "module section table is malformed");
     const std::size_t section_offset = static_cast<std::size_t>(section_offset_u64);
     if (section_count >
             (std::numeric_limits<std::size_t>::max() - section_offset) / section_entry_size ||
         !range_ok(module, section_offset,
                   static_cast<std::size_t>(section_count) * section_entry_size))
-        return failure<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
-            ErrorCode::kOutOfRange, "module section table is outside the object");
+        return failure<std::vector<ElfSection>>(ErrorCode::kOutOfRange,
+                                                "module section table is outside the object");
     std::vector<ElfSection> sections;
     sections.reserve(section_count);
     for (std::size_t index = 0; index < section_count; ++index) {
@@ -785,16 +785,27 @@ Result<std::pair<std::vector<Fixup>, std::vector<std::string>>> collect_module_f
             data_offset_u64 > std::numeric_limits<std::size_t>::max() ||
             section_size_u64 > std::numeric_limits<std::size_t>::max() ||
             entry_size_u64 > std::numeric_limits<std::size_t>::max())
-            return failure<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
-                ErrorCode::kInvalidArgument, "module section header is malformed");
+            return failure<std::vector<ElfSection>>(ErrorCode::kInvalidArgument,
+                                                    "module section header is malformed");
         const ElfSection section{section_type, static_cast<std::size_t>(data_offset_u64),
                                  static_cast<std::size_t>(section_size_u64), link,
                                  static_cast<std::size_t>(entry_size_u64)};
         if (section.type != kShtNobits && !range_ok(module, section.offset, section.size))
-            return failure<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
-                ErrorCode::kOutOfRange, "module section is outside the object");
+            return failure<std::vector<ElfSection>>(ErrorCode::kOutOfRange,
+                                                    "module section is outside the object");
         sections.push_back(section);
     }
+    return Result<std::vector<ElfSection>>::success(std::move(sections));
+}
+
+Result<std::pair<std::vector<Fixup>, std::vector<std::string>>> collect_module_fixups(
+    const std::vector<std::uint8_t>& module, const SymbolMap& symbols,
+    std::uint64_t image_base_address, std::size_t image_size) {
+    auto parsed_sections = parse_module_sections(module);
+    if (!parsed_sections)
+        return propagate<std::pair<std::vector<Fixup>, std::vector<std::string>>>(
+            parsed_sections.error());
+    const auto& sections = parsed_sections.value();
 
     std::vector<Fixup> fixups;
     std::set<std::string> unresolved;
@@ -1090,6 +1101,79 @@ Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& origi
 }
 
 }  // namespace
+
+Result<void> mark_module_image_patch(std::vector<std::uint8_t>* module) {
+    if (module == nullptr)
+        return failure<void>(ErrorCode::kInvalidArgument, "module buffer is null");
+    auto parsed_sections = parse_module_sections(*module);
+    if (!parsed_sections)
+        return propagate<void>(parsed_sections.error());
+    const auto& sections = parsed_sections.value();
+    std::optional<std::size_t> load_mode_offset;
+
+    for (const auto& symbol_section : sections) {
+        if (symbol_section.type != kShtSymtab)
+            continue;
+        if (symbol_section.entry_size < 24 ||
+            symbol_section.size % symbol_section.entry_size != 0 ||
+            symbol_section.link >= sections.size())
+            return failure<void>(ErrorCode::kInvalidArgument, "module symbol table is malformed");
+        const auto& string_section = sections[symbol_section.link];
+        if (string_section.type != kShtStrtab ||
+            !range_ok(*module, string_section.offset, string_section.size))
+            return failure<void>(ErrorCode::kInvalidArgument,
+                                 "module symbol string table is malformed");
+        const std::size_t string_end = string_section.offset + string_section.size;
+        for (std::size_t index = 1; index < symbol_section.size / symbol_section.entry_size;
+             ++index) {
+            const std::size_t symbol_offset =
+                symbol_section.offset + (index * symbol_section.entry_size);
+            std::uint32_t name_offset = 0;
+            std::uint16_t section_index = 0;
+            std::uint64_t section_value = 0;
+            std::uint64_t symbol_size = 0;
+            if (!read_u32(*module, symbol_offset, &name_offset) ||
+                !read_u16(*module, symbol_offset + 6, &section_index) ||
+                !read_u64(*module, symbol_offset + 8, &section_value) ||
+                !read_u64(*module, symbol_offset + 16, &symbol_size) ||
+                section_index == kShnUndef || name_offset >= string_section.size)
+                continue;
+            const auto name =
+                read_c_string(*module, string_section.offset + name_offset, string_end);
+            if (!name || *name != "ksu_boot_load_mode")
+                continue;
+            if (section_index >= sections.size() || symbol_size < sizeof(std::uint32_t) ||
+                section_value > std::numeric_limits<std::size_t>::max())
+                return failure<void>(ErrorCode::kInvalidArgument,
+                                     "LKM image-patch marker symbol is malformed");
+            const auto& data_section = sections[section_index];
+            const std::size_t value = static_cast<std::size_t>(section_value);
+            if (data_section.type == kShtNobits || value > data_section.size ||
+                data_section.size - value < sizeof(std::uint32_t) ||
+                data_section.offset > std::numeric_limits<std::size_t>::max() - value ||
+                !range_ok(*module, data_section.offset + value, sizeof(std::uint32_t)))
+                return failure<void>(ErrorCode::kOutOfRange,
+                                     "LKM image-patch marker is outside the object");
+            const std::size_t candidate = data_section.offset + value;
+            if (load_mode_offset && *load_mode_offset != candidate)
+                return failure<void>(ErrorCode::kInvalidArgument,
+                                     "LKM contains duplicate image-patch markers");
+            load_mode_offset = candidate;
+        }
+    }
+
+    if (!load_mode_offset)
+        return failure<void>(ErrorCode::kUnsupported,
+                             "LKM does not expose the image-patch load-mode marker");
+    std::uint32_t current_mode = 0;
+    if (!read_u32(*module, *load_mode_offset, &current_mode) ||
+        (current_mode != kLoadModeRamdisk && current_mode != kLoadModeImagePatch))
+        return failure<void>(ErrorCode::kInvalidArgument,
+                             "LKM image-patch marker has an unexpected value");
+    if (!write_u32(module, *load_mode_offset, kLoadModeImagePatch))
+        return failure<void>(ErrorCode::kOutOfRange, "cannot update the LKM image-patch marker");
+    return Result<void>::success();
+}
 
 Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_image,
                                      const std::vector<std::uint8_t>& module) {

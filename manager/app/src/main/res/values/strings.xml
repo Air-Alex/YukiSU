@@ -268,6 +268,8 @@
     <string name="ci_update_error_stream_failed" tools:ignore="MissingTranslation">The CI update stream failed.</string>
     <string name="settings_auto_jailbreak">Auto jailbreak</string>
     <string name="settings_auto_jailbreak_summary">Automatically use Magica to bootstrap late-load when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
+    <string name="settings_soft_reboot" tools:ignore="MissingTranslation">Soft restart instead of reboot</string>
+    <string name="settings_soft_reboot_summary" tools:ignore="MissingTranslation">Use a soft restart after installing, updating, enabling, disabling, or removing modules.</string>
     <string name="settings_adb_root">ADB Root</string>
     <string name="settings_adb_root_summary">Run adbd with root privileges</string>
     <string name="grant_root_failed">Failed to grant root!</string>
@@ -277,8 +279,19 @@
     <string name="enable_web_debugging_summary">Can be used to debug WebUI. Please enable only when needed</string>
     <string name="home_auth_superkey_tag">SuperKey</string>
     <string name="home_auth_signature_tag">Signature</string>
+    <string name="home_imgpatch_tag" translatable="false">ImgPatch</string>
     <string name="direct_install">Direct install (Recommended)</string>
     <string name="select_file">Select an image to patch</string>
+    <string name="install_direct_lkm_title" tools:ignore="MissingTranslation">Embed LKM directly into boot kernel</string>
+    <string name="install_direct_lkm_summary" tools:ignore="MissingTranslation">Use boot instead of init_boot for selected-image, direct, and inactive-slot installs. Legacy KernelSU ramdisk payloads are removed first.</string>
+    <string name="install_direct_lkm_warning_title" tools:ignore="MissingTranslation">Direct-kernel mode enabled</string>
+    <string name="install_direct_lkm_warning_summary" tools:ignore="MissingTranslation">This mode patches boot only and clears known KernelSU ramdisk files from boot and init_boot during device installs. SuperKey is applied; shell/ADB options and UTS boot parameters are not applied.</string>
+    <string name="download_file" tools:ignore="MissingTranslation">Download an image</string>
+    <string name="download_file_summary" tools:ignore="MissingTranslation">Download and patch an OTA or factory image from a URL.</string>
+    <string name="download_dialog_title" tools:ignore="MissingTranslation">Download image</string>
+    <string name="download_dialog_msg" tools:ignore="MissingTranslation">HTTPS URL</string>
+    <string name="download_probe_failed" tools:ignore="MissingTranslation">Cannot inspect download: %1$s</string>
+    <string name="download_no_boot_partition" tools:ignore="MissingTranslation">No boot image partition found.</string>
     <string name="install_inactive_slot">Install to inactive slot (After OTA)</string>
     <string name="install_inactive_slot_warning">Your device will be **FORCED** to boot to the current inactive slot after a reboot!\nOnly use this option after OTA is done.\nContinue?</string>
     <string name="install_next">Next</string>

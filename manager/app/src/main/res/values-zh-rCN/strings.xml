@@ -266,6 +266,8 @@
     <string name="ci_update_error_stream_failed">CI 更新数据流传输失败。</string>
     <string name="settings_auto_jailbreak">自动越狱</string>
     <string name="settings_auto_jailbreak_summary">开机检测到 Permissive SELinux 时自动使用 Magica 引导 late-load。需要授予本应用自启动权限。</string>
+    <string name="settings_soft_reboot">使用软重启代替重启</string>
+    <string name="settings_soft_reboot_summary">安装、更新、启用、停用或移除模块后使用软重启。</string>
     <string name="settings_adb_root">ADB Root</string>
     <string name="settings_adb_root_summary">让 adbd 以 root 权限运行</string>
     <string name="grant_root_failed">获取 root 失败！</string>
@@ -275,6 +277,16 @@
     <string name="enable_web_debugging_summary">可用于调试 WebUI 。请仅在需要时启用。</string>
     <string name="direct_install">直接安装（推荐）</string>
     <string name="select_file">选择一个需要修补的镜像</string>
+    <string name="install_direct_lkm_title">将 LKM 直接嵌入 boot 内核</string>
+    <string name="install_direct_lkm_summary">选择修补镜像、直接安装和 OTA 槽位安装均改用 boot 而不是 init_boot，并先清理旧的 KernelSU ramdisk 注入。</string>
+    <string name="install_direct_lkm_warning_title">已启用内核直嵌模式</string>
+    <string name="install_direct_lkm_warning_summary">此模式只修补 boot；设备安装时会同时清除 boot 和 init_boot 中已知的 KernelSU ramdisk 文件。会应用 SuperKey，但不应用 Shell/ADB 选项和 UTS 启动参数。</string>
+    <string name="download_file">下载镜像</string>
+    <string name="download_file_summary">从 URL 下载并修补 OTA 或 factory 镜像。</string>
+    <string name="download_dialog_title">下载镜像</string>
+    <string name="download_dialog_msg">HTTPS URL</string>
+    <string name="download_probe_failed">无法检查下载内容：%1$s</string>
+    <string name="download_no_boot_partition">未找到可用的 boot 镜像分区。</string>
     <string name="install_inactive_slot">安装到未使用的槽位（OTA 后）</string>
     <string name="install_inactive_slot_warning">将在重启后强制切换到另一个槽位！注意只能在 OTA 更新完成后的重启之前使用。</string>
     <string name="install_next">下一步</string>
