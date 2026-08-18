@@ -4,11 +4,13 @@ import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Environment
 import android.os.Parcelable
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import androidx.core.net.toUri
 import android.util.Log
 import com.anatdx.yukisu.R
 import com.topjohnwu.superuser.CallbackList
@@ -19,16 +21,24 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.Natives
+import com.anatdx.yukisu.core.tasks.ExtractImage
+import com.anatdx.yukisu.core.tasks.ProbeResult
+import com.anatdx.yukisu.core.utils.DataSourceChannel
 import com.anatdx.yukisu.ksu.KsuPaths
 import com.anatdx.yukisu.ksuApp
 import com.topjohnwu.superuser.io.SuFile
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.OkHttpClient
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Properties
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 
 /**
@@ -1285,17 +1295,18 @@ sealed class LkmSelection : Parcelable {
     data object KmiNone : LkmSelection()
 }
 
-fun installBoot(
-    bootUri: Uri?,
+private fun patchBootImage(
+    bootFile: File?,
     lkm: LkmSelection,
     targetKmi: String,
     ota: Boolean,
     partition: String?,
-    allowShell: Boolean = false,
-    enableAdb: Boolean = false,
-    forceBackup: Boolean = false,
-    superKey: String? = null,
-    signatureBypass: Boolean = false,
+    allowShell: Boolean,
+    enableAdb: Boolean,
+    forceBackup: Boolean,
+    superKey: String?,
+    signatureBypass: Boolean,
+    directInstall: Boolean,
     onFinish: (Boolean, Int) -> Unit,
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
@@ -1322,19 +1333,6 @@ fun installBoot(
         enabled = pendingUtsBoot != null,
         template = patchedUtsBootDraft,
     )
-
-    val resolver = ksuApp.contentResolver
-
-    val bootFile = bootUri?.let { uri ->
-        with(resolver.openInputStream(uri)) {
-            val bootFile = File(ksuApp.cacheDir, "boot.img")
-            bootFile.outputStream().use { output ->
-                this?.copyTo(output)
-            }
-
-            bootFile
-        }
-    }
 
     val ksudPath = getKsuDaemonPath()
     var cmd = "boot-patch --magiskboot $ksudPath"
@@ -1366,7 +1364,7 @@ fun installBoot(
     var lkmFile: File? = null
     when (lkm) {
         is LkmSelection.LkmUri -> {
-            lkmFile = with(resolver.openInputStream(lkm.uri)) {
+            lkmFile = with(ksuApp.contentResolver.openInputStream(lkm.uri)) {
                 val file = File(ksuApp.cacheDir, "kernelsu-tmp-lkm.ko")
                 file.outputStream().use { output ->
                     this?.copyTo(output)
@@ -1417,13 +1415,242 @@ fun installBoot(
     bootFile?.delete()
     lkmFile?.delete()
     // if boot uri is empty, it is direct install, when success, we should show reboot button
-    onFinish(bootUri == null && result.isSuccess, result.code)
+    onFinish(directInstall && result.isSuccess, result.code)
 
-    if (bootUri == null && result.isSuccess) {
+    if (directInstall && result.isSuccess) {
         install()
     }
 
     return result.isSuccess
+}
+
+private fun copyUriToTemporaryFile(uri: Uri, prefix: String, suffix: String): File {
+    val destination = File.createTempFile(prefix, suffix, ksuApp.cacheDir)
+    try {
+        val input = ksuApp.contentResolver.openInputStream(uri)
+            ?: throw IOException("Cannot open the selected file")
+        input.use { source ->
+            destination.outputStream().use(source::copyTo)
+        }
+        if (destination.length() == 0L) {
+            throw IOException("The selected file is empty")
+        }
+        return destination
+    } catch (error: Exception) {
+        destination.delete()
+        throw error
+    }
+}
+
+fun patchBootImageV2(
+    bootUri: Uri?,
+    lkm: LkmSelection,
+    ota: Boolean,
+    superKey: String? = null,
+    signatureBypass: Boolean = false,
+    onFinish: (Boolean, Int) -> Unit,
+    onStdout: (String) -> Unit,
+    onStderr: (String) -> Unit,
+): Boolean {
+    var bootFile: File? = null
+    var lkmFile: File? = null
+    try {
+        bootFile = bootUri?.let { copyUriToTemporaryFile(it, "boot-v2-", ".img") }
+        if (lkm is LkmSelection.LkmUri) {
+            lkmFile = copyUriToTemporaryFile(lkm.uri, "lkm-v2-", ".ko")
+        }
+
+        val inputFile = bootFile
+        val outputFile = inputFile?.let {
+            val outputDirectory =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            File(
+                outputDirectory,
+                "kernelsu_patched_v2_${System.currentTimeMillis()}_" +
+                    "${UUID.randomUUID().toString().take(8)}.img",
+            )
+        }
+        val ksudPath = getKsuDaemonPath()
+        val command = buildString {
+            append("boot-patch-v2 --magiskboot ")
+            append(shellQuoteArgument(ksudPath))
+            if (inputFile != null && outputFile != null) {
+                append(" --boot ")
+                append(shellQuoteArgument(inputFile.absolutePath))
+                append(" --output ")
+                append(shellQuoteArgument(outputFile.absolutePath))
+            } else {
+                append(" --flash")
+                if (ota) {
+                    append(" --ota")
+                }
+            }
+            lkmFile?.let { module ->
+                append(" --module ")
+                append(shellQuoteArgument(module.absolutePath))
+            }
+            if (!superKey.isNullOrBlank()) {
+                append(" --superkey ")
+                append(shellQuoteArgument(superKey))
+                if (signatureBypass) {
+                    append(" --signature-bypass")
+                }
+            }
+        }
+
+        val result = flashWithIO(ksudCmd(command), onStdout, onStderr)
+        if (result.isSuccess && outputFile != null) {
+            MediaScannerConnection.scanFile(
+                ksuApp,
+                arrayOf(outputFile.absolutePath),
+                arrayOf("application/octet-stream"),
+                null,
+            )
+        }
+        onFinish(inputFile == null && result.isSuccess, result.code)
+        return result.isSuccess
+    } catch (error: Exception) {
+        onStderr(error.message ?: "Failed to prepare boot-patch-v2 input")
+        onFinish(false, 1)
+        return false
+    } finally {
+        bootFile?.delete()
+        lkmFile?.delete()
+    }
+}
+
+fun installBoot(
+    bootUri: Uri?,
+    lkm: LkmSelection,
+    targetKmi: String,
+    ota: Boolean,
+    partition: String?,
+    allowShell: Boolean = false,
+    enableAdb: Boolean = false,
+    forceBackup: Boolean = false,
+    superKey: String? = null,
+    signatureBypass: Boolean = false,
+    embedLkmInBoot: Boolean = false,
+    onFinish: (Boolean, Int) -> Unit,
+    onStdout: (String) -> Unit,
+    onStderr: (String) -> Unit,
+): Boolean {
+    if (embedLkmInBoot) {
+        return patchBootImageV2(
+            bootUri = bootUri,
+            lkm = lkm,
+            ota = ota,
+            superKey = superKey,
+            signatureBypass = signatureBypass,
+            onFinish = onFinish,
+            onStdout = onStdout,
+            onStderr = onStderr,
+        )
+    }
+    val bootFile = bootUri?.let { uri ->
+        val file = File(ksuApp.cacheDir, "boot.img")
+        ksuApp.contentResolver.openInputStream(uri).use { input ->
+            file.outputStream().use { output -> input?.copyTo(output) }
+        }
+        file
+    }
+    return patchBootImage(
+        bootFile = bootFile,
+        lkm = lkm,
+        targetKmi = targetKmi,
+        ota = ota,
+        partition = partition,
+        allowShell = allowShell,
+        enableAdb = enableAdb,
+        forceBackup = forceBackup,
+        superKey = superKey,
+        signatureBypass = signatureBypass,
+        directInstall = bootUri == null,
+        onFinish = onFinish,
+        onStdout = onStdout,
+        onStderr = onStderr,
+    )
+}
+
+private fun newDownloadClient(): OkHttpClient = OkHttpClient.Builder()
+    .connectTimeout(10, TimeUnit.SECONDS)
+    .readTimeout(20, TimeUnit.SECONDS)
+    .writeTimeout(20, TimeUnit.SECONDS)
+    .build()
+
+private fun validateDownloadUrl(url: String) {
+    val uri = url.toUri()
+    check(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
+        "Only HTTPS download URLs are supported"
+    }
+}
+
+private fun readDownloadMagic(channel: DataSourceChannel): String {
+    val buffer = ByteBuffer.allocate(4)
+    if (channel.read(buffer) != 4) {
+        throw IOException("Downloaded file is shorter than its magic header")
+    }
+    channel.position(0)
+    return String(buffer.array(), StandardCharsets.ISO_8859_1)
+}
+
+suspend fun probeRemoteBootPartitions(url: String): ProbeResult = withContext(Dispatchers.IO) {
+    validateDownloadUrl(url)
+    DataSourceChannel(newDownloadClient(), url).use { channel ->
+        when (readDownloadMagic(channel)) {
+            "CrAU" -> ExtractImage.probePayload(channel, withKmi = true)
+            else -> ExtractImage.probe(channel, withKmi = true)
+        }
+    }
+}
+
+fun downloadBoot(
+    url: String,
+    partition: String,
+    targetKmi: String,
+    lkm: LkmSelection,
+    allowShell: Boolean,
+    enableAdb: Boolean,
+    forceBackup: Boolean,
+    superKey: String? = null,
+    signatureBypass: Boolean = false,
+    onFinish: (Boolean, Int) -> Unit,
+    onStdout: (String) -> Unit,
+    onStderr: (String) -> Unit,
+): Boolean {
+    val bootFile = File(ksuApp.cacheDir, "download-boot.img")
+    try {
+        validateDownloadUrl(url)
+        DataSourceChannel(newDownloadClient(), url).use { channel ->
+            val image = ExtractImage(bootFile, onStdout)
+            when (readDownloadMagic(channel)) {
+                "CrAU" -> image.consumePayload(channel, partition)
+                else -> image.consume(channel, partition)
+            }
+        }
+    } catch (error: Exception) {
+        bootFile.delete()
+        onStderr(error.message ?: "Failed to download boot image")
+        onFinish(false, 1)
+        return false
+    }
+
+    return patchBootImage(
+        bootFile = bootFile,
+        lkm = lkm,
+        targetKmi = targetKmi,
+        ota = false,
+        partition = partition,
+        allowShell = allowShell,
+        enableAdb = enableAdb,
+        forceBackup = forceBackup,
+        superKey = superKey,
+        signatureBypass = signatureBypass,
+        directInstall = false,
+        onFinish = onFinish,
+        onStdout = onStdout,
+        onStderr = onStderr,
+    )
 }
 
 fun restartAdbd() {

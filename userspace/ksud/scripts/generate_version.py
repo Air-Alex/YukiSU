@@ -5,6 +5,11 @@ import os
 import re
 
 
+# Keep ksud's numeric version aligned with manager/build.gradle.kts and
+# kernel/Kbuild. The offset leaves room for the historical version range.
+VERSION_CODE_BASE = 10000 - 3135
+
+
 def normalize_version_name(describe):
     describe = describe.strip()
     match = re.match(r"^v?(\d+\.\d+\.\d+)(?:-\d+-g([0-9a-fA-F]+).*)?$", describe)
@@ -20,7 +25,7 @@ def get_git_version():
             stderr=subprocess.DEVNULL,
             text=True
         ).strip()
-        version_code = int(count_output) + 10000
+        version_code = int(count_output) + VERSION_CODE_BASE
         
         try:
             tag_output = subprocess.check_output(

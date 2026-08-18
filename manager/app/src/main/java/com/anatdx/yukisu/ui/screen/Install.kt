@@ -29,8 +29,10 @@ import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -108,6 +110,10 @@ fun InstallScreen(
     var lkmSelection by remember { mutableStateOf<LkmSelection>(LkmSelection.KmiNone) }
     var isResolvingKmi by remember { mutableStateOf(false) }
     var showRebootDialog by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadUrl by remember { mutableStateOf("") }
+    var remotePartitions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var remotePartitionSelectionIndex by remember { mutableIntStateOf(0) }
 
     val seLinuxStatus by produceState(initialValue = resources.getString(R.string.selinux_status_unknown)) {
         value = withContext(Dispatchers.IO) {
@@ -181,6 +187,11 @@ fun InstallScreen(
     var allowShell by remember { mutableStateOf(false) }
     var enableAdb by remember { mutableStateOf(false) }
     var forceBackup by remember { mutableStateOf(false) }
+    var embedLkmInBoot by rememberSaveable { mutableStateOf(false) }
+
+    val directKernelMethod = installMethod is InstallMethod.SelectFile ||
+        installMethod is InstallMethod.DirectInstall ||
+        installMethod is InstallMethod.DirectInstallToInactiveSlot
 
     LaunchedEffect(utsBootRepatch) {
         if (utsBootRepatch) {
@@ -196,6 +207,13 @@ fun InstallScreen(
             hasCustomSelected = false
             partitionSelectionIndex = 0
             forceBackup = false
+            embedLkmInBoot = false
+        }
+    }
+
+    LaunchedEffect(installMethod) {
+        if (!directKernelMethod) {
+            embedLkmInBoot = false
         }
     }
 
@@ -209,6 +227,34 @@ fun InstallScreen(
                 return@onInstall
             }
             val isOta = method is InstallMethod.DirectInstallToInactiveSlot
+            if (embedLkmInBoot &&
+                (method is InstallMethod.SelectFile ||
+                    method is InstallMethod.DirectInstall ||
+                    method is InstallMethod.DirectInstallToInactiveSlot)
+            ) {
+                val selectedBoot = (method as? InstallMethod.SelectFile)?.uri
+                if (method is InstallMethod.SelectFile && selectedBoot == null) {
+                    return@onInstall
+                }
+                navigator.navigate(
+                    FlashScreenDestination(
+                        FlashIt.FlashBoot(
+                            boot = selectedBoot,
+                            lkm = selectedLkm,
+                            targetKmi = "",
+                            ota = isOta,
+                            partition = "boot",
+                            allowShell = false,
+                            enableAdb = false,
+                            backup = false,
+                            superKey = effectiveSuperKey.ifBlank { null },
+                            signatureBypass = signatureBypass,
+                            embedLkmInBoot = true,
+                        )
+                    )
+                )
+                return@onInstall
+            }
             // An untouched dropdown only presents ksud's current partition
             // recommendation. Let ksud choose from the resolved KMI.
             val partitionSelection = if (utsBootRepatch) {
@@ -220,7 +266,21 @@ fun InstallScreen(
             } else {
                 partitionsState.getOrNull(partitionSelectionIndex)
             }
-            val flashIt = FlashIt.FlashBoot(
+            val flashIt = if (method is InstallMethod.DownloadFile) {
+                val url = method.url ?: return@onInstall
+                val partition = method.partition ?: return@onInstall
+                FlashIt.DownloadBoot(
+                    url = url,
+                    partition = partition,
+                    targetKmi = targetKmi,
+                    lkm = selectedLkm,
+                    allowShell = allowShell,
+                    enableAdb = enableAdb,
+                    backup = forceBackup,
+                    superKey = effectiveSuperKey.ifBlank { null },
+                    signatureBypass = signatureBypass,
+                )
+            } else FlashIt.FlashBoot(
                 boot = if (!utsBootRepatch && method is InstallMethod.SelectFile) {
                     method.uri
                 } else {
@@ -252,16 +312,24 @@ fun InstallScreen(
         }
     }
 
-    val onClickNext = {
+    val onClickNext = onClickNext@{
         val method = installMethod
         if (method != null && !isResolvingKmi) {
+            if (embedLkmInBoot && directKernelMethod) {
+                onInstall(method, lkmSelection, "")
+                return@onClickNext
+            }
             isResolvingKmi = true
             loadingDialog.show()
             coroutineScope.launch {
                 val kmi = try {
                     val ota = method is InstallMethod.DirectInstallToInactiveSlot
                     val bootUri = (method as? InstallMethod.SelectFile)?.uri
-                    val detectedKmi = getTargetKmi(ota, bootUri)
+                    val detectedKmi = if (method is InstallMethod.DownloadFile) {
+                        method.remoteKmi.orEmpty()
+                    } else {
+                        getTargetKmi(ota, bootUri)
+                    }
                     resolveTargetKmi(
                         detectedKmi = detectedKmi,
                         supportedKmis = getSupportedKmis(),
@@ -311,6 +379,52 @@ fun InstallScreen(
         })
     }
 
+    val onDownload: () -> Unit = {
+        val url = downloadUrl.trim()
+        val parsedUrl = runCatching { url.toUri() }.getOrNull()
+        if (parsedUrl?.scheme?.equals("https", ignoreCase = true) != true ||
+            parsedUrl.host.isNullOrBlank()
+        ) {
+            Toast.makeText(context, R.string.download_dialog_msg, Toast.LENGTH_SHORT).show()
+        } else {
+            showDownloadDialog = false
+            loadingDialog.show()
+            coroutineScope.launch {
+                try {
+                    val probe = probeRemoteBootPartitions(url)
+                    if (probe.partitions.isEmpty()) {
+                        Toast.makeText(
+                            context,
+                            R.string.download_no_boot_partition,
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        remotePartitions = probe.partitions
+                        remotePartitionSelectionIndex = 0
+                        installMethod = InstallMethod.DownloadFile(
+                            url = url,
+                            partition = probe.partitions.first(),
+                            remoteKmi = probe.kmi,
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    Toast.makeText(
+                        context,
+                        resources.getString(
+                            R.string.download_probe_failed,
+                            error.message ?: error.javaClass.simpleName
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                } finally {
+                    loadingDialog.hide()
+                }
+            }
+        }
+    }
+
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = if (isExpressiveUi) {
         TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
@@ -320,6 +434,32 @@ fun InstallScreen(
 
     BackHandler(enabled = utsBootRepatch) {
         navigator.popBackStack()
+    }
+
+    if (showDownloadDialog) {
+        YukiAlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = { Text(stringResource(R.string.download_dialog_title)) },
+            text = {
+                OutlinedTextField(
+                    value = downloadUrl,
+                    onValueChange = { downloadUrl = it },
+                    label = { Text(stringResource(R.string.download_dialog_msg)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onDownload) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
     }
 
     Scaffold(
@@ -350,13 +490,19 @@ fun InstallScreen(
                     installMethod = it
                     hasCustomSelected = false
                 },
+                onDownload = {
+                    downloadUrl = ""
+                    showDownloadDialog = true
+                },
                 selectedMethod = installMethod,
                 directInstallOnly = utsBootRepatch,
             )
 
-            // 选择LKM直接安装分区
+            // Select the target partition for direct LKM installation.
             AnimatedVisibility(
-                visible = installMethod is InstallMethod.DirectInstall || installMethod is InstallMethod.DirectInstallToInactiveSlot,
+                visible = !embedLkmInBoot &&
+                    (installMethod is InstallMethod.DirectInstall ||
+                        installMethod is InstallMethod.DirectInstallToInactiveSlot),
                 enter = fadeIn() + expandVertically(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -425,12 +571,54 @@ fun InstallScreen(
                 }
             }
 
+            AnimatedVisibility(
+                visible = installMethod is InstallMethod.DownloadFile,
+                enter = fadeIn() + expandVertically(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    InstallSurface(
+                        colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
+                        elevation = getCardElevation(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        val method = installMethod as? InstallMethod.DownloadFile
+                        SuperDropdown(
+                            items = remotePartitions,
+                            selectedIndex = remotePartitionSelectionIndex,
+                            title = stringResource(R.string.install_select_partition),
+                            summary = method?.url,
+                            onSelectedIndexChange = { index ->
+                                remotePartitionSelectionIndex = index
+                                method?.let {
+                                    installMethod = it.copy(
+                                        partition = remotePartitions.getOrNull(index)
+                                    )
+                                }
+                            },
+                            leftAction = {
+                                YukiIcon(
+                                    Icons.Filled.Build,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(end = 16.dp),
+                                    contentDescription = null
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // 使用本地的LKM文件
+                // Select a local LKM file.
                 if (!utsBootRepatch) {
                     InstallSurface(
                         colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
@@ -466,11 +654,12 @@ fun InstallScreen(
                     }
                 }
 
-                // SuperKey 输入卡片 (仅在 LKM 安装模式下显示)
+                // SuperKey input is available for legacy image patching modes.
                 AnimatedVisibility(
                     visible = installMethod is InstallMethod.DirectInstall || 
                               installMethod is InstallMethod.DirectInstallToInactiveSlot ||
-                              installMethod is InstallMethod.SelectFile,
+                              installMethod is InstallMethod.SelectFile ||
+                              installMethod is InstallMethod.DownloadFile,
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -561,6 +750,45 @@ fun InstallScreen(
                 }
 
                 AnimatedVisibility(
+                    visible = directKernelMethod && embedLkmInBoot,
+                    enter = fadeIn() + expandVertically(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    InstallSurface(
+                        colors = getCardColors(MaterialTheme.colorScheme.errorContainer),
+                        elevation = getCardElevation(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            YukiIcon(
+                                Icons.Outlined.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.install_direct_lkm_warning_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = stringResource(R.string.install_direct_lkm_warning_summary),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                AnimatedVisibility(
                     visible = installMethod != null,
                     enter = fadeIn() + expandVertically(),
                     exit = shrinkVertically() + fadeOut()
@@ -593,7 +821,33 @@ fun InstallScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            if (installMethod is InstallMethod.SelectFile) {
+                            if (directKernelMethod) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(R.string.install_direct_lkm_title),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.install_direct_lkm_summary),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                                        )
+                                    }
+                                    YukiSwitch(
+                                        checked = embedLkmInBoot,
+                                        onCheckedChange = { embedLkmInBoot = it },
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            if (installMethod is InstallMethod.SelectFile && !embedLkmInBoot) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -620,7 +874,8 @@ fun InstallScreen(
                                 Spacer(modifier = Modifier.height(12.dp))
                             }
 
-                            Row(
+                            if (!embedLkmInBoot) {
+                                Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -641,11 +896,11 @@ fun InstallScreen(
                                     checked = allowShell,
                                     onCheckedChange = { allowShell = it }
                                 )
-                            }
+                                }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                            Row(
+                                Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -666,9 +921,10 @@ fun InstallScreen(
                                     checked = enableAdb,
                                     onCheckedChange = { enableAdb = it }
                                 )
+                                }
                             }
 
-                            if (utsBootRepatch) {
+                            if (utsBootRepatch && !embedLkmInBoot) {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -937,6 +1193,14 @@ sealed class InstallMethod {
         override val summary: String?
     ) : InstallMethod()
 
+    data class DownloadFile(
+        val url: String? = null,
+        val partition: String? = null,
+        val remoteKmi: String? = null,
+        @param:StringRes override val label: Int = R.string.download_file,
+        override val summary: String? = null,
+    ) : InstallMethod()
+
     data object DirectInstall : InstallMethod() {
         override val label: Int
             get() = R.string.direct_install
@@ -954,6 +1218,7 @@ sealed class InstallMethod {
 @Composable
 private fun SelectInstallMethod(
     onSelected: (InstallMethod) -> Unit = {},
+    onDownload: () -> Unit = {},
     selectedMethod: InstallMethod? = null,
     directInstallOnly: Boolean = false,
 ) {
@@ -971,10 +1236,14 @@ private fun SelectInstallMethod(
     val selectFileTip = stringResource(
         id = R.string.select_file_tip, defaultPartitionName
     )
-
     val radioOptions = mutableListOf<InstallMethod>()
     if (!directInstallOnly) {
         radioOptions.add(InstallMethod.SelectFile(summary = selectFileTip))
+        radioOptions.add(
+            InstallMethod.DownloadFile(
+                summary = stringResource(R.string.download_file_summary)
+            )
+        )
     }
 
     if (rootAvailable) {
@@ -1039,6 +1308,8 @@ private fun SelectInstallMethod(
                 })
             }
 
+            is InstallMethod.DownloadFile -> onDownload()
+
             is InstallMethod.DirectInstall -> {
                 selectedOption = option
                 onSelected(option)
@@ -1053,7 +1324,7 @@ private fun SelectInstallMethod(
     Column(
         modifier = Modifier.padding(horizontal = 16.dp)
     ) {
-        // LKM 安装/修补
+        // LKM installation and patching methods.
             InstallMethodSectionSurface(
                 colors = getCardColors(MaterialTheme.colorScheme.surfaceVariant),
                 elevation = getCardElevation(),

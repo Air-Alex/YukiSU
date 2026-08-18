@@ -117,8 +117,12 @@ fun updateModuleInstallStatus(
 @Destination<RootGraph>
 fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
     val context = LocalContext.current
+    val softReboot = remember(flashIt, context) {
+        (flashIt is FlashIt.FlashModule ||
+            flashIt is FlashIt.FlashModules ||
+            flashIt is FlashIt.FlashModuleUpdate) && isSoftRebootPreferred(context)
+    }
 
-    // ??????????????
     val isExternalInstall = remember {
         when (flashIt) {
             is FlashIt.FlashModule,
@@ -139,10 +143,8 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
     val logContent = remember { StringBuilder() }
     var showFloatAction by rememberSaveable { mutableStateOf(false) }
     var shouldWarningUserMetaModule by rememberSaveable { mutableStateOf(false) }
-    // ??????????????
     var hasFlashCompleted by rememberSaveable { mutableStateOf(false) }
     var hasExecuted by rememberSaveable { mutableStateOf(false) }
-    // ????????
     var hasUpdateExecuted by rememberSaveable { mutableStateOf(false) }
     var hasUpdateCompleted by rememberSaveable { mutableStateOf(false) }
 
@@ -332,10 +334,13 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
                         )
                     }
                 } else {
-                    if (flashIt is FlashIt.FlashBoot) {
-                        flashIt.superKey?.takeIf(String::isNotBlank)?.let { superKey ->
-                            SuperKeyHelper.saveSuperKey(context, superKey)
-                        }
+                    val configuredSuperKey = when (flashIt) {
+                        is FlashIt.FlashBoot -> flashIt.superKey
+                        is FlashIt.DownloadBoot -> flashIt.superKey
+                        else -> null
+                    }
+                    configuredSuperKey?.takeIf(String::isNotBlank)?.let { superKey ->
+                        SuperKeyHelper.saveSuperKey(context, superKey)
                     }
                     setFlashingStatus(FlashingStatus.SUCCESS)
                     viewModel.markNeedRefresh()
@@ -437,7 +442,9 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
                 }
                 logContent.append(it).append("\n")
             }, onStderr = {
-                if (flashIt is FlashIt.FlashAk3) {
+                if (flashIt is FlashIt.FlashAk3 ||
+                    flashIt is FlashIt.FlashBoot && flashIt.embedLkmInBoot
+                ) {
                     text += "$it\n"
                 }
                 logContent.append(it).append("\n")
@@ -499,18 +506,24 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
                     onClick = {
                         scope.launch {
                             withContext(Dispatchers.IO) {
-                                reboot()
+                                reboot(if (softReboot) "soft_reboot" else "")
                             }
                         }
                     },
                     icon = {
                         YukiIcon(
                             Icons.Filled.Refresh,
-                            contentDescription = stringResource(id = R.string.reboot)
+                            contentDescription = stringResource(
+                                id = if (softReboot) R.string.reboot_soft else R.string.reboot
+                            )
                         )
                     },
                     text = {
-                        Text(text = stringResource(id = R.string.reboot))
+                        Text(
+                            text = stringResource(
+                                id = if (softReboot) R.string.reboot_soft else R.string.reboot
+                            )
+                        )
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -900,7 +913,19 @@ sealed class FlashIt : Parcelable {
         val enableAdb: Boolean = false,
         val backup: Boolean = false,
         val superKey: String? = null,
-        val signatureBypass: Boolean = false
+        val signatureBypass: Boolean = false,
+        val embedLkmInBoot: Boolean = false,
+    ) : FlashIt()
+    data class DownloadBoot(
+        val url: String,
+        val partition: String,
+        val targetKmi: String,
+        val lkm: LkmSelection,
+        val allowShell: Boolean = false,
+        val enableAdb: Boolean = false,
+        val backup: Boolean = false,
+        val superKey: String? = null,
+        val signatureBypass: Boolean = false,
     ) : FlashIt()
     data class FlashModule(
         val uri: Uri,
@@ -948,9 +973,24 @@ fun flashIt(
             flashIt.backup,
             flashIt.superKey,
             flashIt.signatureBypass,
+            flashIt.embedLkmInBoot,
             onFinish,
             onStdout,
             onStderr
+        )
+        is FlashIt.DownloadBoot -> downloadBoot(
+            flashIt.url,
+            flashIt.partition,
+            flashIt.targetKmi,
+            flashIt.lkm,
+            flashIt.allowShell,
+            flashIt.enableAdb,
+            flashIt.backup,
+            flashIt.superKey,
+            flashIt.signatureBypass,
+            onFinish,
+            onStdout,
+            onStderr,
         )
         is FlashIt.FlashModule -> flashModule(flashIt.uri, onFinish, onStdout, onStderr)
         is FlashIt.FlashModules -> {
