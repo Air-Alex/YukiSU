@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <array>
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -35,6 +36,108 @@
 namespace ksud {
 
 namespace {
+
+#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+extern "C" int resetprop_main(int argc, char** argv);
+#endif
+
+enum class DaemonizeResult {
+    Parent,
+    Daemon,
+    Error,
+};
+
+DaemonizeResult daemonize_soft_reboot() {
+    const pid_t pid = fork();
+    if (pid < 0) {
+        LOGE("Failed to fork soft reboot daemon: %s", strerror(errno));
+        return DaemonizeResult::Error;
+    }
+
+    if (pid > 0) {
+        int status = 0;
+        pid_t waited;
+        do {
+            waited = waitpid(pid, &status, 0);
+        } while (waited < 0 && errno == EINTR);
+
+        if (waited < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            LOGE("Soft reboot daemon failed to initialize");
+            return DaemonizeResult::Error;
+        }
+        return DaemonizeResult::Parent;
+    }
+
+    detach_process_group(true);
+    switch_cgroups();
+    if (!switch_mnt_ns(1)) {
+        LOGE("Failed to enter init mount namespace for soft reboot");
+        _exit(1);
+    }
+    if (chdir("/") != 0) {
+        LOGE("Failed to change directory for soft reboot: %s", strerror(errno));
+        _exit(1);
+    }
+
+    const int devnull = open("/dev/null", O_RDWR | O_CLOEXEC);
+    if (devnull < 0 || dup2(devnull, STDIN_FILENO) < 0 || dup2(devnull, STDOUT_FILENO) < 0 ||
+        dup2(devnull, STDERR_FILENO) < 0) {
+        LOGE("Failed to redirect soft reboot daemon stdio: %s", strerror(errno));
+        if (devnull >= 0)
+            close(devnull);
+        _exit(1);
+    }
+    if (devnull > STDERR_FILENO)
+        close(devnull);
+
+    const pid_t daemon_pid = fork();
+    if (daemon_pid < 0)
+        _exit(1);
+    if (daemon_pid > 0)
+        _exit(0);
+
+    return DaemonizeResult::Daemon;
+}
+
+bool reset_boot_completed() {
+    LOGI("Resetting sys.boot_completed to 0");
+#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+    std::array<char*, 4> argv = {
+        const_cast<char*>("resetprop"),
+        const_cast<char*>("sys.boot_completed"),
+        const_cast<char*>("0"),
+        nullptr,
+    };
+    return resetprop_main(3, argv.data()) == 0;
+#else
+    return exec_command({RESETPROP_PATH, "sys.boot_completed", "0"}).exit_code == 0;
+#endif
+}
+
+bool wait_for_boot_completed() {
+    LOGI("Waiting for sys.boot_completed to change from 0");
+#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+    std::array<char*, 5> argv = {
+        const_cast<char*>("resetprop"),
+        const_cast<char*>("-w"),
+        const_cast<char*>("sys.boot_completed"),
+        const_cast<char*>("0"),
+        nullptr,
+    };
+    return resetprop_main(4, argv.data()) == 0;
+#else
+    return exec_command({RESETPROP_PATH, "-w", "sys.boot_completed", "0"}).exit_code == 0;
+#endif
+}
+
+bool run_soft_reboot_command(const char* command) {
+    const auto result = exec_command({command});
+    if (result.exit_code == 0)
+        return true;
+
+    LOGW("%s failed with exit code %d: %s", command, result.exit_code, result.stderr_str.c_str());
+    return false;
+}
 
 // Catch boot logs (logcat/dmesg) to file
 void catch_bootlog(const char* logname, const std::vector<const char*>& command) {
@@ -460,6 +563,45 @@ void on_boot_completed() {
     run_stage("boot-completed", false);
 
     LOGI("boot-completed completed");
+}
+
+int soft_reboot() {
+    std::string version_error;
+    if (!ensure_uapi_version_matched(&version_error)) {
+        LOGE("Skip soft reboot due to UAPI version mismatch: %s", version_error.c_str());
+        return 0;
+    }
+
+    switch (daemonize_soft_reboot()) {
+    case DaemonizeResult::Parent:
+        return 0;
+    case DaemonizeResult::Error:
+        return 1;
+    case DaemonizeResult::Daemon:
+        break;
+    }
+
+    LOGI("Emulating soft reboot");
+    if (!reset_boot_completed())
+        LOGW("Failed to reset sys.boot_completed");
+
+    run_stage("emulated-soft-reboot", true);
+
+    LOGI("Stopping Android services");
+    (void)run_soft_reboot_command("stop");
+
+    LOGI("Running post-fs-data after stop");
+    (void)on_post_data_fs();
+
+    LOGI("Starting Android services");
+    (void)run_soft_reboot_command("start");
+
+    on_services();
+    if (!wait_for_boot_completed())
+        LOGW("Failed while waiting for boot completion");
+    on_boot_completed();
+
+    _exit(0);
 }
 
 }  // namespace ksud

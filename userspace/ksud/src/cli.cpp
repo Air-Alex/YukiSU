@@ -152,6 +152,7 @@ void print_usage() {
     printf("  post-fs-data   Trigger post-fs-data event\n");
     printf("  services       Trigger service event\n");
     printf("  boot-completed Trigger boot-complete event\n");
+    printf("  soft-reboot    Restart Android and reapply module stages\n");
     printf("  install        Install KernelSU userspace\n");
     printf("  uninstall      Uninstall KernelSU\n");
     printf("  sepolicy       SELinux policy patch tool\n");
@@ -986,6 +987,8 @@ int cli_run(int argc, char** argv) {
     } else if (cmd == "boot-completed") {
         on_boot_completed();
         return 0;
+    } else if (cmd == "soft-reboot") {
+        return soft_reboot();
     } else if (cmd == "module") {
         return cmd_module(args);
     } else if (cmd == "plugin") {
