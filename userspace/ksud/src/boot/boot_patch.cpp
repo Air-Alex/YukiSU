@@ -784,7 +784,7 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         }
         dst << src.rdbuf();
     } else {
-        // Try to extract ksuinit from embedded assets first (like Rust version)
+        // Try to extract ksuinit from embedded assets first.
         if (copy_asset_to_file("ksuinit", init_file)) {
             printf("- Using embedded ksuinit\n");
         } else {
@@ -1701,14 +1701,14 @@ int boot_info_default_partition() {
         printf("Failed to obtain trusted KMI for partition selection\n");
         return 1;
     }
-    // Return partition name only, not full path (matching Rust behavior)
+    // Return partition name only, not full path.
     const std::string partition = get_default_partition_name(kmi, false);
     printf("%s\n", partition.c_str());
     return 0;
 }
 
 int boot_info_available_partitions() {
-    // Return base partition names (without slot suffix) like Rust version
+    // Return base partition names without the slot suffix.
     // Manager will add slot suffix based on user's choice
     const std::string slot = get_slot_suffix(false);
 
