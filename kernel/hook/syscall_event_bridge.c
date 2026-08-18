@@ -59,7 +59,7 @@ long __nocfi ksu_hook_faccessat(int orig_nr, const struct pt_regs *regs)
 	return ksu_syscall_table[orig_nr](regs);
 }
 
-// Unmark init's child that are not zygote, adbd or ksud
+// Unmark init's children that are not zygote, stub_zygote, adbd, or ksud.
 static void ksu_handle_init_mark_tracker(const char __user *filename_user)
 {
 	char path[64];
@@ -84,7 +84,8 @@ static void ksu_handle_init_mark_tracker(const char __user *filename_user)
 			current->pid);
 		escape_to_root_for_init();
 	} else if (likely(strstr(path, "/app_process") == NULL &&
-			  strstr(path, "/adbd") == NULL)) {
+			  strstr(path, "/adbd") == NULL &&
+			  strstr(path, "/stub_zygote") == NULL)) {
 		pr_info("hook_manager: unmark %d exec %s\n", current->pid,
 			path);
 		ksu_clear_task_tracepoint_flag_if_needed(current);
