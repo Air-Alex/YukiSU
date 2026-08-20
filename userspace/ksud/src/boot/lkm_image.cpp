@@ -31,6 +31,13 @@ constexpr std::size_t kCapsuleAlignment = 4096;
 constexpr std::size_t kCapsuleHeaderSize = 96;
 constexpr std::size_t kCapsuleFixupEntrySize = 16;
 constexpr std::uint64_t kCapsuleFixupFlag = 1;
+constexpr std::uint64_t kCapsuleRestoreFlag = 2;
+constexpr std::array<std::uint8_t, 8> kRestoreMetadataMagic = {
+    'K', 'S', 'U', 'R', 'S', 'T', '2', 0,
+};
+constexpr std::uint32_t kRestoreMetadataVersion = 1;
+constexpr std::size_t kRestoreMetadataHeaderSize = 48;
+constexpr std::size_t kRestoreRecordHeaderSize = 16;
 constexpr std::size_t kMinimumLoadInfoStorageSize = 256;
 constexpr std::size_t kMaximumLoadInfoStorageSize = 4096;
 constexpr std::size_t kTextCaveAlignment = 16;
@@ -721,6 +728,17 @@ struct Capsule {
     std::size_t fixup_offset = 0;
 };
 
+struct RestoreRecord {
+    std::size_t offset = 0;
+    std::vector<std::uint8_t> bytes;
+};
+
+struct RestoreMetadata {
+    std::size_t original_file_size = 0;
+    std::size_t original_image_size = 0;
+    std::vector<RestoreRecord> records;
+};
+
 struct ElfSection {
     std::uint32_t type = 0;
     std::size_t offset = 0;
@@ -879,10 +897,152 @@ Result<std::vector<std::uint8_t>> module_sha256(const std::vector<std::uint8_t>&
         std::vector<std::uint8_t>(digest.begin(), digest.end()));
 }
 
+Result<std::vector<std::uint8_t>> serialize_restore_metadata(const RestoreMetadata& metadata) {
+    if (metadata.original_file_size > metadata.original_image_size)
+        return failure<std::vector<std::uint8_t>>(
+            ErrorCode::kInvalidArgument, "restore metadata has an invalid original image size");
+
+    std::size_t records_size = 0;
+    for (const auto& record : metadata.records) {
+        if (record.offset > metadata.original_file_size ||
+            record.bytes.size() > metadata.original_file_size - record.offset)
+            return failure<std::vector<std::uint8_t>>(
+                ErrorCode::kOutOfRange, "restore metadata record is outside the original Image");
+        if (record.bytes.size() >
+            std::numeric_limits<std::size_t>::max() - kRestoreRecordHeaderSize)
+            return failure<std::vector<std::uint8_t>>(ErrorCode::kOverflow,
+                                                      "restore metadata record is too large");
+        const auto record_span =
+            align_up_checked(kRestoreRecordHeaderSize + record.bytes.size(), 16);
+        if (!record_span || records_size > std::numeric_limits<std::size_t>::max() - *record_span)
+            return failure<std::vector<std::uint8_t>>(ErrorCode::kOverflow,
+                                                      "restore metadata size overflow");
+        records_size += *record_span;
+    }
+    if (metadata.records.size() > std::numeric_limits<std::uint64_t>::max())
+        return failure<std::vector<std::uint8_t>>(ErrorCode::kOverflow,
+                                                  "restore metadata record count overflow");
+    if (kRestoreMetadataHeaderSize > std::numeric_limits<std::size_t>::max() - records_size)
+        return failure<std::vector<std::uint8_t>>(ErrorCode::kOverflow,
+                                                  "restore metadata size overflow");
+    const auto blob_size = align_up_checked(kRestoreMetadataHeaderSize + records_size, 16);
+    if (!blob_size)
+        return failure<std::vector<std::uint8_t>>(ErrorCode::kOverflow,
+                                                  "restore metadata size overflow");
+
+    std::vector<std::uint8_t> blob(*blob_size, 0);
+    std::copy(kRestoreMetadataMagic.begin(), kRestoreMetadataMagic.end(), blob.begin());
+    if (!write_u32(&blob, 8, kRestoreMetadataVersion) ||
+        !write_u32(&blob, 12, kRestoreMetadataHeaderSize) ||
+        !write_u64(&blob, 16, metadata.original_file_size) ||
+        !write_u64(&blob, 24, metadata.original_image_size) ||
+        !write_u64(&blob, 32, metadata.records.size()) || !write_u64(&blob, 40, *blob_size))
+        return failure<std::vector<std::uint8_t>>(ErrorCode::kOutOfRange,
+                                                  "restore metadata header is outside its buffer");
+
+    std::size_t cursor = kRestoreMetadataHeaderSize;
+    for (const auto& record : metadata.records) {
+        if (!write_u64(&blob, cursor, record.offset) ||
+            !write_u64(&blob, cursor + 8, record.bytes.size()) ||
+            !range_ok(blob, cursor + kRestoreRecordHeaderSize, record.bytes.size()))
+            return failure<std::vector<std::uint8_t>>(
+                ErrorCode::kOutOfRange, "restore metadata record is outside its buffer");
+        std::copy(record.bytes.begin(), record.bytes.end(),
+                  blob.begin() + static_cast<std::ptrdiff_t>(cursor + kRestoreRecordHeaderSize));
+        const auto record_span =
+            align_up_checked(kRestoreRecordHeaderSize + record.bytes.size(), 16);
+        if (!record_span)
+            return failure<std::vector<std::uint8_t>>(ErrorCode::kOverflow,
+                                                      "restore metadata record alignment overflow");
+        cursor += *record_span;
+    }
+    return Result<std::vector<std::uint8_t>>::success(std::move(blob));
+}
+
+Result<RestoreMetadata> parse_restore_metadata(const std::vector<std::uint8_t>& data,
+                                               std::size_t offset, std::size_t capsule_size) {
+    if (offset > capsule_size || capsule_size > data.size() ||
+        capsule_size - offset < kRestoreMetadataHeaderSize)
+        return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                        "restore metadata header is truncated");
+    if (!std::equal(kRestoreMetadataMagic.begin(), kRestoreMetadataMagic.end(),
+                    data.begin() + static_cast<std::ptrdiff_t>(offset)))
+        return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                        "restore metadata magic is invalid");
+    std::uint32_t version = 0;
+    std::uint32_t header_size = 0;
+    std::uint64_t original_file_size = 0;
+    std::uint64_t original_image_size = 0;
+    std::uint64_t record_count = 0;
+    std::uint64_t blob_size = 0;
+    if (!read_u32(data, offset + 8, &version) || !read_u32(data, offset + 12, &header_size) ||
+        !read_u64(data, offset + 16, &original_file_size) ||
+        !read_u64(data, offset + 24, &original_image_size) ||
+        !read_u64(data, offset + 32, &record_count) || !read_u64(data, offset + 40, &blob_size) ||
+        version != kRestoreMetadataVersion || header_size != kRestoreMetadataHeaderSize ||
+        blob_size < kRestoreMetadataHeaderSize || blob_size > capsule_size - offset ||
+        original_file_size > original_image_size ||
+        original_file_size > std::numeric_limits<std::size_t>::max() ||
+        original_image_size > std::numeric_limits<std::size_t>::max() ||
+        record_count > std::numeric_limits<std::size_t>::max())
+        return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                        "restore metadata header is invalid");
+
+    const std::size_t native_blob_size = static_cast<std::size_t>(blob_size);
+    const std::size_t records_end = offset + native_blob_size;
+    std::size_t cursor = offset + kRestoreMetadataHeaderSize;
+    RestoreMetadata metadata{static_cast<std::size_t>(original_file_size),
+                             static_cast<std::size_t>(original_image_size),
+                             {}};
+    metadata.records.reserve(static_cast<std::size_t>(record_count));
+    for (std::size_t index = 0; index < static_cast<std::size_t>(record_count); ++index) {
+        if (cursor > records_end || records_end - cursor < kRestoreRecordHeaderSize)
+            return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                            "restore metadata record header is truncated");
+        std::uint64_t record_offset = 0;
+        std::uint64_t record_size = 0;
+        if (!read_u64(data, cursor, &record_offset) || !read_u64(data, cursor + 8, &record_size) ||
+            record_offset > original_file_size ||
+            record_size > original_file_size - record_offset ||
+            record_offset > std::numeric_limits<std::size_t>::max() ||
+            record_size > std::numeric_limits<std::size_t>::max())
+            return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                            "restore metadata record range is invalid");
+        const std::size_t native_offset = static_cast<std::size_t>(record_offset);
+        const std::size_t native_size = static_cast<std::size_t>(record_size);
+        const auto record_span = align_up_checked(kRestoreRecordHeaderSize + native_size, 16);
+        if (!record_span || *record_span > records_end - cursor)
+            return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                            "restore metadata record exceeds its blob");
+        if (!range_ok(data, cursor + kRestoreRecordHeaderSize, native_size))
+            return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                            "restore metadata record data is truncated");
+        metadata.records.push_back(
+            {native_offset,
+             std::vector<std::uint8_t>(
+                 data.begin() + static_cast<std::ptrdiff_t>(cursor + kRestoreRecordHeaderSize),
+                 data.begin() + static_cast<std::ptrdiff_t>(cursor + kRestoreRecordHeaderSize +
+                                                            native_size))});
+        cursor += *record_span;
+    }
+    if (cursor > records_end)
+        return failure<RestoreMetadata>(ErrorCode::kMalformedArm64Image,
+                                        "restore metadata cursor exceeds its blob");
+    return Result<RestoreMetadata>::success(std::move(metadata));
+}
+
 Result<Capsule> build_capsule(std::size_t image_size, const std::vector<std::uint8_t>& module,
-                              const std::vector<Fixup>& fixups) {
+                              const std::vector<Fixup>& fixups,
+                              const RestoreMetadata* restore_metadata = nullptr) {
     if (fixups.size() > (std::numeric_limits<std::size_t>::max() / 16))
         return failure<Capsule>(ErrorCode::kOverflow, "fixup table size overflow");
+    std::vector<std::uint8_t> restore_blob;
+    if (restore_metadata) {
+        auto serialized = serialize_restore_metadata(*restore_metadata);
+        if (!serialized)
+            return propagate<Capsule>(serialized.error());
+        restore_blob = std::move(serialized.value());
+    }
     const auto capsule_offset_result = align_up_checked(image_size, 16);
     const auto module_padded_result = align_up_checked(module.size(), 16);
     if (!capsule_offset_result || !module_padded_result)
@@ -896,7 +1056,17 @@ Result<Capsule> build_capsule(std::size_t image_size, const std::vector<std::uin
     const std::size_t fixup_size = fixups.size() * 16;
     if (fixup_relative_offset > std::numeric_limits<std::size_t>::max() - fixup_size)
         return failure<Capsule>(ErrorCode::kOverflow, "capsule fixup offset overflow");
-    const std::size_t content_end = fixup_relative_offset + fixup_size;
+    const std::size_t fixup_end = fixup_relative_offset + fixup_size;
+    const auto restore_relative_offset_result =
+        restore_metadata ? align_up_checked(fixup_end, 16) : std::optional<std::size_t>{0};
+    if (!restore_relative_offset_result)
+        return failure<Capsule>(ErrorCode::kOverflow, "restore metadata offset overflow");
+    const std::size_t restore_relative_offset = *restore_relative_offset_result;
+    if (restore_metadata &&
+        restore_blob.size() > std::numeric_limits<std::size_t>::max() - restore_relative_offset)
+        return failure<Capsule>(ErrorCode::kOverflow, "restore metadata size overflow");
+    const std::size_t content_end =
+        restore_metadata ? restore_relative_offset + restore_blob.size() : fixup_end;
     if (capsule_offset > std::numeric_limits<std::size_t>::max() - content_end)
         return failure<Capsule>(ErrorCode::kOverflow, "capsule image size overflow");
     const auto new_image_size_result =
@@ -907,11 +1077,12 @@ Result<Capsule> build_capsule(std::size_t image_size, const std::vector<std::uin
     const std::size_t capsule_size = new_image_size - capsule_offset;
     std::vector<std::uint8_t> data(capsule_size, 0);
     std::copy(kCapsuleMagic.begin(), kCapsuleMagic.end(), data.begin());
+    const std::uint64_t flags =
+        (fixups.empty() ? 0 : kCapsuleFixupFlag) | (restore_metadata ? kCapsuleRestoreFlag : 0);
     if (!write_u32(&data, 8, kCapsuleVersion) || !write_u32(&data, 12, kCapsuleHeaderSize) ||
         !write_u64(&data, 16, capsule_size) || !write_u64(&data, 24, module_relative_offset) ||
         !write_u64(&data, 32, module.size()) || !write_u64(&data, 40, fixup_relative_offset) ||
-        !write_u64(&data, 48, fixups.size()) ||
-        !write_u64(&data, 56, fixups.empty() ? 0 : kCapsuleFixupFlag))
+        !write_u64(&data, 48, fixups.size()) || !write_u64(&data, 56, flags))
         return failure<Capsule>(ErrorCode::kOutOfRange, "capsule header is outside its buffer");
     auto digest = module_sha256(module);
     if (!digest)
@@ -927,6 +1098,13 @@ Result<Capsule> build_capsule(std::size_t image_size, const std::vector<std::uin
             !write_u64(&data, offset + 8, fixups[index].kernel_offset))
             return failure<Capsule>(ErrorCode::kOutOfRange, "capsule fixup is outside its buffer");
     }
+    if (restore_metadata) {
+        if (!range_ok(data, restore_relative_offset, restore_blob.size()))
+            return failure<Capsule>(ErrorCode::kOutOfRange,
+                                    "restore metadata is outside the capsule");
+        std::copy(restore_blob.begin(), restore_blob.end(),
+                  data.begin() + static_cast<std::ptrdiff_t>(restore_relative_offset));
+    }
     return Result<Capsule>::success({std::move(data), capsule_offset, new_image_size,
                                      capsule_offset + module_relative_offset,
                                      capsule_offset + fixup_relative_offset});
@@ -937,6 +1115,88 @@ std::uint64_t capsule_magic_value() {
     for (std::size_t index = 0; index < kCapsuleMagic.size(); ++index)
         value |= static_cast<std::uint64_t>(kCapsuleMagic[index]) << (index * 8);
     return value;
+}
+
+struct ParsedCapsule {
+    std::size_t file_offset = 0;
+    std::size_t capsule_size = 0;
+    std::size_t module_offset = 0;
+    std::size_t module_size = 0;
+    std::size_t fixup_offset = 0;
+    std::size_t fixup_count = 0;
+    std::uint64_t flags = 0;
+    std::optional<RestoreMetadata> restore_metadata;
+};
+
+Result<ParsedCapsule> find_capsule(const std::vector<std::uint8_t>& image, std::size_t image_size) {
+    std::optional<ParsedCapsule> result;
+    if (image_size < kCapsuleHeaderSize)
+        return failure<ParsedCapsule>(ErrorCode::kInvalidArgument, "direct-LKM capsule is missing");
+    for (std::size_t offset = 64; offset <= image_size - kCapsuleHeaderSize; offset += 16) {
+        if (!std::equal(kCapsuleMagic.begin(), kCapsuleMagic.end(),
+                        image.begin() + static_cast<std::ptrdiff_t>(offset)))
+            continue;
+        std::uint32_t version = 0;
+        std::uint32_t header_size = 0;
+        std::uint64_t capsule_size = 0;
+        std::uint64_t module_offset = 0;
+        std::uint64_t module_size = 0;
+        std::uint64_t fixup_offset = 0;
+        std::uint64_t fixup_count = 0;
+        std::uint64_t flags = 0;
+        if (!read_u32(image, offset + 8, &version) || !read_u32(image, offset + 12, &header_size) ||
+            !read_u64(image, offset + 16, &capsule_size) ||
+            !read_u64(image, offset + 24, &module_offset) ||
+            !read_u64(image, offset + 32, &module_size) ||
+            !read_u64(image, offset + 40, &fixup_offset) ||
+            !read_u64(image, offset + 48, &fixup_count) || !read_u64(image, offset + 56, &flags) ||
+            version != kCapsuleVersion || header_size != kCapsuleHeaderSize ||
+            (flags & ~(kCapsuleFixupFlag | kCapsuleRestoreFlag)) != 0 ||
+            capsule_size < kCapsuleHeaderSize ||
+            capsule_size > std::numeric_limits<std::size_t>::max() ||
+            module_offset < kCapsuleHeaderSize || module_offset > capsule_size ||
+            module_size > capsule_size - module_offset || fixup_offset < module_offset ||
+            fixup_offset > capsule_size ||
+            fixup_count > (capsule_size - fixup_offset) / kCapsuleFixupEntrySize ||
+            module_offset % 16 != 0 || fixup_offset % 16 != 0)
+            continue;
+        const std::size_t capsule_size_native = static_cast<std::size_t>(capsule_size);
+        if (capsule_size_native > image_size || offset > image_size - capsule_size_native ||
+            offset + capsule_size_native != image_size ||
+            fixup_offset > std::numeric_limits<std::size_t>::max() ||
+            fixup_count > std::numeric_limits<std::size_t>::max())
+            continue;
+
+        ParsedCapsule candidate{offset,
+                                capsule_size_native,
+                                static_cast<std::size_t>(module_offset),
+                                static_cast<std::size_t>(module_size),
+                                static_cast<std::size_t>(fixup_offset),
+                                static_cast<std::size_t>(fixup_count),
+                                flags,
+                                std::nullopt};
+        if ((flags & kCapsuleRestoreFlag) != 0) {
+            const std::size_t fixup_end =
+                candidate.fixup_offset + (candidate.fixup_count * kCapsuleFixupEntrySize);
+            const auto restore_relative_offset = align_up_checked(fixup_end, 16);
+            if (!restore_relative_offset || *restore_relative_offset >= candidate.capsule_size)
+                continue;
+            auto restore =
+                parse_restore_metadata(image, candidate.file_offset + *restore_relative_offset,
+                                       candidate.file_offset + candidate.capsule_size);
+            if (!restore)
+                continue;
+            candidate.restore_metadata = std::move(restore.value());
+        }
+        if (result)
+            return failure<ParsedCapsule>(ErrorCode::kAmbiguous,
+                                          "multiple direct-LKM capsules found");
+        result = std::move(candidate);
+    }
+    if (!result)
+        return failure<ParsedCapsule>(ErrorCode::kInvalidArgument,
+                                      "direct-LKM capsule is missing or malformed");
+    return Result<ParsedCapsule>::success(std::move(*result));
 }
 
 Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& original_image,
@@ -974,11 +1234,6 @@ Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& origi
         collect_module_fixups(module, metadata.value().kallsyms.symbols, base, image_size);
     if (!fixup_result)
         return propagate<InjectionResult>(fixup_result.error());
-    auto capsule_result = build_capsule(image_size, module, fixup_result.value().first);
-    if (!capsule_result)
-        return propagate<InjectionResult>(capsule_result.error());
-    Capsule capsule = std::move(capsule_result.value());
-    const std::size_t reserve_extension = capsule.image_size - image_size;
 
     const BootstrapObjectView bootstrap_object_view = bootstrap_object();
     std::string bootstrap_error;
@@ -997,6 +1252,51 @@ Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& origi
     if (base > std::numeric_limits<std::uint64_t>::max() - code_offset)
         return failure<InjectionResult>(ErrorCode::kOverflow, "bootstrap address overflow");
     const std::uint64_t code_address = base + code_offset;
+
+    auto overlap = check_non_overlapping({
+        {code_offset, code_offset + bootstrap_size, "bootstrap cave"},
+        {sites.value().async_call.file_offset, sites.value().async_call.file_offset + 4,
+         "kernel_init patch"},
+        {sites.value().strndup_call.file_offset, sites.value().strndup_call.file_offset + 4,
+         "load_module patch"},
+        {sites.value().memblock_reserve_call.file_offset,
+         sites.value().memblock_reserve_call.file_offset + 4, "memblock patch"},
+    });
+    if (!overlap)
+        return propagate<InjectionResult>(overlap.error());
+
+    std::vector<std::uint8_t> restore_source = original_image;
+    if (restore_source.size() < image_size)
+        restore_source.resize(image_size, 0);
+    RestoreMetadata restore_metadata{original_image.size(), image_size, {}};
+    const auto add_restore_record = [&](std::size_t offset, std::size_t size) -> Result<void> {
+        if (!range_ok(restore_source, offset, size))
+            return Result<void>::failure(ErrorCode::kOutOfRange,
+                                         "restore metadata source range is outside the Image");
+        restore_metadata.records.push_back(
+            {offset, std::vector<std::uint8_t>(
+                         restore_source.begin() + static_cast<std::ptrdiff_t>(offset),
+                         restore_source.begin() + static_cast<std::ptrdiff_t>(offset + size))});
+        return Result<void>::success();
+    };
+    if (auto status = add_restore_record(kImageSizeOffset, sizeof(std::uint64_t)); !status)
+        return propagate<InjectionResult>(status.error());
+    if (auto status = add_restore_record(code_offset, bootstrap_size); !status)
+        return propagate<InjectionResult>(status.error());
+    if (auto status = add_restore_record(sites.value().async_call.file_offset, 4); !status)
+        return propagate<InjectionResult>(status.error());
+    if (auto status = add_restore_record(sites.value().strndup_call.file_offset, 4); !status)
+        return propagate<InjectionResult>(status.error());
+    if (auto status = add_restore_record(sites.value().memblock_reserve_call.file_offset, 4);
+        !status)
+        return propagate<InjectionResult>(status.error());
+
+    auto capsule_result =
+        build_capsule(image_size, module, fixup_result.value().first, &restore_metadata);
+    if (!capsule_result)
+        return propagate<InjectionResult>(capsule_result.error());
+    Capsule capsule = std::move(capsule_result.value());
+    const std::size_t reserve_extension = capsule.image_size - image_size;
 
     std::vector<BootstrapDefinition> definitions;
     auto add_definition = [&definitions](std::string_view name, std::uint64_t value) {
@@ -1033,24 +1333,16 @@ Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& origi
                         &bootstrap_error))
         return failure<InjectionResult>(
             ErrorCode::kUnsupported, "cannot relocate embedded LKM bootstrap: " + bootstrap_error);
+    if (linked.data.size() != bootstrap_size)
+        return failure<InjectionResult>(
+            ErrorCode::kMalformedArm64Image,
+            "linked LKM bootstrap size differs from its restore coverage");
     if (linked.data.size() > cave_size)
         return failure<InjectionResult>(ErrorCode::kUnsupported,
                                         "bootstrap does not fit the text cave");
     if (linked.entry_address != code_address)
         return failure<InjectionResult>(ErrorCode::kMalformedArm64Image,
                                         "linked bootstrap entry does not match the selected cave");
-    auto overlap = check_non_overlapping({
-        {code_offset, code_offset + cave_size, "bootstrap cave"},
-        {sites.value().async_call.file_offset, sites.value().async_call.file_offset + 4,
-         "kernel_init patch"},
-        {sites.value().strndup_call.file_offset, sites.value().strndup_call.file_offset + 4,
-         "load_module patch"},
-        {sites.value().memblock_reserve_call.file_offset,
-         sites.value().memblock_reserve_call.file_offset + 4, "memblock patch"},
-    });
-    if (!overlap)
-        return propagate<InjectionResult>(overlap.error());
-
     std::vector<std::uint8_t> image = original_image;
     if (image.size() < image_size)
         image.resize(image_size, 0);
@@ -1190,65 +1482,10 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
         return failure<InjectionResult>(
             ErrorCode::kUnsupported, "already-patched Image has trailing data outside image_size");
 
-    struct ExistingCapsule {
-        std::size_t file_offset = 0;
-        std::size_t capsule_size = 0;
-        std::size_t module_offset = 0;
-        std::size_t fixup_offset = 0;
-        std::size_t fixup_count = 0;
-    };
-    std::optional<ExistingCapsule> capsule;
-    if (image_size < kCapsuleHeaderSize)
-        return failure<InjectionResult>(ErrorCode::kInvalidArgument,
-                                        "direct-LKM capsule is missing");
-    for (std::size_t offset = 64; offset <= image_size - kCapsuleHeaderSize; offset += 16) {
-        if (!std::equal(kCapsuleMagic.begin(), kCapsuleMagic.end(),
-                        patched_image.begin() + static_cast<std::ptrdiff_t>(offset)))
-            continue;
-        std::uint32_t version = 0;
-        std::uint32_t header_size = 0;
-        std::uint64_t capsule_size_u64 = 0;
-        std::uint64_t module_offset_u64 = 0;
-        std::uint64_t module_size_u64 = 0;
-        std::uint64_t fixup_offset_u64 = 0;
-        std::uint64_t fixup_count_u64 = 0;
-        std::uint64_t flags = 0;
-        if (!read_u32(patched_image, offset + 8, &version) ||
-            !read_u32(patched_image, offset + 12, &header_size) ||
-            !read_u64(patched_image, offset + 16, &capsule_size_u64) ||
-            !read_u64(patched_image, offset + 24, &module_offset_u64) ||
-            !read_u64(patched_image, offset + 32, &module_size_u64) ||
-            !read_u64(patched_image, offset + 40, &fixup_offset_u64) ||
-            !read_u64(patched_image, offset + 48, &fixup_count_u64) ||
-            !read_u64(patched_image, offset + 56, &flags) || version != kCapsuleVersion ||
-            header_size != kCapsuleHeaderSize || (flags & ~kCapsuleFixupFlag) != 0 ||
-            capsule_size_u64 < kCapsuleHeaderSize ||
-            capsule_size_u64 > std::numeric_limits<std::size_t>::max() ||
-            module_offset_u64 < kCapsuleHeaderSize || module_offset_u64 > capsule_size_u64 ||
-            module_size_u64 > capsule_size_u64 - module_offset_u64 ||
-            fixup_offset_u64 < module_offset_u64 || fixup_offset_u64 > capsule_size_u64 ||
-            fixup_count_u64 > (capsule_size_u64 - fixup_offset_u64) / kCapsuleFixupEntrySize ||
-            module_offset_u64 % 16 != 0 || fixup_offset_u64 % 16 != 0) {
-            continue;
-        }
-        const std::size_t capsule_size_native = static_cast<std::size_t>(capsule_size_u64);
-        if (capsule_size_native > image_size || offset > image_size - capsule_size_native ||
-            offset + capsule_size_native != image_size ||
-            module_offset_u64 > std::numeric_limits<std::size_t>::max() ||
-            fixup_offset_u64 > std::numeric_limits<std::size_t>::max() ||
-            fixup_count_u64 > std::numeric_limits<std::size_t>::max())
-            continue;
-        if (capsule) {
-            return failure<InjectionResult>(ErrorCode::kAmbiguous,
-                                            "multiple direct-LKM capsules found");
-        }
-        capsule = ExistingCapsule{
-            offset, capsule_size_native, static_cast<std::size_t>(module_offset_u64),
-            static_cast<std::size_t>(fixup_offset_u64), static_cast<std::size_t>(fixup_count_u64)};
-    }
-    if (!capsule)
-        return failure<InjectionResult>(ErrorCode::kInvalidArgument,
-                                        "direct-LKM capsule is missing or malformed");
+    auto capsule_storage = find_capsule(patched_image, image_size);
+    if (!capsule_storage)
+        return propagate<InjectionResult>(capsule_storage.error());
+    const ParsedCapsule* capsule = &capsule_storage.value();
 
     // Kallsyms encodes the original _end - _text size. Hide the appended
     // capsule while recovering metadata; the bytes themselves remain present
@@ -1275,7 +1512,10 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
                                               capsule->file_offset);
     if (!fixup_result)
         return propagate<InjectionResult>(fixup_result.error());
-    auto new_capsule = build_capsule(capsule->file_offset, module, fixup_result.value().first);
+    const RestoreMetadata* restore_metadata =
+        capsule->restore_metadata ? &*capsule->restore_metadata : nullptr;
+    auto new_capsule =
+        build_capsule(capsule->file_offset, module, fixup_result.value().first, restore_metadata);
     if (!new_capsule)
         return propagate<InjectionResult>(new_capsule.error());
     std::vector<std::uint8_t> image = patched_image;
@@ -1416,54 +1656,42 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
         return failure<std::vector<std::uint8_t>>(
             ErrorCode::kUnsupported, "already-patched Image has trailing data outside image_size");
 
-    std::optional<std::size_t> capsule_offset;
-    if (image_size < kCapsuleHeaderSize)
-        return failure<std::vector<std::uint8_t>>(ErrorCode::kInvalidArgument,
-                                                  "direct-LKM capsule is missing");
-    for (std::size_t offset = 64; offset <= image_size - kCapsuleHeaderSize; offset += 16) {
-        if (!std::equal(kCapsuleMagic.begin(), kCapsuleMagic.end(),
-                        patched_image.begin() + static_cast<std::ptrdiff_t>(offset)))
-            continue;
-        std::uint32_t version = 0;
-        std::uint32_t header_size = 0;
-        std::uint64_t capsule_size = 0;
-        std::uint64_t module_offset = 0;
-        std::uint64_t module_size = 0;
-        std::uint64_t fixup_offset = 0;
-        std::uint64_t fixup_count = 0;
-        std::uint64_t flags = 0;
-        if (!read_u32(patched_image, offset + 8, &version) ||
-            !read_u32(patched_image, offset + 12, &header_size) ||
-            !read_u64(patched_image, offset + 16, &capsule_size) ||
-            !read_u64(patched_image, offset + 24, &module_offset) ||
-            !read_u64(patched_image, offset + 32, &module_size) ||
-            !read_u64(patched_image, offset + 40, &fixup_offset) ||
-            !read_u64(patched_image, offset + 48, &fixup_count) ||
-            !read_u64(patched_image, offset + 56, &flags) || version != kCapsuleVersion ||
-            header_size != kCapsuleHeaderSize || (flags & ~kCapsuleFixupFlag) != 0 ||
-            capsule_size < kCapsuleHeaderSize ||
-            capsule_size > std::numeric_limits<std::size_t>::max() ||
-            module_offset < kCapsuleHeaderSize || module_offset > capsule_size ||
-            module_size > capsule_size - module_offset || fixup_offset < module_offset ||
-            fixup_offset > capsule_size ||
-            fixup_count > (capsule_size - fixup_offset) / kCapsuleFixupEntrySize ||
-            module_offset % 16 != 0 || fixup_offset % 16 != 0)
-            continue;
-        const auto capsule_size_native = static_cast<std::size_t>(capsule_size);
-        if (capsule_size_native > image_size || offset > image_size - capsule_size_native ||
-            offset + capsule_size_native != image_size)
-            continue;
-        if (capsule_offset)
-            return failure<std::vector<std::uint8_t>>(ErrorCode::kAmbiguous,
-                                                      "multiple direct-LKM capsules found");
-        capsule_offset = offset;
+    auto capsule_storage = find_capsule(patched_image, image_size);
+    if (!capsule_storage)
+        return propagate<std::vector<std::uint8_t>>(capsule_storage.error());
+    const ParsedCapsule& capsule = capsule_storage.value();
+    if (capsule.restore_metadata) {
+        const RestoreMetadata& metadata = *capsule.restore_metadata;
+        if (metadata.original_file_size > patched_image.size() ||
+            metadata.original_image_size > capsule.file_offset ||
+            metadata.original_file_size > metadata.original_image_size)
+            return failure<std::vector<std::uint8_t>>(
+                ErrorCode::kMalformedArm64Image,
+                "restore metadata describes an invalid Image size");
+        std::vector<std::uint8_t> restored = patched_image;
+        for (const auto& record : metadata.records) {
+            if (!range_ok(restored, record.offset, record.bytes.size()))
+                return failure<std::vector<std::uint8_t>>(
+                    ErrorCode::kMalformedArm64Image,
+                    "restore metadata record is outside the image");
+            std::copy(record.bytes.begin(), record.bytes.end(),
+                      restored.begin() + static_cast<std::ptrdiff_t>(record.offset));
+        }
+        if (restored.size() < kImageSizeOffset + sizeof(std::uint64_t))
+            return failure<std::vector<std::uint8_t>>(ErrorCode::kMalformedArm64Image,
+                                                      "restored Image header is truncated");
+        std::uint64_t restored_image_size = 0;
+        if (!read_u64(restored, kImageSizeOffset, &restored_image_size) ||
+            restored_image_size != metadata.original_image_size)
+            return failure<std::vector<std::uint8_t>>(
+                ErrorCode::kMalformedArm64Image, "restore metadata did not restore Image size");
+        restored.resize(metadata.original_file_size);
+        return Result<std::vector<std::uint8_t>>::success(std::move(restored));
     }
-    if (!capsule_offset)
-        return failure<std::vector<std::uint8_t>>(ErrorCode::kInvalidArgument,
-                                                  "direct-LKM capsule is missing or malformed");
+    const std::size_t capsule_offset = capsule.file_offset;
 
     std::vector<std::uint8_t> analysis_image = patched_image;
-    if (!write_u64(&analysis_image, kImageSizeOffset, *capsule_offset))
+    if (!write_u64(&analysis_image, kImageSizeOffset, capsule_offset))
         return failure<std::vector<std::uint8_t>>(ErrorCode::kOutOfRange,
                                                   "cannot normalize patched Image size");
     auto metadata = recover_kernel_metadata(analysis_image);
@@ -1473,7 +1701,7 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
     if (!required)
         return propagate<std::vector<std::uint8_t>>(required.error());
     const std::uint64_t base = image_base(required.value());
-    auto bounds = validate_required_bounds(required.value(), *capsule_offset);
+    auto bounds = validate_required_bounds(required.value(), capsule_offset);
     if (!bounds)
         return propagate<std::vector<std::uint8_t>>(bounds.error());
 
@@ -1504,12 +1732,12 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
                 const std::size_t candidate = target_offset - target_delta;
                 std::uint64_t magic = 0;
                 std::uint32_t wrapper_add = 0;
-                if (*capsule_offset >= 0x258 && candidate <= *capsule_offset - 0x258 &&
+                if (capsule_offset >= 0x258 && candidate <= capsule_offset - 0x258 &&
                     read_u64(patched_image, candidate + 0x1f8, &magic) &&
                     read_u32(patched_image, candidate + 0x1a8, &wrapper_add) &&
                     magic == capsule_magic_value() && wrapper_add == 0x8b080021U)
                     candidates.push_back({candidate, false});
-                if (*capsule_offset >= 0x2b4 && candidate <= *capsule_offset - 0x2b4 &&
+                if (capsule_offset >= 0x2b4 && candidate <= capsule_offset - 0x2b4 &&
                     read_u64(patched_image, candidate + 0x250, &magic) &&
                     read_u32(patched_image, candidate + 0x1f8, &wrapper_add) &&
                     magic == capsule_magic_value() && wrapper_add == 0x8b080021U)
@@ -1600,8 +1828,8 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
                                                   "direct-LKM bootstrap is outside Image");
     std::fill(restored.begin() + static_cast<std::ptrdiff_t>(layout.pool),
               restored.begin() + static_cast<std::ptrdiff_t>(layout.pool + bootstrap_size), 0);
-    restored.resize(*capsule_offset);
-    if (!write_u64(&restored, kImageSizeOffset, *capsule_offset))
+    restored.resize(capsule_offset);
+    if (!write_u64(&restored, kImageSizeOffset, capsule_offset))
         return failure<std::vector<std::uint8_t>>(ErrorCode::kOutOfRange,
                                                   "restored Image size is inconsistent");
     return Result<std::vector<std::uint8_t>>::success(std::move(restored));

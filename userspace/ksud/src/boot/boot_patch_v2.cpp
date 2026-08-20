@@ -49,6 +49,8 @@ constexpr std::array<std::uint8_t, 8> kLkmCapsuleMagic = {
 constexpr std::uint32_t kLkmCapsuleVersion = 1;
 constexpr std::uint32_t kLkmCapsuleHeaderSize = 96;
 constexpr std::size_t kLkmCapsuleFixupEntrySize = 16;
+constexpr std::uint64_t kLkmCapsuleFixupFlag = 1;
+constexpr std::uint64_t kLkmCapsuleRestoreFlag = 2;
 
 bool has_direct_lkm_capsule(const std::vector<std::uint8_t>& kernel) {
     auto image_info = boot::lkm_image::parse_arm64_image(kernel);
@@ -76,7 +78,7 @@ bool has_direct_lkm_capsule(const std::vector<std::uint8_t>& kernel) {
         if (!version || !header_size || !capsule_size || !module_offset || !module_size ||
             !fixup_offset || !fixup_count || !flags || version.value() != kLkmCapsuleVersion ||
             header_size.value() != kLkmCapsuleHeaderSize ||
-            (flags.value() & ~std::uint64_t{1}) != 0 ||
+            (flags.value() & ~(kLkmCapsuleFixupFlag | kLkmCapsuleRestoreFlag)) != 0 ||
             capsule_size.value() < header_size.value() ||
             capsule_size.value() > std::numeric_limits<std::size_t>::max() ||
             module_offset.value() < header_size.value() ||
@@ -209,6 +211,12 @@ bool same_path(const fs::path& left, const fs::path& right) {
     if (error)
         return weak_absolute(left) == weak_absolute(right);
     return left_canonical == right_canonical;
+}
+
+bool status_is_missing(const fs::file_status& status, const std::error_code& error) {
+    if (error)
+        return error == std::make_error_code(std::errc::no_such_file_or_directory);
+    return status.type() == fs::file_type::not_found;
 }
 
 bool looks_like_non_boot_partition(const fs::path& path) {
@@ -530,16 +538,8 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         std::error_code backup_error;
         const bool backup_exists =
             fs::is_regular_file(persistent_backup, backup_error) && !backup_error;
-        if (backup_exists) {
-            input_path = work / "boot-original.img";
-            if (!exec_dd(persistent_backup.string(), input_path.string())) {
-                LOGE("boot-patch-v2: failed to read original boot backup %s",
-                     persistent_backup.string().c_str());
-                cleanup();
-                return 1;
-            }
-            printf("- Reusing original boot backup: %s\n", persistent_backup.string().c_str());
-        } else {
+        input_path = current_boot;
+        if (!backup_exists) {
             if (!ensure_dir_exists("/data/adb/ksu") ||
                 !exec_dd(current_boot.string(), persistent_backup.string())) {
                 LOGE("boot-patch-v2: failed to save original boot backup: %s",
@@ -547,13 +547,16 @@ int boot_patch_v2(const std::vector<std::string>& args) {
                 cleanup();
                 return 1;
             }
-            input_path = current_boot;
             printf("- Saved original boot backup: %s\n", persistent_backup.string().c_str());
+        } else {
+            printf("- Preserving original boot backup: %s\n", persistent_backup.string().c_str());
         }
         init_boot_device = "/dev/block/by-name/init_boot" + slot;
     } else {
-        input_path = fs::path(parsed.boot);
-        requested_input_path = input_path;
+        // Magiskboot runs from the temporary workdir, so preserve an absolute
+        // source path when the caller supplied a relative boot image path.
+        requested_input_path = weak_absolute(fs::path(parsed.boot));
+        input_path = requested_input_path;
         error.clear();
         if (!fs::is_regular_file(input_path, error)) {
             if (error) {
@@ -576,13 +579,13 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     if (!device_mode) {
         error.clear();
         const fs::file_status output_status = fs::symlink_status(output_path, error);
-        if (error) {
+        if (error && !status_is_missing(output_status, error)) {
             LOGE("boot-patch-v2: failed to inspect output path %s: %s", parsed.output.c_str(),
                  error.message().c_str());
             cleanup();
             return 1;
         }
-        const bool output_exists = output_status.type() != fs::file_type::not_found;
+        const bool output_exists = !status_is_missing(output_status, error);
         if (output_exists) {
             error.clear();
             if (!fs::is_regular_file(output_path, error)) {
@@ -617,17 +620,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         std::error_code backup_error;
         const bool backup_exists = fs::is_regular_file(backup_path, backup_error) && !backup_error;
         if (backup_exists) {
-            input_path = work / "boot-original.img";
-            std::error_code copy_error;
-            fs::copy_file(backup_path, input_path, fs::copy_options::overwrite_existing,
-                          copy_error);
-            if (copy_error) {
-                LOGE("boot-patch-v2: failed to read original boot backup %s: %s",
-                     backup_path.string().c_str(), copy_error.message().c_str());
-                cleanup();
-                return 1;
-            }
-            printf("- Reusing original boot backup: %s\n", backup_path.string().c_str());
+            printf("- Preserving original boot backup: %s\n", backup_path.string().c_str());
         } else {
             std::error_code copy_error;
             fs::copy_file(requested_input_path, backup_path, fs::copy_options::none, copy_error);
@@ -639,6 +632,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
             }
             printf("- Saved original boot backup: %s\n", backup_path.string().c_str());
         }
+        input_path = requested_input_path;
     }
 
     {
@@ -774,6 +768,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         return 1;
     }
     const fs::path repacked = work / "new-boot.img";
+    // Always let MagiskbootAlone recompress the modified kernel in its source format.
     const auto repack = exec_command_magiskboot(
         magiskboot, {"repack", input_path.string(), repacked.string()}, work.string());
     error.clear();
@@ -787,6 +782,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
+    printf("- Repacked boot with MagiskbootAlone\n");
 
     if (device_mode) {
         if (!flash_partition_image(repacked, boot_device)) {
@@ -847,7 +843,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
                                          "." + std::to_string(stamp) + ".tmp");
     error.clear();
     const fs::file_status temporary_status = fs::symlink_status(temporary, error);
-    if (error || temporary_status.type() != fs::file_type::not_found) {
+    if (!status_is_missing(temporary_status, error)) {
         if (error) {
             LOGE("boot-patch-v2: failed to inspect temporary output: %s", error.message().c_str());
         } else {
@@ -867,14 +863,14 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     }
     error.clear();
     const fs::file_status final_output_status = fs::symlink_status(output_path, error);
-    if (error) {
+    if (error && !status_is_missing(final_output_status, error)) {
         LOGE("boot-patch-v2: failed to recheck output path: %s", error.message().c_str());
         std::error_code remove_error;
         fs::remove(temporary, remove_error);
         cleanup();
         return 1;
     }
-    if (final_output_status.type() != fs::file_type::not_found) {
+    if (!status_is_missing(final_output_status, error)) {
         if (same_path(input_path, output_path) ||
             (!parsed.module.empty() && same_path(module_path, output_path))) {
             LOGE("boot-patch-v2: refusing to overwrite an input file");

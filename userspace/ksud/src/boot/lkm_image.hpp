@@ -50,7 +50,7 @@ Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_i
 Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& patched_image,
                                                const std::vector<std::uint8_t>& module);
 
-// Remove the direct-LKM capsule and restore the three original kernel call sites.
+// Remove the direct-LKM capsule and restore the exact pre-patch raw Image when metadata is present.
 Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>& patched_image);
 
 // Recover the KMI string from a raw kernel banner for embedded asset lookup.
