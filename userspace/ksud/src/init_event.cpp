@@ -29,6 +29,7 @@
 #include <array>
 #include <cerrno>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -41,7 +42,7 @@ namespace {
 extern "C" int resetprop_main(int argc, char** argv);
 #endif
 
-enum class DaemonizeResult {
+enum class DaemonizeResult : std::uint8_t {
     Parent,
     Daemon,
     Error,
