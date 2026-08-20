@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Slēpt sistēmas lietotnes</string>
     <string name="send_log">Ziņot žurnālu</string>
     <string name="safe_mode">Drošais režīms</string>
-    <string name="jailbreak_mode">Jailbreak režīms</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Neizdevās palaist jailbreak pakalpojumu</string>
     <string name="jailbreak_timeout">Jailbreak, iespējams, neizdevās, lūdzu, pārbaudiet žurnālus</string>
@@ -331,7 +330,6 @@
     <string name="kernel_simple_kernel_summary">Iespējot vai atspējot YukiSU kodola versijas attēlojuma kompakto režīmu</string>
     <string name="home_zygisk_implement">Zygisk realizācija</string>
     <string name="home_meta_module_implement">Metamoduļa realizācija</string>
-    <string name="home_hook_type">Hook veids</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Apstiprināt instalēšanu</string>
     <string name="confirm_multiple_installation">Apstiprināt instalēšanu (%d faili)</string>

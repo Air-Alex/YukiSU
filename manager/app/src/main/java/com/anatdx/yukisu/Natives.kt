@@ -87,6 +87,15 @@ object Natives {
 
     val isImagePatchMode: Boolean
         external get
+
+    /** Returns 0 when unavailable, otherwise one of the KSU_LOAD_MODE_* values. */
+    external fun getLoadMode(): Int
+
+    const val LOAD_MODE_UNKNOWN = 0
+    const val LOAD_MODE_RAMDISK = 1
+    const val LOAD_MODE_IMAGE_PATCH = 2
+    const val LOAD_MODE_LATE = 3
+
     val isManager: Boolean
         external get
 

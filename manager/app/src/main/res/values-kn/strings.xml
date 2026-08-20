@@ -45,7 +45,6 @@
     <string name="hide_system_apps">ಸಿಸ್ಟಮ್ ಅಪ್ಲಿಕೇಶನ್‌ಗಳನ್ನು ಮರೆಮಾಡಿ</string>
     <string name="send_log">ಲಾಗ್ ಕಳುಹಿಸಿ</string>
     <string name="safe_mode">ಸುರಕ್ಷಿತ ಮೋಡ್</string>
-    <string name="jailbreak_mode">Jailbreak ಮೋಡ್</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">jailbreak ಸೇವೆಯನ್ನು ಪ್ರಾರಂಭಿಸಲು ವಿಫಲವಾಗಿದೆ</string>
     <string name="jailbreak_timeout">Jailbreak ಬಹುಶಃ ವಿಫಲವಾಗಿರಬಹುದು, ದಯವಿಟ್ಟು ಲಾಗ್‌ಗಳನ್ನು ಪರಿಶೀಲಿಸಿ</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">YukiSU ಕರ್ನಲ್ ಆವೃತ್ತಿಯಿಂದ ಪ್ರದರ್ಶಿಸಲಾದ ಸ್ವಚ್ಛ ಮೋಡ್ ಅನ್ನು ಸಕ್ರಿಯ ಅಥವಾ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ</string>
     <string name="home_zygisk_implement">Zygisk ಅನುಷ್ಠಾನ</string>
     <string name="home_meta_module_implement">Meta Module ಅನುಷ್ಠಾನ</string>
-    <string name="home_hook_type">Hook ಪ್ರಕಾರ</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">ಸ್ಥಾಪನೆ ಖಚಿತಪಡಿಸಿ</string>
     <string name="confirm_multiple_installation">ಸ್ಥಾಪನೆ ಖಚಿತಪಡಿಸಿ (%d ಫೈಲ್‌ಗಳು)</string>

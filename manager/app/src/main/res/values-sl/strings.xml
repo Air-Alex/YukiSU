@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Skrij prikaz sistemskih aplikacij</string>
     <string name="send_log">Prijavite dnevnik</string>
     <string name="safe_mode">Varni način</string>
-    <string name="jailbreak_mode">Način jailbreak</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Storitve jailbreak ni bilo mogoče zagnati</string>
     <string name="jailbreak_timeout">Jailbreak morda ni uspel, preverite dnevnike</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">Omogoči ali onemogoči strnjeni način prikaza različice jedra YukiSU</string>
     <string name="home_zygisk_implement">Izvedba Zygisk</string>
     <string name="home_meta_module_implement">Izvedba metamodula</string>
-    <string name="home_hook_type">Vrsta hook</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Potrdi namestitev</string>
     <string name="confirm_multiple_installation">Potrdi namestitev (%d datotek)</string>

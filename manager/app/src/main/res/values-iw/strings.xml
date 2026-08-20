@@ -45,7 +45,6 @@
     <string name="hide_system_apps">הסתר אפליקציות מערכת</string>
     <string name="send_log">שלח לוג</string>
     <string name="safe_mode">מצב בטוח</string>
-    <string name="jailbreak_mode">מצב jailbreak</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">הפעלת שירות ה-jailbreak נכשלה</string>
     <string name="jailbreak_timeout">ייתכן שה-jailbreak נכשל, אנא בדוק את היומנים</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">הפעל או השבת את המצב הנקי המוצג על ידי גרסת הליבה של YukiSU</string>
     <string name="home_zygisk_implement">יישום Zygisk</string>
     <string name="home_meta_module_implement">יישום Meta Module</string>
-    <string name="home_hook_type">סוג Hook</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">אשר התקנה</string>
     <string name="confirm_multiple_installation">אשר התקנה (%d קבצים)</string>

@@ -45,7 +45,6 @@
     <string name="hide_system_apps">ซ่อนแอประบบ</string>
     <string name="send_log">ส่ง logs</string>
     <string name="safe_mode">โหมดปลอดภัย</string>
-    <string name="jailbreak_mode">โหมดเจลเบรก</string>
     <string name="home_jailbreak">เจลเบรก</string>
     <string name="home_jailbreak_failed">เริ่มบริการเจลเบรกไม่สำเร็จ</string>
     <string name="jailbreak_timeout">เจลเบรกอาจล้มเหลว กรุณาตรวจสอบบันทึก</string>
@@ -331,7 +330,6 @@
     <string name="kernel_simple_kernel_summary">เปิดหรือปิดโหมดย่อของการแสดงเวอร์ชันเคอร์เนล YukiSU</string>
     <string name="home_zygisk_implement">การใช้งาน Zygisk</string>
     <string name="home_meta_module_implement">การใช้งานเมตาโมดูล</string>
-    <string name="home_hook_type">ประเภท Hook</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">ยืนยันการติดตั้ง</string>
     <string name="confirm_multiple_installation">ยืนยันการติดตั้ง (%d ไฟล์)</string>

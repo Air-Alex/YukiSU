@@ -58,6 +58,8 @@ NativeBridgeNP(isLateLoadMode, jboolean) { return is_late_load_mode(); }
 
 NativeBridgeNP(isImagePatchMode, jboolean) { return is_image_patch_mode(); }
 
+NativeBridgeNP(getLoadMode, jint) { return (jint)get_load_mode(); }
+
 static void fillIntArray(JNIEnv *env, jobject list, int *data, int count) {
   jclass cls = GetEnvironment()->GetObjectClass(env, list);
   jmethodID add =

@@ -109,7 +109,6 @@
     <string name="hide_system_apps">隐藏系统应用</string>
     <string name="send_log">发送日志</string>
     <string name="safe_mode">安全模式</string>
-    <string name="jailbreak_mode">越狱模式</string>
     <string name="home_jailbreak">越狱</string>
     <string name="home_jailbreak_failed">启动越狱服务失败</string>
     <string name="jailbreak_timeout">越狱可能失败了，请检查日志</string>
@@ -507,7 +506,7 @@
     <string name="module_disabled_by_yukizygisk">YukiZygisk已启用，为防止冲突，此模块已禁用</string>
     <string name="module_disabled_standalone_yukizygisk">你都在用 YukiSU 了，为什么不直接用内置版呢:(</string>
     <string name="home_meta_module_implement">元模块实现</string>
-    <string name="home_hook_type">钩子类型</string>
+    <string name="home_working_mode">工作模式</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">确认安装</string>
     <string name="confirm_multiple_installation">确认安装（%d 个文件）</string>

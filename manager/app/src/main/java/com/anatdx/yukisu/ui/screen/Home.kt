@@ -165,33 +165,6 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                 val isSignatureOk by produceState(initialValue = false) {
                     value = withContext(Dispatchers.IO) { Natives.isSignatureOk() }
                 }
-                val isLateLoadMode by produceState(
-                    initialValue = false,
-                    key1 = viewModel.systemStatus.ksuVersion
-                ) {
-                    value = withContext(Dispatchers.IO) {
-                        if (viewModel.systemStatus.ksuVersion == null) {
-                            false
-                        } else {
-                            runCatching { Natives.isLateLoadMode }.getOrDefault(false)
-                        }
-                    }
-                }
-                val isImagePatchMode by produceState(
-                    initialValue = false,
-                    key1 = viewModel.systemStatus.ksuVersion
-                ) {
-                    while (true) {
-                        value = withContext(Dispatchers.IO) {
-                            if (viewModel.systemStatus.ksuVersion == null) {
-                                false
-                            } else {
-                                runCatching { Natives.isImagePatchMode }.getOrDefault(false)
-                            }
-                        }
-                        delay(15_000)
-                    }
-                }
                 SuperKeyDialog(
                     state = superKeyDialog,
                     onAuthenticate = { superKey ->
@@ -286,8 +259,6 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                             superKeyDialog.show()
                         },
                         isSignatureOk = isSignatureOk,
-                        isLateLoadMode = isLateLoadMode,
-                        isImagePatchMode = isImagePatchMode,
                         canJailbreak = viewModel.systemStatus.ksuVersion == null &&
                             viewModel.systemInfo.seLinuxStatus == stringResource(R.string.selinux_status_permissive),
                         onJailbreak = {
@@ -593,8 +564,6 @@ private fun StatusCard(
     isSuperKeyMode: Boolean = false,
     needsSuperKeyAuth: Boolean = false,
     isSignatureOk: Boolean = false,
-    isLateLoadMode: Boolean = false,
-    isImagePatchMode: Boolean = false,
     canJailbreak: Boolean = false,
     onClickInstall: () -> Unit = {},
     onSuperKeyAuth: () -> Unit = {},
@@ -702,36 +671,6 @@ private fun StatusCard(
                                             color = MaterialTheme.colorScheme.onTertiary
                                         )
                                     }
-                                }
-                            }
-
-                            if (isLateLoadMode) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.tertiary,
-                                    modifier = Modifier
-                                ) {
-                                    Text(
-                                        text = stringResource(id = R.string.jailbreak_mode),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        color = MaterialTheme.colorScheme.onTertiary
-                                    )
-                                }
-                            }
-
-                            if (isImagePatchMode) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier
-                                ) {
-                                    Text(
-                                        text = stringResource(id = R.string.home_imgpatch_tag),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        color = MaterialTheme.colorScheme.onSecondary
-                                    )
                                 }
                             }
 
@@ -1197,6 +1136,21 @@ private fun InfoCard(
             null
         }
     }
+    val patchType = remember(canReadHookType) {
+        if (canReadHookType) {
+            when (runCatching(Natives::getLoadMode).getOrDefault(Natives.LOAD_MODE_UNKNOWN)) {
+                Natives.LOAD_MODE_RAMDISK -> "Ramdisk"
+                Natives.LOAD_MODE_IMAGE_PATCH -> "ImgPatch"
+                Natives.LOAD_MODE_LATE -> "Lateload"
+                else -> null
+            }
+        } else {
+            null
+        }
+    }
+    val workingMode = hookType?.let { hook ->
+        patchType?.let { patch -> "$hook | $patch" } ?: hook
+    }
     val originalKernelRelease = systemInfo.originalKernelRelease
     val displayedKernelRelease = if (showOriginalKernelRelease && originalKernelRelease != null) {
         originalKernelRelease
@@ -1268,10 +1222,10 @@ private fun InfoCard(
             contentColor = if (hasMismatch) MaterialTheme.colorScheme.error else Color.Unspecified,
             onClick = { showKsudDialog = true },
         ))
-        if (!isSimpleMode && hookType != null) {
+        if (!isSimpleMode && workingMode != null) {
             add(HomeInfoEntry(
-                label = stringResource(R.string.home_hook_type),
-                content = hookType,
+                label = stringResource(R.string.home_working_mode),
+                content = workingMode,
                 icon = Icons.Default.Link,
             ))
         }

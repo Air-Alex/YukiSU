@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Peida süsteemirakendused</string>
     <string name="send_log">Saada logid</string>
     <string name="safe_mode">Turvarežiim</string>
-    <string name="jailbreak_mode">Jailbreak-režiim</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Jailbreak-teenuse käivitamine ebaõnnestus</string>
     <string name="jailbreak_timeout">Jailbreak võis ebaõnnestuda, palun kontrollige logisid</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">Luba või keela YukiSU kerneli versiooni kuvamise lühirežiim</string>
     <string name="home_zygisk_implement">Zygiski teostus</string>
     <string name="home_meta_module_implement">Metamooduli teostus</string>
-    <string name="home_hook_type">Hooki tüüp</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Kinnita installimine</string>
     <string name="confirm_multiple_installation">Kinnita installimine (%d faili)</string>

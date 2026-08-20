@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Sembunyikan aplikasi sistem</string>
     <string name="send_log">Kirim Log</string>
     <string name="safe_mode">Mode aman</string>
-    <string name="jailbreak_mode">Mode jailbreak</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Gagal memulai layanan jailbreak</string>
     <string name="jailbreak_timeout">Jailbreak mungkin gagal, silakan periksa log</string>
@@ -331,7 +330,6 @@
     <string name="kernel_simple_kernel_summary">Aktifkan atau nonaktifkan mode bersih yang ditampilkan oleh versi kernel YukiSU</string>
     <string name="home_zygisk_implement">Implementasi Zygisk</string>
     <string name="home_meta_module_implement">Implementasi metamodul</string>
-    <string name="home_hook_type">Jenis hook</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Konfirmasi Instalasi</string>
     <string name="confirm_multiple_installation">Konfirmasi Instalasi (Berkas %d)</string>

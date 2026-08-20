@@ -169,6 +169,14 @@ bool is_image_patch_mode() {
   return cmd.mode == KSU_LOAD_MODE_IMAGE_PATCH;
 }
 
+int get_load_mode() {
+  struct ksu_get_load_mode_cmd cmd = {};
+  if (ksuctl(KSU_IOCTL_GET_LOAD_MODE, &cmd) != 0) {
+    return 0;
+  }
+  return (int)cmd.mode;
+}
+
 bool uid_should_umount(int uid) {
   struct ksu_uid_should_umount_cmd cmd = {};
   cmd.uid = uid;

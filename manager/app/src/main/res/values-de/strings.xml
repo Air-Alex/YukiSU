@@ -45,7 +45,6 @@
     <string name="hide_system_apps">System-Apps ausblenden</string>
     <string name="send_log">Protokoll senden</string>
     <string name="safe_mode">Sicherer Modus</string>
-    <string name="jailbreak_mode">Jailbreak-Modus</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Jailbreak-Dienst konnte nicht gestartet werden</string>
     <string name="jailbreak_timeout">Jailbreak ist möglicherweise fehlgeschlagen, bitte prüfe die Protokolle</string>
@@ -331,7 +330,6 @@
     <string name="kernel_simple_kernel_summary">Kompakte Anzeige der YukiSU-Kernel-Version aktivieren oder deaktivieren</string>
     <string name="home_zygisk_implement">Zygisk-Implementierung</string>
     <string name="home_meta_module_implement">Metamodul-Implementierung</string>
-    <string name="home_hook_type">Hook-Typ</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Installation bestätigen</string>
     <string name="confirm_multiple_installation">Installation bestätigen (%d Dateien)</string>

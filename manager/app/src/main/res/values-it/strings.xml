@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Nascondi app di sistema</string>
     <string name="send_log">Invia log</string>
     <string name="safe_mode">Modalità provvisoria</string>
-    <string name="jailbreak_mode">Modalità jailbreak</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Avvio del servizio di jailbreak non riuscito</string>
     <string name="jailbreak_timeout">Il jailbreak potrebbe non essere riuscito, controlla i registri</string>
@@ -331,7 +330,6 @@
     <string name="kernel_simple_kernel_summary">Abilita o disabilita la modalità concisa di visualizzazione della versione del kernel di YukiSU</string>
     <string name="home_zygisk_implement">Implementazione Zygisk</string>
     <string name="home_meta_module_implement">Implementazione metamodulo</string>
-    <string name="home_hook_type">Tipo di hook</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Conferma installazione</string>
     <string name="confirm_multiple_installation">Conferma installazione (%d file)</string>

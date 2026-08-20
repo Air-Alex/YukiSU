@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Скрыть системные приложения</string>
     <string name="send_log">Отправить логи</string>
     <string name="safe_mode">Безопасный режим</string>
-    <string name="jailbreak_mode">Режим джейлбрейка</string>
     <string name="home_jailbreak">Джейлбрейк</string>
     <string name="home_jailbreak_failed">Не удалось запустить службу джейлбрейка</string>
     <string name="jailbreak_timeout">Джейлбрейк, возможно, не удался, проверьте журналы</string>
@@ -331,7 +330,6 @@
     <string name="kernel_simple_kernel_summary">Включить или отключить чистый режим, отображаемой версии ядра YukiSU</string>
     <string name="home_zygisk_implement">Реализация Zygisk</string>
     <string name="home_meta_module_implement">Реализация Мета-модуля</string>
-    <string name="home_hook_type">Типы хуков</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Подтвердите установку</string>
     <string name="confirm_multiple_installation">Подтвердите установку (%d файлов)</string>

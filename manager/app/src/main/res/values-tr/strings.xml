@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Sistem uygulamalarını gizle</string>
     <string name="send_log">Günlükleri gönder</string>
     <string name="safe_mode">Güvenli mod</string>
-    <string name="jailbreak_mode">Jailbreak modu</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Jailbreak hizmeti başlatılamadı</string>
     <string name="jailbreak_timeout">Jailbreak başarısız olmuş olabilir, lütfen günlükleri kontrol edin</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">YukiSU çekirdek sürümünün gösterdiği sade modu etkinleştirin veya devre dışı bırakın</string>
     <string name="home_zygisk_implement">Zygisk uygulaması</string>
     <string name="home_meta_module_implement">Meta Modül uygulaması</string>
-    <string name="home_hook_type">Hook tipi</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Kurulumu Onayla</string>
     <string name="confirm_multiple_installation">Kurulumu Onayla (%d dosya)</string>

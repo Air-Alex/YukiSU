@@ -45,7 +45,6 @@
     <string name="hide_system_apps">Slėpti sistemos programas</string>
     <string name="send_log">Siųsti žurnalą</string>
     <string name="safe_mode">Saugus rėžimas</string>
-    <string name="jailbreak_mode">Jailbreak režimas</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">Nepavyko paleisti jailbreak paslaugos</string>
     <string name="jailbreak_timeout">Jailbreak galėjo nepavykti, patikrinkite žurnalus</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">Įjungti arba išjungti YukiSU branduolio versijos rodymo glaustąjį režimą</string>
     <string name="home_zygisk_implement">Zygisk įgyvendinimas</string>
     <string name="home_meta_module_implement">Metamodulio įgyvendinimas</string>
-    <string name="home_hook_type">Hook tipas</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">Patvirtinti diegimą</string>
     <string name="confirm_multiple_installation">Patvirtinti diegimą (%d failai)</string>

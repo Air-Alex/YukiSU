@@ -45,7 +45,6 @@
     <string name="hide_system_apps">隱藏系統應用</string>
     <string name="send_log">發送日誌</string>
     <string name="safe_mode">安全模式</string>
-    <string name="jailbreak_mode">越獄模式</string>
     <string name="home_jailbreak">越獄</string>
     <string name="home_jailbreak_failed">啟動越獄服務失敗</string>
     <string name="jailbreak_timeout">越獄可能失敗了，請檢查日誌</string>
@@ -340,7 +339,7 @@
     <string name="kernel_simple_kernel_summary">啟用或者禁用 YukiSU 核心版本顯示嘅簡潔模式</string>
     <string name="home_zygisk_implement">Zygisk 實現</string>
     <string name="home_meta_module_implement">元模組實現</string>
-    <string name="home_hook_type">鈎子類型</string>
+    <string name="home_working_mode">工作模式</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">確認安裝</string>
     <string name="confirm_multiple_installation">確認安裝（%d 個檔案）</string>

@@ -45,7 +45,6 @@
     <string name="hide_system_apps">مخفی کردن برنامه های سیستمی</string>
     <string name="send_log">ارسال وقایع</string>
     <string name="safe_mode">حالت ایمن</string>
-    <string name="jailbreak_mode">حالت jailbreak</string>
     <string name="home_jailbreak">Jailbreak</string>
     <string name="home_jailbreak_failed">شروع سرویس jailbreak انجام نشد</string>
     <string name="jailbreak_timeout">ممکن است jailbreak ناموفق بوده باشد، لطفاً لاگ‌ها را بررسی کنید</string>
@@ -329,7 +328,6 @@
     <string name="kernel_simple_kernel_summary">حالت تمیز نمایش‌داده‌شده توسط نسخه کرنل YukiSU را فعال یا غیرفعال کنید</string>
     <string name="home_zygisk_implement">پیاده‌سازی Zygisk</string>
     <string name="home_meta_module_implement">پیاده‌سازی Meta Module</string>
-    <string name="home_hook_type">نوع Hook</string>
     <!-- 确认安装相关字符串 -->
     <string name="confirm_installation">تأیید نصب</string>
     <string name="confirm_multiple_installation">تأیید نصب (%d فایل)</string>
