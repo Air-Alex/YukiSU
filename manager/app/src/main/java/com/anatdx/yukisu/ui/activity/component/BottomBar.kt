@@ -42,7 +42,14 @@ fun BottomBar(navController: NavHostController) {
     // 收集计数数据
     val superuserCount by AppData.DataRefreshManager.superuserCount.collectAsState()
     val moduleCount by AppData.DataRefreshManager.moduleCount.collectAsState()
+    val pluginCount by AppData.DataRefreshManager.pluginCount.collectAsState()
 
+    fun badgeCountOf(destination: BottomBarDestination) = when (destination) {
+        BottomBarDestination.SuperUser -> superuserCount
+        BottomBarDestination.Module -> moduleCount
+        BottomBarDestination.Plugin -> pluginCount
+        else -> 0
+    }
 
     val destinations = BottomBarDestination.entries.filter {
         isFullFeatured || !it.rootRequired
@@ -70,11 +77,7 @@ fun BottomBar(navController: NavHostController) {
         ) {
             destinations.forEach { destination ->
                 val selected by navController.isRouteOnBackStackAsState(destination.direction)
-                val badgeCount = when (destination) {
-                    BottomBarDestination.SuperUser -> superuserCount
-                    BottomBarDestination.Module -> moduleCount
-                    else -> 0
-                }
+                val badgeCount = badgeCountOf(destination)
                 ShortNavigationBarItem(
                     selected = selected,
                     onClick = { navigate(destination, selected) },
@@ -100,11 +103,7 @@ fun BottomBar(navController: NavHostController) {
         ) {
             destinations.forEach { destination ->
                 val selected by navController.isRouteOnBackStackAsState(destination.direction)
-                val badgeCount = when (destination) {
-                    BottomBarDestination.SuperUser -> superuserCount
-                    BottomBarDestination.Module -> moduleCount
-                    else -> 0
-                }
+                val badgeCount = badgeCountOf(destination)
                 NavigationBarItem(
                     selected = selected,
                     onClick = { navigate(destination, selected) },
@@ -145,19 +144,15 @@ private fun DestinationIcon(
         )
     }
 
-    if (destination != BottomBarDestination.SuperUser &&
-        destination != BottomBarDestination.Module
-    ) {
+    if (badgeCount <= 0 || !showBadge) {
         icon()
         return
     }
 
     BadgedBox(
         badge = {
-            if (badgeCount > 0 && showBadge) {
-                Badge(containerColor = MaterialTheme.colorScheme.secondary) {
-                    Text(badgeCount.toString(), style = MaterialTheme.typography.labelSmall)
-                }
+            Badge(containerColor = MaterialTheme.colorScheme.secondary) {
+                Text(badgeCount.toString(), style = MaterialTheme.typography.labelSmall)
             }
         }
     ) {

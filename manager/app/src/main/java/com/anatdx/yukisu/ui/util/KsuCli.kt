@@ -1956,6 +1956,14 @@ private fun runPluginCommand(args: String, newShell: Boolean = false): PluginCom
 
 fun listPlugins(): PluginCommandResult = runPluginCommand("plugin list")
 
+fun getPluginCount(): Int {
+    val result = listPlugins()
+    if (!result.isSuccess) return 0
+    runCatching {
+        return JSONArray(result.stdout.trim().ifBlank { "[]" }).length()
+    }.getOrElse { return 0 }
+}
+
 fun togglePlugin(id: String, enable: Boolean): Boolean {
     val operation = if (enable) "enable" else "disable"
     return runPluginCommand(
