@@ -25,6 +25,7 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 #if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
@@ -49,6 +50,8 @@ struct ModuleInfo {
     bool metamodule{};
     std::string actionIcon;
     std::string webuiIcon;
+    // Remaining module.prop entries, forwarded verbatim (updateJson, support, ...).
+    std::map<std::string, std::string> extra_props;
 };
 
 namespace {
@@ -882,6 +885,14 @@ int module_run_action(const std::string& id) {
 
 namespace {
 
+bool is_dedicated_prop_key(const std::string& key) {
+    static constexpr std::array<std::string_view, 15> kDedicatedKeys = {
+        "id",          "name",    "version",    "versionCode", "author",
+        "description", "enabled", "update",     "remove",      "web",
+        "action",      "mount",   "metamodule", "actionIcon",  "webuiIcon"};
+    return std::find(kDedicatedKeys.begin(), kDedicatedKeys.end(), key) != kDedicatedKeys.end();
+}
+
 bool load_module_info(const std::string& module_path, const std::string& fallback_id,
                       bool pending_update, ModuleInfo& info) {
     const std::string prop_path = module_path + "/module.prop";
@@ -915,6 +926,13 @@ bool load_module_info(const std::string& module_path, const std::string& fallbac
     if (props.count("webuiIcon")) {
         info.webuiIcon =
             resolve_module_icon_path(props["webuiIcon"], info.id, module_path, "webuiIcon");
+    }
+
+    for (auto& [key, value] : props) {
+        if (key.empty() || is_dedicated_prop_key(key)) {
+            continue;
+        }
+        info.extra_props.emplace(key, value);
     }
 
     return true;
@@ -986,6 +1004,9 @@ int module_list() {
         }
         if (!m.webuiIcon.empty()) {
             printf(",\n    \"webuiIcon\": \"%s\"", escape_json(m.webuiIcon).c_str());
+        }
+        for (const auto& [key, value] : m.extra_props) {
+            printf(",\n    \"%s\": \"%s\"", escape_json(key).c_str(), escape_json(value).c_str());
         }
         printf("\n  }%s\n", i < modules.size() - 1 ? "," : "");
     }
