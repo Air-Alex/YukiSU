@@ -203,8 +203,14 @@ int ensure_binaries(bool ignore_if_exist) {
     }
     
     for (const auto& name : list_assets()) {
-        // Skip ksuinit and kernel modules - they are extracted on demand
+        // Skip ksuinit and kernel modules - they are extracted on demand.
+        // "su" must never land here either: ksud's own su prepends BINARY_DIR to
+        // PATH, so a su binary in this directory shadows the sucompat-hooked
+        // /system/bin/su and sends any nested `su` to the standalone
+        // magisk-compat client instead. magic_mount_su() extracts the asset to
+        // /data/adb/ksu/su itself when it needs it.
         if (name == "ksuinit" || name.find("_kernelsu.ko") != std::string::npos ||
+            name == "su" ||
             name == "libzygisk64.so" || name == "libzygisk32.so" ||
             name == "libyukizncore64.so" ||
             name == "libyukizncore32.so" ||
@@ -226,7 +232,11 @@ int ensure_binaries(bool ignore_if_exist) {
         }
         chmod(dest.c_str(), 0755);
     }
-    
+
+    // Older builds did extract "su" here; drop the leftover so upgraded installs
+    // stop shadowing /system/bin/su inside a root shell.
+    unlink((std::string(BINARY_DIR) + "su").c_str());
+
     // Ensure the multi-call entries are symlinks to ksud -- NOT real files. A
     // real busybox/ksud binary (e.g. left by another manager or an older build)
     // would shadow the multi-call dispatch, so unless the path is already the
