@@ -2,6 +2,7 @@
 #include "core/ksucalls.hpp"
 #include "defs.hpp"
 #include "log.hpp"
+#include "su_args.hpp"
 #include "utils.hpp"
 
 #include <fcntl.h>
@@ -25,7 +26,9 @@ namespace {
 
 void print_su_usage() {
     printf("YukiSU\n\n");
-    printf("Usage: su [options] [-] [user [argument...]]\n\n");
+    printf("Usage: su [options] [-] [user [command [argument...]]]\n\n");
+    printf("Options may be given before or after user. A positional command is exec'd\n");
+    printf("directly, not through the shell; use -c to run something through the shell.\n\n");
     printf("Options:\n");
     printf("  -c, --command COMMAND    pass COMMAND to the invoked shell\n");
     printf("  -h, --help               display this help message and exit\n");
@@ -129,38 +132,14 @@ int run_su_shell(int argc, char** argv) {
     gid_t target_gid = 0;
     bool gid_specified = false;
     std::vector<gid_t> groups;
-    std::vector<std::string> exec_args;
 
-    // Preprocess: replace -mm with -M, -cn with -z
-    // AND merge everything after -c into a single argument (matching Rust behavior)
-    std::vector<std::string> args_vec;
-    args_vec.push_back(argv[0]);
+    // Split off any positional command and order the remaining options ahead of the operands, so
+    // options work on either side of the username.
+    const su_args::ParsedArgv parsed = su_args::split(std::vector<std::string>(argv, argv + argc));
 
-    int c_index = -1;
-    for (int i = 1; i < argc; i++) {
-        const std::string arg = argv[i];
-        if (arg == "-c" || arg == "--command") {
-            c_index = static_cast<int>(args_vec.size());
-            args_vec.push_back(arg);
-        } else if (c_index >= 0 && static_cast<int>(args_vec.size()) == c_index + 1) {
-            // This is the first argument after -c, start collecting
-            args_vec.push_back(arg);
-        } else if (c_index >= 0 && static_cast<int>(args_vec.size()) == c_index + 2) {
-            // Append all remaining args to the command with spaces
-            args_vec.back() += " " + arg;
-        } else if (arg == "-mm") {
-            args_vec.push_back("-M");
-        } else if (arg == "-cn") {
-            args_vec.push_back("-z");
-        } else {
-            args_vec.push_back(arg);
-        }
-    }
-
-    // Convert back to char**
     std::vector<char*> new_argv;
-    new_argv.reserve(args_vec.size() + 1);
-    for (auto& s : args_vec) {
+    new_argv.reserve(parsed.option_argv.size() + 1);
+    for (const auto& s : parsed.option_argv) {
         new_argv.push_back(const_cast<char*>(s.c_str()));
     }
     new_argv.push_back(nullptr);
@@ -186,6 +165,8 @@ int run_su_shell(int argc, char** argv) {
 
     optind = 1;  // Reset getopt
     int opt;
+    // Keep the leading "+": su_args::split has already moved every option ahead of the operands,
+    // so stopping at the first operand is correct and does not depend on libc permuting argv.
     while ((opt = getopt_long(argc, argv, "+c:hlps:vVMg:G:Wz:Z:", long_options.data(), nullptr)) !=
            -1) {
         switch (opt) {
@@ -242,7 +223,8 @@ int run_su_shell(int argc, char** argv) {
         optind++;
     }
 
-    // Check for username/uid
+    // Check for username/uid. Any operand past this one is ignored: a positional command comes
+    // from su_args::split, not from whatever getopt left behind.
     if (optind < argc) {
         const char* user = argv[optind];
         // Try to parse as number first
@@ -259,14 +241,6 @@ int run_su_shell(int argc, char** argv) {
                 // Invalid username, default to 0 (matching Rust behavior)
                 target_uid = 0;
             }
-        }
-        optind++;
-    }
-
-    if (optind < argc) {
-        exec_args.reserve(static_cast<size_t>(argc - optind));
-        for (int i = optind; i < argc; ++i) {
-            exec_args.emplace_back(argv[i]);
         }
     }
 
@@ -344,21 +318,22 @@ int run_su_shell(int argc, char** argv) {
         return 1;
     }
 
-    const bool has_exec_args = command.empty() && !exec_args.empty();
-    const std::string executable = has_exec_args ? exec_args.front() : shell;
-    const std::string arg0 = is_login ? "-" : executable;
+    // A positional command wins over -c; su_args::split already resolved which one came first.
+    const std::string executable = parsed.executable.value_or(shell);
+    // The login arg0 convention only applies to the shell: a positional command must keep its own
+    // name, since busybox applets and ksud itself dispatch on the argv[0] basename.
+    const std::string arg0 = (is_login && !parsed.executable.has_value()) ? "-" : executable;
 
     std::vector<const char*> exec_argv;
     exec_argv.push_back(arg0.c_str());
 
-    // If command specified, add -c and command
-    if (!command.empty()) {
+    if (parsed.executable.has_value()) {
+        for (const auto& arg : parsed.exec_args) {
+            exec_argv.push_back(arg.c_str());
+        }
+    } else if (!command.empty()) {
         exec_argv.push_back("-c");
         exec_argv.push_back(command.c_str());
-    } else if (has_exec_args) {
-        for (size_t i = 1; i < exec_args.size(); ++i) {
-            exec_argv.push_back(exec_args[i].c_str());
-        }
     }
 
     exec_argv.push_back(nullptr);

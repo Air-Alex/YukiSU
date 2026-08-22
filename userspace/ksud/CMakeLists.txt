@@ -383,6 +383,7 @@ set(KSUD_OUR_SOURCES
     src/profile/profile.cpp
     src/sepolicy/sepolicy.cpp
     src/su.cpp
+    src/su_args.cpp
     src/init_event.cpp
     src/yukizygisk_diagnostics.cpp
     src/yukizygisk_snapshot.cpp
