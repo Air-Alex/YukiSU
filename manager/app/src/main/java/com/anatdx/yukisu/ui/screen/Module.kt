@@ -287,7 +287,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
     }
 
     fun onModuleAddShortcut(module: ModuleViewModel.ModuleInfo) {
-        shortcutModuleId = module.id
+        shortcutModuleId = module.dirId
         shortcutName = module.name
         shortcutIconUri = null
         defaultShortcutIconUri = null
@@ -934,8 +934,8 @@ private fun ModuleList(
         val success = loadingDialog.withLoading {
             withContext(Dispatchers.IO) {
                 if (isUninstall) {
-                    Shortcut.deleteModuleActionShortcut(context, module.id)
-                    Shortcut.deleteModuleWebUiShortcut(context, module.id)
+                    Shortcut.deleteModuleActionShortcut(context, module.dirId)
+                    Shortcut.deleteModuleWebUiShortcut(context, module.dirId)
                     uninstallModule(module.dirId)
                 } else {
                     undoUninstallModule(module.dirId)
