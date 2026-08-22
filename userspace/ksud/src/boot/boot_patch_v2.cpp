@@ -236,15 +236,51 @@ bool ramdisk_is_magisk_patched(const std::string& magiskboot, const fs::path& wo
            cpio_entry_exists(magiskboot, workdir, ramdisk, "overlay.d");
 }
 
+constexpr std::array<const char*, 9> kLegacyRamdiskEntries = {
+    "kernelsu.ko",      "ksuinit",        "ksu_config",       "ksu_allow_shell", "kasumi.ko",
+    "force_debuggable", "adb_debug.prop", "stock_image.sha1", "init.real",
+};
+
+// A ramdisk the legacy patch synthesized for a boot image that ships none holds
+// nothing but the loader, its payload and the empty .backup directory.
+bool ramdisk_is_synthetic(const std::string& magiskboot, const fs::path& workdir,
+                          const fs::path& ramdisk) {
+    const auto listing =
+        exec_command_magiskboot(magiskboot, {"cpio", ramdisk.string(), "ls -r"}, workdir.string());
+    if (listing.exit_code != 0)
+        return false;
+    const std::string& output = listing.stdout_str;
+    for (std::size_t begin = 0; begin < output.size();) {
+        std::size_t end = output.find('\n', begin);
+        if (end == std::string::npos)
+            end = output.size();
+        const std::string line = output.substr(begin, end - begin);
+        begin = end + 1;
+        const std::size_t separator = line.rfind('\t');
+        if (separator == std::string::npos)
+            continue;
+        std::string path = line.substr(separator + 1);
+        while (!path.empty() && (path.back() == '\r' || path.back() == ' '))
+            path.pop_back();
+        if (path.empty() || path == "." || path == "init" || path == ".backup" ||
+            path.rfind(".backup/", 0) == 0)
+            continue;
+        const bool known = std::any_of(kLegacyRamdiskEntries.begin(), kLegacyRamdiskEntries.end(),
+                                       [&path](const char* entry) { return path == entry; });
+        if (!known) {
+            LOGE("boot-patch-v2: unexpected ramdisk entry outside the KernelSU payload: %s",
+                 path.c_str());
+            return false;
+        }
+    }
+    return true;
+}
+
 std::optional<bool> clean_legacy_ramdisks(const std::string& magiskboot, const fs::path& workdir) {
     const std::array<fs::path, 3> candidates = {
         workdir / "ramdisk.cpio",
         workdir / "vendor_ramdisk" / "ramdisk.cpio",
         workdir / "vendor_ramdisk" / "init_boot.cpio",
-    };
-    constexpr std::array<const char*, 9> legacy_entries = {
-        "kernelsu.ko",      "ksuinit",        "ksu_config",       "ksu_allow_shell", "kasumi.ko",
-        "force_debuggable", "adb_debug.prop", "stock_image.sha1", "init.real",
     };
     bool changed = false;
     for (const auto& ramdisk : candidates) {
@@ -252,7 +288,7 @@ std::optional<bool> clean_legacy_ramdisks(const std::string& magiskboot, const f
         if (!fs::is_regular_file(ramdisk, error) || error)
             continue;
         bool has_legacy = false;
-        for (const char* entry : legacy_entries) {
+        for (const char* entry : kLegacyRamdiskEntries) {
             if (cpio_entry_exists(magiskboot, workdir, ramdisk, entry)) {
                 has_legacy = true;
                 break;
@@ -267,10 +303,6 @@ std::optional<bool> clean_legacy_ramdisks(const std::string& magiskboot, const f
 
         const bool has_kernelsu = cpio_entry_exists(magiskboot, workdir, ramdisk, "kernelsu.ko");
         const bool has_original_init = cpio_entry_exists(magiskboot, workdir, ramdisk, "init.real");
-        if (has_kernelsu && !has_original_init) {
-            LOGE("boot-patch-v2: legacy KernelSU ramdisk has no init.real; refusing cleanup");
-            return std::nullopt;
-        }
         if (has_original_init) {
             // magiskboot's cpio mv is fail-closed on destination collisions. The
             // legacy loader owns init, so remove that replacement before restoring
@@ -282,8 +314,26 @@ std::optional<bool> clean_legacy_ramdisks(const std::string& magiskboot, const f
             if (!run_cpio_command(magiskboot, workdir, ramdisk, "mv init.real init")) {
                 return std::nullopt;
             }
+        } else if (has_kernelsu) {
+            // The patch only skips the init backup when the image ships no
+            // ramdisk, so this whole cpio is synthetic. Drop the file and let
+            // repack restore ramdisk_size = 0 instead of leaving a stub behind.
+            if (!ramdisk_is_synthetic(magiskboot, workdir, ramdisk)) {
+                LOGE("boot-patch-v2: legacy KernelSU ramdisk has no init.real but carries "
+                     "unrelated content; refusing cleanup");
+                return std::nullopt;
+            }
+            std::error_code remove_error;
+            if (!fs::remove(ramdisk, remove_error) || remove_error) {
+                LOGE("boot-patch-v2: failed to drop the synthetic KernelSU ramdisk %s",
+                     ramdisk.string().c_str());
+                return std::nullopt;
+            }
+            changed = true;
+            printf("- Dropped the synthetic KernelSU ramdisk from %s\n", ramdisk.string().c_str());
+            continue;
         }
-        for (const char* entry : legacy_entries) {
+        for (const char* entry : kLegacyRamdiskEntries) {
             if (std::strcmp(entry, "init.real") == 0)
                 continue;
             if (cpio_entry_exists(magiskboot, workdir, ramdisk, entry) &&
