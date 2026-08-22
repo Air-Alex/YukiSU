@@ -352,7 +352,8 @@ fun PluginScreen(navigator: DestinationsNavigator) {
                                     }
                                 },
                                 onAction = {
-                                    val canRun = plugin.enabled && plugin.hasManifest && plugin.error.isBlank()
+                                    val canRun = plugin.hasAction && plugin.enabled &&
+                                        plugin.hasManifest && plugin.error.isBlank()
                                     if (canRun && beginPluginOperation(plugin.id)) {
                                         scope.launch {
                                             try {
@@ -647,15 +648,19 @@ private fun PluginCard(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.plugin_action)) },
-                            leadingIcon = { Icon(Icons.Outlined.PlayArrow, contentDescription = null) },
-                            enabled = canRunActions && !operationInProgress,
-                            onClick = {
-                                showMenu = false
-                                onAction()
-                            },
-                        )
+                        if (plugin.hasAction) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.plugin_action)) },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                                },
+                                enabled = canRunActions && !operationInProgress,
+                                onClick = {
+                                    showMenu = false
+                                    onAction()
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.plugin_log_view)) },
                             leadingIcon = { Icon(Icons.Outlined.Description, contentDescription = null) },
