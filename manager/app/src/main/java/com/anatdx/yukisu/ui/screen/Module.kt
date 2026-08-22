@@ -293,10 +293,10 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
         defaultShortcutIconUri = null
         defaultActionShortcutIconUri = module.actionIconPath
             ?.takeIf { it.isNotBlank() }
-            ?.let { "su:$it" }
+            ?.let { Shortcut.moduleFileUri(module.dirId, it) }
         defaultWebUiShortcutIconUri = module.webUiIconPath
             ?.takeIf { it.isNotBlank() }
-            ?.let { "su:$it" }
+            ?.let { Shortcut.moduleFileUri(module.dirId, it) }
         if (module.hasActionScript && module.hasWebUi) {
             selectedShortcutType = null
             showShortcutTypeDialog = true

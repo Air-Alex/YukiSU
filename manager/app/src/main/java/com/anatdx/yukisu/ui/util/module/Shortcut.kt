@@ -180,6 +180,19 @@ object Shortcut {
         deleteShortcut(context, "module_webui_$moduleId")
     }
 
+    /**
+     * Build the su:// URI [loadShortcutBitmap] expects for a file inside a module.
+     * ksud reports icon paths relative to the module directory, and the scheme is
+     * only recognised when the URI is hierarchical, so the path has to be absolute.
+     */
+    fun moduleFileUri(dirId: String, relativePath: String): String =
+        Uri.Builder()
+            .scheme("su")
+            .authority("")
+            .path("/data/adb/modules/$dirId/$relativePath")
+            .build()
+            .toString()
+
     fun loadShortcutBitmap(context: Context, iconUri: String?): Bitmap? {
         if (iconUri.isNullOrBlank()) {
             return null
