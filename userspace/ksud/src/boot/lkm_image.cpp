@@ -8,6 +8,7 @@
 #include <cctype>
 #include <charconv>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
@@ -1214,6 +1215,338 @@ Result<ParsedCapsule> locate_capsule(const std::vector<std::uint8_t>& image) {
     return find_capsule(image, image_size);
 }
 
+// Offsets inside an injected bootstrap: its two entry points, the literal pool
+// slots and the code span. Images produced by earlier YukiSU builds use the
+// legacy layout, so both are recognized.
+struct BootstrapLayout {
+    std::size_t reserve_wrapper;
+    std::size_t strndup_adapter;
+    std::size_t wrapper_add;
+    std::size_t magic;
+    std::size_t capsule_offset;
+    std::size_t capsule_size;
+    std::size_t module_offset;
+    std::size_t module_size;
+    std::size_t fixup_offset;
+    std::size_t fixup_count;
+    std::size_t load_info_size;
+    std::size_t load_info_hdr;
+    std::size_t load_info_len;
+    std::size_t reserve_extension;
+    std::size_t read_span;
+    std::size_t code_size;
+    bool legacy;
+};
+
+constexpr BootstrapLayout kBootstrapCurrent{0x1a0, 0x1b0, 0x1a8, 0x1f8, 0x1e8, 0x208,
+                                            0x210, 0x218, 0x220, 0x228, 0x230, 0x238,
+                                            0x240, 0x248, 0x258, 0x263, false};
+constexpr BootstrapLayout kBootstrapLegacy{0x1f0, 0x200, 0x1f8, 0x250, 0x240, 0x260,
+                                           0x268, 0x270, 0x278, 0x280, 0x290, 0x298,
+                                           0x2a0, 0x2a8, 0x2b4, 0x2b4, true};
+constexpr std::array<const BootstrapLayout*, 2> kBootstrapLayouts{&kBootstrapCurrent,
+                                                                  &kBootstrapLegacy};
+constexpr std::uint32_t kReserveWrapperAdd = 0x8b080021U;
+
+struct BootstrapMatch {
+    std::size_t pool = 0;
+    const BootstrapLayout* layout = nullptr;
+};
+
+bool bootstrap_pool_matches(const std::vector<std::uint8_t>& image, std::size_t pool,
+                            std::size_t capsule_offset, const BootstrapLayout& layout) {
+    std::uint64_t magic = 0;
+    std::uint32_t wrapper_add = 0;
+    return capsule_offset >= layout.read_span && pool <= capsule_offset - layout.read_span &&
+           read_u64(image, pool + layout.magic, &magic) &&
+           read_u32(image, pool + layout.wrapper_add, &wrapper_add) &&
+           magic == capsule_magic_value() && wrapper_add == kReserveWrapperAdd;
+}
+
+Result<BootstrapMatch> single_bootstrap_match(std::vector<BootstrapMatch> candidates) {
+    std::sort(candidates.begin(), candidates.end(),
+              [](const BootstrapMatch& left, const BootstrapMatch& right) {
+                  return std::tie(left.pool, left.layout->legacy) <
+                         std::tie(right.pool, right.layout->legacy);
+              });
+    candidates.erase(std::unique(candidates.begin(), candidates.end(),
+                                 [](const BootstrapMatch& left, const BootstrapMatch& right) {
+                                     return left.pool == right.pool &&
+                                            left.layout->legacy == right.layout->legacy;
+                                 }),
+                     candidates.end());
+    if (candidates.size() != 1)
+        return failure<BootstrapMatch>(ErrorCode::kUnsupported,
+                                       "cannot locate the existing direct-LKM bootstrap");
+    return Result<BootstrapMatch>::success(candidates.front());
+}
+
+// Locate the bootstrap without kallsyms: the literal pool carries the capsule
+// magic, the reserve wrapper's add instruction and the capsule offset, so a
+// linear scan for the magic plus those two cross-checks pins it down.
+Result<BootstrapMatch> find_bootstrap_by_magic(const std::vector<std::uint8_t>& image,
+                                               std::size_t capsule_offset) {
+    const std::array<std::uint8_t, 8>& magic = kCapsuleMagic;
+    if (capsule_offset < magic.size())
+        return failure<BootstrapMatch>(ErrorCode::kUnsupported,
+                                       "patched Image is too small to hold a bootstrap");
+    std::vector<BootstrapMatch> candidates;
+    for (std::size_t offset = 64; offset <= capsule_offset - magic.size(); offset += 4) {
+        if (!std::equal(magic.begin(), magic.end(),
+                        image.begin() + static_cast<std::ptrdiff_t>(offset)))
+            continue;
+        for (const BootstrapLayout* layout : kBootstrapLayouts) {
+            if (offset < layout->magic)
+                continue;
+            const std::size_t pool = offset - layout->magic;
+            std::uint64_t recorded_capsule = 0;
+            if (bootstrap_pool_matches(image, pool, capsule_offset, *layout) &&
+                read_u64(image, pool + layout->capsule_offset, &recorded_capsule) &&
+                recorded_capsule == capsule_offset)
+                candidates.push_back({pool, layout});
+        }
+    }
+    return single_bootstrap_match(std::move(candidates));
+}
+
+// Walk a module's undefined symbols exactly the way collect_module_fixups does
+// and hand each symbol table entry to the visitor.
+Result<void> for_each_undefined_symbol(
+    const std::vector<std::uint8_t>& module,
+    const std::function<Result<void>(std::size_t, const std::string&)>& visit) {
+    auto parsed_sections = parse_module_sections(module);
+    if (!parsed_sections)
+        return propagate<void>(parsed_sections.error());
+    const auto& sections = parsed_sections.value();
+    for (const auto& symbol_section : sections) {
+        if (symbol_section.type != kShtSymtab)
+            continue;
+        if (symbol_section.entry_size < 24 ||
+            symbol_section.size % symbol_section.entry_size != 0 ||
+            symbol_section.link >= sections.size())
+            return failure<void>(ErrorCode::kInvalidArgument, "module symbol table is malformed");
+        const auto& string_section = sections[symbol_section.link];
+        if (string_section.type != kShtStrtab ||
+            !range_ok(module, string_section.offset, string_section.size))
+            return failure<void>(ErrorCode::kInvalidArgument,
+                                 "module symbol string table is malformed");
+        const std::size_t string_end = string_section.offset + string_section.size;
+        for (std::size_t index = 1; index < symbol_section.size / symbol_section.entry_size;
+             ++index) {
+            const std::size_t symbol_offset =
+                symbol_section.offset + (index * symbol_section.entry_size);
+            std::uint16_t section_index = 0;
+            std::uint32_t name_offset = 0;
+            if (!read_u16(module, symbol_offset + 6, &section_index) ||
+                !read_u32(module, symbol_offset, &name_offset) || section_index != kShnUndef)
+                continue;
+            if (name_offset >= string_section.size ||
+                name_offset > std::numeric_limits<std::size_t>::max() - string_section.offset)
+                continue;
+            const auto name =
+                read_c_string(module, string_section.offset + name_offset, string_end);
+            if (!name || name->empty())
+                continue;
+            if (auto status = visit(symbol_offset, *name); !status)
+                return status;
+        }
+    }
+    return Result<void>::success();
+}
+
+// Rebuild the symbol resolution the previous injection performed. The capsule
+// stores the module it injected plus that module's fixup table, so pairing the
+// table against the module's own symbol names recovers name -> kernel offset
+// without touching kallsyms.
+struct CapsuleSymbolOffsets {
+    std::map<std::string, std::uint64_t> resolved;
+    std::set<std::string> unresolved;
+};
+
+Result<CapsuleSymbolOffsets> recover_capsule_symbol_offsets(const std::vector<std::uint8_t>& image,
+                                                            const ParsedCapsule& capsule) {
+    using Offsets = CapsuleSymbolOffsets;
+    if ((capsule.flags & kCapsuleFixupFlag) == 0 || capsule.fixup_count == 0)
+        return failure<Offsets>(ErrorCode::kUnsupported, "existing capsule has no fixup table");
+    const std::size_t module_start = capsule.file_offset + capsule.module_offset;
+    if (!range_ok(image, module_start, capsule.module_size) || capsule.module_size == 0)
+        return failure<Offsets>(ErrorCode::kOutOfRange, "existing capsule module is out of range");
+    const std::vector<std::uint8_t> previous_module(
+        image.begin() + static_cast<std::ptrdiff_t>(module_start),
+        image.begin() + static_cast<std::ptrdiff_t>(module_start + capsule.module_size));
+    auto digest = module_sha256(previous_module);
+    if (!digest)
+        return propagate<Offsets>(digest.error());
+    if (!range_ok(image, capsule.file_offset + 64, digest.value().size()) ||
+        !std::equal(digest.value().begin(), digest.value().end(),
+                    image.begin() + static_cast<std::ptrdiff_t>(capsule.file_offset + 64)))
+        return failure<Offsets>(ErrorCode::kUnsupported,
+                                "existing capsule module digest does not match");
+
+    std::map<std::size_t, std::uint64_t> by_symbol_offset;
+    for (std::size_t index = 0; index < capsule.fixup_count; ++index) {
+        const std::size_t entry =
+            capsule.file_offset + capsule.fixup_offset + (index * kCapsuleFixupEntrySize);
+        std::uint32_t symbol_offset = 0;
+        std::uint32_t reserved = 0;
+        std::uint64_t kernel_offset = 0;
+        if (!read_u32(image, entry, &symbol_offset) || !read_u32(image, entry + 4, &reserved) ||
+            !read_u64(image, entry + 8, &kernel_offset) || reserved != 0)
+            return failure<Offsets>(ErrorCode::kMalformedArm64Image,
+                                    "existing capsule fixup entry is malformed");
+        if (!by_symbol_offset.emplace(symbol_offset, kernel_offset).second)
+            return failure<Offsets>(ErrorCode::kAmbiguous,
+                                    "existing capsule fixup table has duplicate entries");
+    }
+
+    Offsets offsets;
+    std::size_t matched = 0;
+    const auto status = for_each_undefined_symbol(
+        previous_module, [&](std::size_t symbol_offset, const std::string& name) -> Result<void> {
+            const auto entry = by_symbol_offset.find(symbol_offset);
+            if (entry == by_symbol_offset.end()) {
+                if (offsets.resolved.count(name) != 0)
+                    return Result<void>::failure(
+                        ErrorCode::kAmbiguous,
+                        "existing capsule resolves only some uses of " + name);
+                offsets.unresolved.insert(name);
+                return Result<void>::success();
+            }
+            ++matched;
+            if (offsets.unresolved.count(name) != 0)
+                return Result<void>::failure(
+                    ErrorCode::kAmbiguous,
+                    "existing capsule both resolves and leaves " + name + " unresolved");
+            const auto existing = offsets.resolved.emplace(name, entry->second);
+            if (!existing.second && existing.first->second != entry->second)
+                return Result<void>::failure(ErrorCode::kAmbiguous,
+                                             "existing capsule maps " + name + " twice");
+            return Result<void>::success();
+        });
+    if (!status)
+        return propagate<Offsets>(status.error());
+    if (matched != by_symbol_offset.size())
+        return failure<Offsets>(ErrorCode::kUnsupported,
+                                "existing capsule fixup table does not match its module");
+    return Result<Offsets>::success(std::move(offsets));
+}
+
+struct ReusedFixups {
+    std::vector<Fixup> fixups;
+    std::vector<std::string> unresolved;
+};
+
+// Resolve the replacement module against the recovered map. A symbol the
+// previous module never referenced cannot be answered from the capsule, so the
+// caller has to fall back to a full kallsyms recovery.
+Result<ReusedFixups> collect_module_fixups_from_offsets(const std::vector<std::uint8_t>& module,
+                                                        const CapsuleSymbolOffsets& offsets) {
+    ReusedFixups result;
+    std::set<std::string> unresolved;
+    std::set<std::size_t> seen_offsets;
+    const auto status = for_each_undefined_symbol(
+        module, [&](std::size_t symbol_offset, const std::string& name) -> Result<void> {
+            const auto entry = offsets.resolved.find(name);
+            if (entry == offsets.resolved.end()) {
+                if (offsets.unresolved.count(name) != 0) {
+                    unresolved.insert(name);
+                    return Result<void>::success();
+                }
+                return Result<void>::failure(
+                    ErrorCode::kUnsupported,
+                    "replacement module needs the unmapped symbol " + name);
+            }
+            if (symbol_offset > std::numeric_limits<std::uint32_t>::max())
+                return Result<void>::failure(ErrorCode::kOverflow,
+                                             "module symbol offset does not fit capsule format");
+            if (seen_offsets.insert(symbol_offset).second)
+                result.fixups.push_back({symbol_offset, entry->second});
+            return Result<void>::success();
+        });
+    if (!status)
+        return propagate<ReusedFixups>(status.error());
+    if (result.fixups.empty())
+        return failure<ReusedFixups>(ErrorCode::kUnsupported,
+                                     "replacement module resolves no kernel symbols");
+    result.unresolved.assign(unresolved.begin(), unresolved.end());
+    return Result<ReusedFixups>::success(std::move(result));
+}
+
+// Swap the module inside an existing capsule in place. The kernel bytes outside
+// the capsule are untouched, so every value the bootstrap already holds stays
+// valid except the capsule geometry.
+Result<InjectionResult> replace_capsule_module_in_place(
+    const std::vector<std::uint8_t>& patched_image, const std::vector<std::uint8_t>& module,
+    const ParsedCapsule& capsule) {
+    auto bootstrap = find_bootstrap_by_magic(patched_image, capsule.file_offset);
+    if (!bootstrap)
+        return propagate<InjectionResult>(bootstrap.error());
+    const BootstrapLayout& layout = *bootstrap.value().layout;
+    const std::size_t pool = bootstrap.value().pool;
+
+    auto offsets = recover_capsule_symbol_offsets(patched_image, capsule);
+    if (!offsets)
+        return propagate<InjectionResult>(offsets.error());
+    auto fixups = collect_module_fixups_from_offsets(module, offsets.value());
+    if (!fixups)
+        return propagate<InjectionResult>(fixups.error());
+
+    const RestoreMetadata* restore_metadata =
+        capsule.restore_metadata ? &*capsule.restore_metadata : nullptr;
+    auto new_capsule =
+        build_capsule(capsule.file_offset, module, fixups.value().fixups, restore_metadata);
+    if (!new_capsule)
+        return propagate<InjectionResult>(new_capsule.error());
+    if (new_capsule.value().file_offset != capsule.file_offset)
+        return failure<InjectionResult>(ErrorCode::kUnsupported,
+                                        "rebuilt capsule does not start where the old one did");
+
+    std::vector<std::uint8_t> image(
+        patched_image.begin(),
+        patched_image.begin() + static_cast<std::ptrdiff_t>(new_capsule.value().file_offset));
+    image.insert(image.end(), new_capsule.value().data.begin(), new_capsule.value().data.end());
+    if (image.size() != new_capsule.value().image_size ||
+        !write_u64(&image, kImageSizeOffset, new_capsule.value().image_size))
+        return failure<InjectionResult>(ErrorCode::kOutOfRange,
+                                        "repatched Image size is inconsistent");
+
+    // Only the capsule geometry moved. load_info and gfp_kernel describe the
+    // kernel itself and are left exactly as the original injection wrote them.
+    const std::uint64_t reserve_extension =
+        new_capsule.value().image_size - new_capsule.value().file_offset;
+    const bool updated =
+        write_u64(&image, pool + layout.capsule_offset, new_capsule.value().file_offset) &&
+        write_u64(&image, pool + layout.capsule_size, new_capsule.value().data.size()) &&
+        write_u64(&image, pool + layout.module_offset,
+                  new_capsule.value().module_offset - new_capsule.value().file_offset) &&
+        write_u64(&image, pool + layout.module_size, module.size()) &&
+        write_u64(&image, pool + layout.fixup_offset,
+                  new_capsule.value().fixup_offset - new_capsule.value().file_offset) &&
+        write_u64(&image, pool + layout.fixup_count, fixups.value().fixups.size()) &&
+        write_u64(&image, pool + layout.reserve_extension, reserve_extension);
+    if (!updated)
+        return failure<InjectionResult>(ErrorCode::kOutOfRange,
+                                        "existing direct-LKM bootstrap literal pool is truncated");
+
+    InjectionReport report;
+    report.reused_metadata = true;
+    report.fixup_count = fixups.value().fixups.size();
+    report.unresolved = std::move(fixups.value().unresolved);
+    report.image_size = new_capsule.value().image_size;
+    std::uint64_t storage_size = 0;
+    std::uint64_t hdr_offset = 0;
+    std::uint64_t len_offset = 0;
+    if (!read_u64(image, pool + layout.load_info_size, &storage_size) ||
+        !read_u64(image, pool + layout.load_info_hdr, &hdr_offset) ||
+        !read_u64(image, pool + layout.load_info_len, &len_offset))
+        return failure<InjectionResult>(ErrorCode::kOutOfRange,
+                                        "existing direct-LKM bootstrap literal pool is truncated");
+    report.gki_abi.load_info_storage_size = storage_size;
+    report.gki_abi.load_info_hdr_offset = hdr_offset;
+    report.gki_abi.load_info_len_offset = len_offset;
+    return Result<InjectionResult>::success({std::move(image), std::move(report)});
+}
+
 Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& original_image,
                                           const std::vector<std::uint8_t>& module) {
     auto image_info = parse_arm64_image(original_image.data(), original_image.size());
@@ -1487,18 +1820,16 @@ Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_i
     return inject_image_impl(original_image, module);
 }
 
-Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& patched_image,
-                                               const std::vector<std::uint8_t>& module) {
-    auto capsule_storage = locate_capsule(patched_image);
-    if (!capsule_storage)
-        return propagate<InjectionResult>(capsule_storage.error());
-    const ParsedCapsule* capsule = &capsule_storage.value();
+namespace {
 
+Result<InjectionResult> replace_capsule_module_full(const std::vector<std::uint8_t>& patched_image,
+                                                    const std::vector<std::uint8_t>& module,
+                                                    const ParsedCapsule& capsule) {
     // Kallsyms encodes the original _end - _text size. Hide the appended
     // capsule while recovering metadata; the bytes themselves remain present
     // for BTF and banner parsing.
     std::vector<std::uint8_t> analysis_image = patched_image;
-    if (!write_u64(&analysis_image, kImageSizeOffset, capsule->file_offset))
+    if (!write_u64(&analysis_image, kImageSizeOffset, capsule.file_offset))
         return failure<InjectionResult>(ErrorCode::kOutOfRange,
                                         "cannot normalize patched Image size for analysis");
     auto metadata = recover_kernel_metadata(analysis_image);
@@ -1508,21 +1839,21 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
     if (!required)
         return propagate<InjectionResult>(required.error());
     const std::uint64_t base = image_base(required.value());
-    auto bounds = validate_required_bounds(required.value(), capsule->file_offset);
+    auto bounds = validate_required_bounds(required.value(), capsule.file_offset);
     if (!bounds)
         return propagate<InjectionResult>(bounds.error());
     auto abi =
         recover_gki_abi(analysis_image, base, required.value().linux_banner, metadata.value().btf);
     if (!abi)
         return propagate<InjectionResult>(abi.error());
-    auto fixup_result = collect_module_fixups(module, metadata.value().kallsyms.symbols, base,
-                                              capsule->file_offset);
+    auto fixup_result =
+        collect_module_fixups(module, metadata.value().kallsyms.symbols, base, capsule.file_offset);
     if (!fixup_result)
         return propagate<InjectionResult>(fixup_result.error());
     const RestoreMetadata* restore_metadata =
-        capsule->restore_metadata ? &*capsule->restore_metadata : nullptr;
+        capsule.restore_metadata ? &*capsule.restore_metadata : nullptr;
     auto new_capsule =
-        build_capsule(capsule->file_offset, module, fixup_result.value().first, restore_metadata);
+        build_capsule(capsule.file_offset, module, fixup_result.value().first, restore_metadata);
     if (!new_capsule)
         return propagate<InjectionResult>(new_capsule.error());
     std::vector<std::uint8_t> image = patched_image;
@@ -1534,13 +1865,8 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
                                         "repatched Image size is inconsistent");
 
     // Locate the literal pool through the three call sites we already patched
-    // instead of depending on a code prefix. Keep the legacy layout so an
-    // image produced by an earlier YukiSU build can still be repatched.
-    struct BootstrapLayout {
-        std::size_t pool = 0;
-        bool legacy = false;
-    };
-    std::vector<BootstrapLayout> bootstrap_candidates;
+    // instead of depending on a code prefix.
+    std::vector<BootstrapMatch> bootstrap_candidates;
     const auto collect_bootstrap_targets = [&](const MapSymbol& function,
                                                std::size_t maximum_size) -> Result<void> {
         auto range = function_scan_range(image, metadata.value().kallsyms.symbols, base, function,
@@ -1563,19 +1889,9 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
                 if (target_offset < target_delta)
                     continue;
                 const std::size_t candidate = target_offset - target_delta;
-                std::uint64_t magic = 0;
-                std::uint32_t wrapper_add = 0;
-                if (capsule->file_offset >= 0x258 && candidate <= capsule->file_offset - 0x258 &&
-                    read_u64(image, candidate + 0x1f8, &magic) &&
-                    read_u32(image, candidate + 0x1a8, &wrapper_add) &&
-                    magic == capsule_magic_value() && wrapper_add == 0x8b080021U) {
-                    bootstrap_candidates.push_back({candidate, false});
-                }
-                if (capsule->file_offset >= 0x2b4 && candidate <= capsule->file_offset - 0x2b4 &&
-                    read_u64(image, candidate + 0x250, &magic) &&
-                    read_u32(image, candidate + 0x1f8, &wrapper_add) &&
-                    magic == capsule_magic_value() && wrapper_add == 0x8b080021U) {
-                    bootstrap_candidates.push_back({candidate, true});
+                for (const BootstrapLayout* layout : kBootstrapLayouts) {
+                    if (bootstrap_pool_matches(image, candidate, capsule.file_offset, *layout))
+                        bootstrap_candidates.push_back({candidate, layout});
                 }
             }
         }
@@ -1588,51 +1904,27 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
     if (auto status = collect_bootstrap_targets(required.value().arm64_memblock_init, 0x8000);
         !status)
         return propagate<InjectionResult>(status.error());
-    std::sort(bootstrap_candidates.begin(), bootstrap_candidates.end(),
-              [](const BootstrapLayout& left, const BootstrapLayout& right) {
-                  return std::tie(left.pool, left.legacy) < std::tie(right.pool, right.legacy);
-              });
-    bootstrap_candidates.erase(
-        std::unique(bootstrap_candidates.begin(), bootstrap_candidates.end(),
-                    [](const BootstrapLayout& left, const BootstrapLayout& right) {
-                        return left.pool == right.pool && left.legacy == right.legacy;
-                    }),
-        bootstrap_candidates.end());
-    if (bootstrap_candidates.size() != 1)
-        return failure<InjectionResult>(ErrorCode::kUnsupported,
-                                        "cannot locate the existing direct-LKM bootstrap");
-    const BootstrapLayout layout = bootstrap_candidates.front();
-    const std::size_t pool = layout.pool;
+    auto bootstrap = single_bootstrap_match(std::move(bootstrap_candidates));
+    if (!bootstrap)
+        return propagate<InjectionResult>(bootstrap.error());
+    const BootstrapLayout& layout = *bootstrap.value().layout;
+    const std::size_t pool = bootstrap.value().pool;
     const std::uint64_t reserve_extension =
         new_capsule.value().image_size - new_capsule.value().file_offset;
-    bool updated = false;
-    if (layout.legacy) {
-        updated = write_u64(&image, pool + 0x240, new_capsule.value().file_offset) &&
-                  write_u64(&image, pool + 0x260, new_capsule.value().data.size()) &&
-                  write_u64(&image, pool + 0x268,
-                            new_capsule.value().module_offset - new_capsule.value().file_offset) &&
-                  write_u64(&image, pool + 0x270, module.size()) &&
-                  write_u64(&image, pool + 0x278,
-                            new_capsule.value().fixup_offset - new_capsule.value().file_offset) &&
-                  write_u64(&image, pool + 0x280, fixup_result.value().first.size()) &&
-                  write_u64(&image, pool + 0x290, abi.value().second.load_info_storage_size) &&
-                  write_u64(&image, pool + 0x298, abi.value().second.load_info_hdr_offset) &&
-                  write_u64(&image, pool + 0x2a0, abi.value().second.load_info_len_offset) &&
-                  write_u64(&image, pool + 0x2a8, reserve_extension);
-    } else {
-        updated = write_u64(&image, pool + 0x1e8, new_capsule.value().file_offset) &&
-                  write_u64(&image, pool + 0x208, new_capsule.value().data.size()) &&
-                  write_u64(&image, pool + 0x210,
-                            new_capsule.value().module_offset - new_capsule.value().file_offset) &&
-                  write_u64(&image, pool + 0x218, module.size()) &&
-                  write_u64(&image, pool + 0x220,
-                            new_capsule.value().fixup_offset - new_capsule.value().file_offset) &&
-                  write_u64(&image, pool + 0x228, fixup_result.value().first.size()) &&
-                  write_u64(&image, pool + 0x230, abi.value().second.load_info_storage_size) &&
-                  write_u64(&image, pool + 0x238, abi.value().second.load_info_hdr_offset) &&
-                  write_u64(&image, pool + 0x240, abi.value().second.load_info_len_offset) &&
-                  write_u64(&image, pool + 0x248, reserve_extension);
-    }
+    const bool updated =
+        write_u64(&image, pool + layout.capsule_offset, new_capsule.value().file_offset) &&
+        write_u64(&image, pool + layout.capsule_size, new_capsule.value().data.size()) &&
+        write_u64(&image, pool + layout.module_offset,
+                  new_capsule.value().module_offset - new_capsule.value().file_offset) &&
+        write_u64(&image, pool + layout.module_size, module.size()) &&
+        write_u64(&image, pool + layout.fixup_offset,
+                  new_capsule.value().fixup_offset - new_capsule.value().file_offset) &&
+        write_u64(&image, pool + layout.fixup_count, fixup_result.value().first.size()) &&
+        write_u64(&image, pool + layout.load_info_size,
+                  abi.value().second.load_info_storage_size) &&
+        write_u64(&image, pool + layout.load_info_hdr, abi.value().second.load_info_hdr_offset) &&
+        write_u64(&image, pool + layout.load_info_len, abi.value().second.load_info_len_offset) &&
+        write_u64(&image, pool + layout.reserve_extension, reserve_extension);
     if (!updated)
         return failure<InjectionResult>(ErrorCode::kOutOfRange,
                                         "existing direct-LKM bootstrap literal pool is truncated");
@@ -1652,6 +1944,29 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
         report.btf_type_count = selected_btf.type_count;
     }
     return Result<InjectionResult>::success({std::move(image), std::move(report)});
+}
+
+}  // namespace
+
+Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& patched_image,
+                                               const std::vector<std::uint8_t>& module,
+                                               bool allow_reuse) {
+    auto capsule_storage = locate_capsule(patched_image);
+    if (!capsule_storage)
+        return propagate<InjectionResult>(capsule_storage.error());
+    const ParsedCapsule& capsule = capsule_storage.value();
+
+    std::string skipped_reason = "disabled by request";
+    if (allow_reuse) {
+        auto reused = replace_capsule_module_in_place(patched_image, module, capsule);
+        if (reused)
+            return reused;
+        skipped_reason = reused.error().message;
+    }
+    auto rebuilt = replace_capsule_module_full(patched_image, module, capsule);
+    if (rebuilt)
+        rebuilt.value().report.reuse_skipped_reason = std::move(skipped_reason);
+    return rebuilt;
 }
 
 bool contains_capsule(const std::vector<std::uint8_t>& image) {
@@ -1708,11 +2023,7 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
     if (!bounds)
         return propagate<std::vector<std::uint8_t>>(bounds.error());
 
-    struct BootstrapLayout {
-        std::size_t pool = 0;
-        bool legacy = false;
-    };
-    std::vector<BootstrapLayout> candidates;
+    std::vector<BootstrapMatch> candidates;
     const auto collect = [&](const MapSymbol& function, std::size_t maximum_size) -> Result<void> {
         auto range = function_scan_range(patched_image, metadata.value().kallsyms.symbols, base,
                                          function, maximum_size);
@@ -1733,18 +2044,10 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
                 if (target_offset < target_delta)
                     continue;
                 const std::size_t candidate = target_offset - target_delta;
-                std::uint64_t magic = 0;
-                std::uint32_t wrapper_add = 0;
-                if (capsule_offset >= 0x258 && candidate <= capsule_offset - 0x258 &&
-                    read_u64(patched_image, candidate + 0x1f8, &magic) &&
-                    read_u32(patched_image, candidate + 0x1a8, &wrapper_add) &&
-                    magic == capsule_magic_value() && wrapper_add == 0x8b080021U)
-                    candidates.push_back({candidate, false});
-                if (capsule_offset >= 0x2b4 && candidate <= capsule_offset - 0x2b4 &&
-                    read_u64(patched_image, candidate + 0x250, &magic) &&
-                    read_u32(patched_image, candidate + 0x1f8, &wrapper_add) &&
-                    magic == capsule_magic_value() && wrapper_add == 0x8b080021U)
-                    candidates.push_back({candidate, true});
+                for (const BootstrapLayout* layout : kBootstrapLayouts) {
+                    if (bootstrap_pool_matches(patched_image, candidate, capsule_offset, *layout))
+                        candidates.push_back({candidate, layout});
+                }
             }
         }
         return Result<void>::success();
@@ -1755,24 +2058,14 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
         return propagate<std::vector<std::uint8_t>>(status.error());
     if (auto status = collect(required.value().arm64_memblock_init, 0x8000); !status)
         return propagate<std::vector<std::uint8_t>>(status.error());
-    std::sort(candidates.begin(), candidates.end(),
-              [](const BootstrapLayout& left, const BootstrapLayout& right) {
-                  return std::tie(left.pool, left.legacy) < std::tie(right.pool, right.legacy);
-              });
-    candidates.erase(std::unique(candidates.begin(), candidates.end(),
-                                 [](const BootstrapLayout& left, const BootstrapLayout& right) {
-                                     return left.pool == right.pool && left.legacy == right.legacy;
-                                 }),
-                     candidates.end());
-    if (candidates.size() != 1)
-        return failure<std::vector<std::uint8_t>>(
-            ErrorCode::kUnsupported, "cannot locate the existing direct-LKM bootstrap");
-    const BootstrapLayout layout = candidates.front();
-    const std::size_t wrapper_offset = layout.legacy ? 0x1f0 : 0x1a0;
-    const std::size_t adapter_offset = layout.legacy ? 0x200 : 0x1b0;
-    const std::uint64_t entry_address = base + layout.pool;
-    const std::uint64_t wrapper_address = entry_address + wrapper_offset;
-    const std::uint64_t adapter_address = entry_address + adapter_offset;
+    auto bootstrap = single_bootstrap_match(std::move(candidates));
+    if (!bootstrap)
+        return propagate<std::vector<std::uint8_t>>(bootstrap.error());
+    const BootstrapLayout& layout = *bootstrap.value().layout;
+    const std::size_t pool = bootstrap.value().pool;
+    const std::uint64_t entry_address = base + pool;
+    const std::uint64_t wrapper_address = entry_address + layout.reserve_wrapper;
+    const std::uint64_t adapter_address = entry_address + layout.strndup_adapter;
 
     const auto find_call = [&](const MapSymbol& function, std::size_t maximum_size,
                                std::uint64_t target) -> Result<std::size_t> {
@@ -1825,12 +2118,11 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
             restore_call(memblock_call.value(), required.value().memblock_reserve.address);
         !status)
         return propagate<std::vector<std::uint8_t>>(status.error());
-    const std::size_t bootstrap_size = layout.legacy ? 0x2b4 : 0x263;
-    if (layout.pool > restored.size() || bootstrap_size > restored.size() - layout.pool)
+    if (pool > restored.size() || layout.code_size > restored.size() - pool)
         return failure<std::vector<std::uint8_t>>(ErrorCode::kOutOfRange,
                                                   "direct-LKM bootstrap is outside Image");
-    std::fill(restored.begin() + static_cast<std::ptrdiff_t>(layout.pool),
-              restored.begin() + static_cast<std::ptrdiff_t>(layout.pool + bootstrap_size), 0);
+    std::fill(restored.begin() + static_cast<std::ptrdiff_t>(pool),
+              restored.begin() + static_cast<std::ptrdiff_t>(pool + layout.code_size), 0);
     restored.resize(capsule_offset);
     if (!write_u64(&restored, kImageSizeOffset, capsule_offset))
         return failure<std::vector<std::uint8_t>>(ErrorCode::kOutOfRange,

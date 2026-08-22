@@ -40,6 +40,7 @@ struct BootPatchV2Args {
     bool flash = false;
     bool ota = false;
     bool signature_bypass = false;
+    bool no_reuse = false;
     bool valid = true;
 };
 
@@ -74,6 +75,8 @@ BootPatchV2Args parse_args(const std::vector<std::string>& args) {
             result.ota = true;
         } else if (argument == "--signature-bypass") {
             result.signature_bypass = true;
+        } else if (argument == "--no-reuse") {
+            result.no_reuse = true;
         } else {
             result.valid = false;
         }
@@ -429,13 +432,21 @@ std::optional<std::vector<std::uint8_t>> load_module(const BootPatchV2Args& args
 }
 
 void print_report(const boot::lkm_image::InjectionReport& report) {
-    printf("- Kernel: %s\n", report.kernel_release.c_str());
-    printf("- Kallsyms: %s (%zu symbols)\n", report.kallsyms_layout.c_str(), report.kallsyms_count);
-    if (report.btf_offset) {
-        printf("- vmlinux BTF: offset 0x%zx, size 0x%zx, %zu types\n", *report.btf_offset,
-               report.btf_size.value_or(0), report.btf_type_count);
+    if (report.reused_metadata) {
+        printf("- Reused the existing bootstrap and capsule metadata; skipped kallsyms and BTF "
+               "recovery\n");
     } else {
-        printf("- vmlinux BTF: not selected; using built-in GKI ABI\n");
+        if (!report.reuse_skipped_reason.empty())
+            printf("- Full re-analysis: %s\n", report.reuse_skipped_reason.c_str());
+        printf("- Kernel: %s\n", report.kernel_release.c_str());
+        printf("- Kallsyms: %s (%zu symbols)\n", report.kallsyms_layout.c_str(),
+               report.kallsyms_count);
+        if (report.btf_offset) {
+            printf("- vmlinux BTF: offset 0x%zx, size 0x%zx, %zu types\n", *report.btf_offset,
+                   report.btf_size.value_or(0), report.btf_type_count);
+        } else {
+            printf("- vmlinux BTF: not selected; using built-in GKI ABI\n");
+        }
     }
     printf("- load_info: storage=%llu, hdr=%llu, len=%llu\n",
            static_cast<unsigned long long>(report.gki_abi.load_info_storage_size),
@@ -447,7 +458,8 @@ void print_report(const boot::lkm_image::InjectionReport& report) {
     } else {
         printf("- Bootstrap: existing direct-LKM bootstrap retained\n");
     }
-    printf("- PAGE_OFFSET: 0x%llx\n", static_cast<unsigned long long>(report.page_offset));
+    if (report.page_offset != 0)
+        printf("- PAGE_OFFSET: 0x%llx\n", static_cast<unsigned long long>(report.page_offset));
     printf("- Module fixups: %zu, unresolved: %zu\n", report.fixup_count, report.unresolved.size());
     if (!report.unresolved.empty()) {
         printf("- Native resolver symbols: ");
@@ -741,10 +753,12 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     }
     LOGW("boot-patch-v2: early PID 1 loading uses only the imgpatch marker; "
          "allow_shell/norc/UTS boot options are not applied");
-    printf("- Recovering kallsyms/BTF and injecting LKM\n");
     if (already_patched)
         printf("- Existing direct-LKM bootstrap found; replacing its module capsule\n");
-    auto injected = already_patched ? boot::lkm_image::replace_capsule_module(*kernel, *module)
+    else
+        printf("- Recovering kallsyms/BTF and injecting LKM\n");
+    auto injected = already_patched ? boot::lkm_image::replace_capsule_module(*kernel, *module,
+                                                                              !parsed.no_reuse)
                                     : boot::lkm_image::inject_image(*kernel, *module);
     if (!injected) {
         LOGE("boot-patch-v2: injection failed: %s", injected.error().message.c_str());

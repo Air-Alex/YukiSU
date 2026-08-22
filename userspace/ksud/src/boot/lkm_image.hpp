@@ -32,6 +32,10 @@ struct InjectionReport {
     std::size_t fixup_count = 0;
     std::vector<std::string> unresolved;
     std::size_t image_size = 0;
+    // Set when an existing bootstrap and its recovered kernel metadata were
+    // reused instead of re-derived. Mutually exclusive with reuse_skipped_reason.
+    bool reused_metadata = false;
+    std::string reuse_skipped_reason;
 };
 
 struct InjectionResult {
@@ -47,8 +51,12 @@ Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_i
 
 // Replace the module capsule in an image that already contains the direct-LKM
 // bootstrap. The existing bootstrap and kernel call-site patches are retained.
+// With allow_reuse the capsule's own fixup table answers the replacement
+// module's symbols, which skips kallsyms and BTF recovery entirely; anything the
+// capsule cannot answer falls back to a full re-analysis.
 Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& patched_image,
-                                               const std::vector<std::uint8_t>& module);
+                                               const std::vector<std::uint8_t>& module,
+                                               bool allow_reuse = true);
 
 // True only when the Image already carries a direct-LKM capsule. An unpatched
 // raw Image stops before the BSS that its image_size covers, so it is never
