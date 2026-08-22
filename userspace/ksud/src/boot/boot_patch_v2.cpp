@@ -43,67 +43,6 @@ struct BootPatchV2Args {
     bool valid = true;
 };
 
-constexpr std::array<std::uint8_t, 8> kLkmCapsuleMagic = {
-    'K', 'S', 'U', 'L', 'K', 'M', '1', 0,
-};
-constexpr std::uint32_t kLkmCapsuleVersion = 1;
-constexpr std::uint32_t kLkmCapsuleHeaderSize = 96;
-constexpr std::size_t kLkmCapsuleFixupEntrySize = 16;
-constexpr std::uint64_t kLkmCapsuleFixupFlag = 1;
-constexpr std::uint64_t kLkmCapsuleRestoreFlag = 2;
-
-bool has_direct_lkm_capsule(const std::vector<std::uint8_t>& kernel) {
-    auto image_info = boot::lkm_image::parse_arm64_image(kernel);
-    if (!image_info || image_info.value().image_size > kernel.size()) {
-        return false;
-    }
-    const std::size_t image_size = image_info.value().image_size;
-    if (image_size < kLkmCapsuleHeaderSize) {
-        return false;
-    }
-    for (std::size_t offset = 64; offset <= image_size - kLkmCapsuleHeaderSize; offset += 16) {
-        if (!std::equal(kLkmCapsuleMagic.begin(), kLkmCapsuleMagic.end(),
-                        kernel.begin() + static_cast<std::ptrdiff_t>(offset))) {
-            continue;
-        }
-        auto version = boot::lkm_image::read_u32_le(kernel.data(), kernel.size(), offset + 8);
-        auto header_size = boot::lkm_image::read_u32_le(kernel.data(), kernel.size(), offset + 12);
-        auto capsule_size = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 16);
-        auto module_offset =
-            boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 24);
-        auto module_size = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 32);
-        auto fixup_offset = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 40);
-        auto fixup_count = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 48);
-        auto flags = boot::lkm_image::read_u64_le(kernel.data(), kernel.size(), offset + 56);
-        if (!version || !header_size || !capsule_size || !module_offset || !module_size ||
-            !fixup_offset || !fixup_count || !flags || version.value() != kLkmCapsuleVersion ||
-            header_size.value() != kLkmCapsuleHeaderSize ||
-            (flags.value() & ~(kLkmCapsuleFixupFlag | kLkmCapsuleRestoreFlag)) != 0 ||
-            capsule_size.value() < header_size.value() ||
-            capsule_size.value() > std::numeric_limits<std::size_t>::max() ||
-            module_offset.value() < header_size.value() ||
-            module_offset.value() > capsule_size.value() ||
-            module_size.value() > capsule_size.value() - module_offset.value() ||
-            fixup_offset.value() < module_offset.value() ||
-            fixup_offset.value() > capsule_size.value() ||
-            fixup_count.value() >
-                (capsule_size.value() - fixup_offset.value()) / kLkmCapsuleFixupEntrySize) {
-            continue;
-        }
-        const std::size_t capsule_size_native = static_cast<std::size_t>(capsule_size.value());
-        if (capsule_size_native > image_size || offset > image_size - capsule_size_native ||
-            offset + capsule_size_native != image_size || module_offset.value() % 16 != 0 ||
-            fixup_offset.value() % 16 != 0) {
-            continue;
-        }
-        if (offset > std::numeric_limits<std::size_t>::max() - 16) {
-            break;
-        }
-        return true;
-    }
-    return false;
-}
-
 BootPatchV2Args parse_args(const std::vector<std::string>& args) {
     BootPatchV2Args result;
     for (std::size_t index = 0; index < args.size(); ++index) {
@@ -715,7 +654,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
-    const bool already_patched = has_direct_lkm_capsule(*kernel);
+    const bool already_patched = boot::lkm_image::contains_capsule(*kernel);
     auto module = load_module(parsed, *kernel, work);
     if (!module) {
         cleanup();

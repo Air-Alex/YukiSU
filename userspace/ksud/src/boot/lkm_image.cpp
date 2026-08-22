@@ -1199,6 +1199,21 @@ Result<ParsedCapsule> find_capsule(const std::vector<std::uint8_t>& image, std::
     return Result<ParsedCapsule>::success(std::move(*result));
 }
 
+// A direct image patch extends the Image to exactly image_size and stores the
+// capsule at its tail. A raw Image stops before the BSS that image_size
+// accounts for, so any size mismatch means the capsule is simply absent rather
+// than damaged.
+Result<ParsedCapsule> locate_capsule(const std::vector<std::uint8_t>& image) {
+    auto image_info = parse_arm64_image(image.data(), image.size());
+    if (!image_info)
+        return propagate<ParsedCapsule>(image_info.error());
+    const std::size_t image_size = image_info.value().image_size;
+    if (image.size() != image_size)
+        return failure<ParsedCapsule>(ErrorCode::kInvalidArgument,
+                                      "Image carries no direct-LKM capsule");
+    return find_capsule(image, image_size);
+}
+
 Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& original_image,
                                           const std::vector<std::uint8_t>& module) {
     auto image_info = parse_arm64_image(original_image.data(), original_image.size());
@@ -1474,15 +1489,7 @@ Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_i
 
 Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& patched_image,
                                                const std::vector<std::uint8_t>& module) {
-    auto image_info = parse_arm64_image(patched_image.data(), patched_image.size());
-    if (!image_info)
-        return propagate<InjectionResult>(image_info.error());
-    const std::size_t image_size = image_info.value().image_size;
-    if (patched_image.size() != image_size)
-        return failure<InjectionResult>(
-            ErrorCode::kUnsupported, "already-patched Image has trailing data outside image_size");
-
-    auto capsule_storage = find_capsule(patched_image, image_size);
+    auto capsule_storage = locate_capsule(patched_image);
     if (!capsule_storage)
         return propagate<InjectionResult>(capsule_storage.error());
     const ParsedCapsule* capsule = &capsule_storage.value();
@@ -1647,16 +1654,12 @@ Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& 
     return Result<InjectionResult>::success({std::move(image), std::move(report)});
 }
 
-Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>& patched_image) {
-    auto image_info = parse_arm64_image(patched_image.data(), patched_image.size());
-    if (!image_info)
-        return propagate<std::vector<std::uint8_t>>(image_info.error());
-    const std::size_t image_size = image_info.value().image_size;
-    if (patched_image.size() != image_size)
-        return failure<std::vector<std::uint8_t>>(
-            ErrorCode::kUnsupported, "already-patched Image has trailing data outside image_size");
+bool contains_capsule(const std::vector<std::uint8_t>& image) {
+    return locate_capsule(image).has_value();
+}
 
-    auto capsule_storage = find_capsule(patched_image, image_size);
+Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>& patched_image) {
+    auto capsule_storage = locate_capsule(patched_image);
     if (!capsule_storage)
         return propagate<std::vector<std::uint8_t>>(capsule_storage.error());
     const ParsedCapsule& capsule = capsule_storage.value();

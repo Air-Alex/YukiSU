@@ -587,13 +587,14 @@ DirectLkmImageStatus inspect_direct_lkm_image(const fs::path& image, const std::
         if (!boot::lkm_image::parse_arm64_image(kernel_bytes))
             continue;
 
-        auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
-        if (restored)
-            return DirectLkmImageStatus::kContainsCapsule;
-        if (restored.error().code == boot::lkm_image::ErrorCode::kInvalidArgument) {
+        if (!boot::lkm_image::contains_capsule(kernel_bytes)) {
             return has_direct_lkm_magic(kernel_bytes) ? DirectLkmImageStatus::kUnverified
                                                       : DirectLkmImageStatus::kNoCapsule;
         }
+
+        auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
+        if (restored)
+            return DirectLkmImageStatus::kContainsCapsule;
 
         LOGW("Could not validate direct-LKM capsule state for %s: %s", image.string().c_str(),
              restored.error().message.c_str());
@@ -638,14 +639,11 @@ DirectLkmRestoreStatus restore_direct_lkm_kernel(const std::string& workdir) {
             continue;
         const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
                                                      std::istreambuf_iterator<char>());
-        auto raw_info = boot::lkm_image::parse_arm64_image(kernel_bytes);
-        if (!raw_info)
+        if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
 
         auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
         if (!restored) {
-            if (restored.error().code == boot::lkm_image::ErrorCode::kInvalidArgument)
-                continue;
             LOGE("Direct-LKM restore failed: %s", restored.error().message.c_str());
             return DirectLkmRestoreStatus::kFailed;
         }
@@ -710,13 +708,11 @@ DirectLkmRestoreStatus prepare_direct_lkm_boot_restore(const std::string& workdi
             continue;
         const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
                                                      std::istreambuf_iterator<char>());
-        if (!boot::lkm_image::parse_arm64_image(kernel_bytes))
+        if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
 
         auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
         if (!restored) {
-            if (restored.error().code == boot::lkm_image::ErrorCode::kInvalidArgument)
-                continue;
             LOGE("Direct-LKM boot restore failed: %s", restored.error().message.c_str());
             return DirectLkmRestoreStatus::kFailed;
         }
@@ -1717,16 +1713,12 @@ int boot_restore(const std::vector<std::string>& args) {
         std::ifstream kernel_in(candidate, std::ios::binary);
         if (!kernel_in)
             continue;
-        std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
-                                               std::istreambuf_iterator<char>());
-        auto raw_info =
-            boot::lkm_image::parse_arm64_image(kernel_bytes.data(), kernel_bytes.size());
-        if (!raw_info)
+        const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
+                                                     std::istreambuf_iterator<char>());
+        if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
         auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
         if (!restored) {
-            if (restored.error().code == boot::lkm_image::ErrorCode::kInvalidArgument)
-                continue;
             LOGE("Direct-LKM restore failed: %s", restored.error().message.c_str());
             cleanup();
             return 1;

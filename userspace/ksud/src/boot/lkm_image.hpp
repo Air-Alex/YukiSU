@@ -50,6 +50,11 @@ Result<InjectionResult> inject_image(const std::vector<std::uint8_t>& original_i
 Result<InjectionResult> replace_capsule_module(const std::vector<std::uint8_t>& patched_image,
                                                const std::vector<std::uint8_t>& module);
 
+// True only when the Image already carries a direct-LKM capsule. An unpatched
+// raw Image stops before the BSS that its image_size covers, so it is never
+// reported as patched.
+bool contains_capsule(const std::vector<std::uint8_t>& image);
+
 // Remove the direct-LKM capsule and restore the exact pre-patch raw Image when metadata is present.
 Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>& patched_image);
 
