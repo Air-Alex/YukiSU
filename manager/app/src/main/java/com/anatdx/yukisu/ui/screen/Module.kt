@@ -1138,7 +1138,7 @@ fun ModuleItem(
         var localEnabled by remember(module.enabled) { mutableStateOf(module.enabled) }
         val scope = rememberCoroutineScope()
 
-        val conflictDisabled = viewModel.yukiZygiskEnabled && module.dirId in ZYGISK_IMPL_MODULE_IDS
+        val conflictDisabled = module.zygiskConflict
 
         val sizeStr = remember(module.dirId) {
             viewModel.getModuleSize(module.dirId)
@@ -1277,10 +1277,8 @@ fun ModuleItem(
             }
 
             if (!isHideTagRow) {
-                val isLoadedRuntimeModule =
-                    module.dirId in viewModel.loadedZygiskModules ||
-                        module.dirId in viewModel.loadedNativeModules
-                val runtimeKind = viewModel.runtimeModuleKinds[module.dirId]
+                val isLoadedRuntimeModule = module.runtimeLoaded
+                val runtimeKind = module.runtimeKind
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

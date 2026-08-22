@@ -17,11 +17,6 @@ import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.ui.util.HanziToPinyin
 import com.anatdx.yukisu.ui.util.listModules
 import com.anatdx.yukisu.ui.util.getRootShell
-import com.anatdx.yukisu.ui.util.getFeatureValue
-import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
-import com.anatdx.yukisu.ui.util.toggleModule
-import com.anatdx.yukisu.ui.util.ZYGISK_IMPL_MODULE_IDS
-import com.topjohnwu.superuser.io.SuFile
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -94,6 +89,9 @@ class ModuleViewModel : ViewModel() {
         val dirId: String, // real module id (dir name)
         val actionIconPath: String? = null,
         val webUiIconPath: String? = null,
+        val runtimeKind: ModuleRuntimeKind? = null,
+        val runtimeLoaded: Boolean = false,
+        val zygiskConflict: Boolean = false,
         var config: ModuleConfig? = null,
 
     )
@@ -101,18 +99,6 @@ class ModuleViewModel : ViewModel() {
     var isRefreshing by mutableStateOf(false)
         private set
     var search by mutableStateOf("")
-
-    var yukiZygiskEnabled by mutableStateOf(false)
-        private set
-
-    var loadedZygiskModules by mutableStateOf<Set<String>>(emptySet())
-        private set
-
-    var loadedNativeModules by mutableStateOf<Set<String>>(emptySet())
-        private set
-
-    var runtimeModuleKinds by mutableStateOf<Map<String, ModuleRuntimeKind>>(emptyMap())
-        private set
 
     var sortEnabledFirst by mutableStateOf(false)
     var sortActionFirst by mutableStateOf(false)
@@ -160,28 +146,18 @@ class ModuleViewModel : ViewModel() {
             val start = SystemClock.elapsedRealtime()
 
             kotlin.runCatching {
+                // ksud reads the YukiZygisk feature itself, does the Zygisk scan and
+                // the conflict force-disable in this one call, so the list and its
+                // tags land in a single state write.
                 val result = listModules()
 
                 Log.i(TAG, "result: $result")
-
-                val yukiZygiskOn = getFeatureValue("yukizygisk")
-                yukiZygiskEnabled = yukiZygiskOn
-
-                val yzStatus = if (yukiZygiskOn) {
-                    runCatching { getYukiZygiskStatusJson()?.let(::JSONObject) }.getOrNull()
-                } else {
-                    null
-                }
-                loadedZygiskModules = parseLoadedZygiskModules(yzStatus)
-                loadedNativeModules = parseLoadedNativeModules(yzStatus)
 
                 val array = JSONArray(result)
                 val moduleInfos = (0 until array.length())
                     .asSequence()
                     .map { array.getJSONObject(it) }
                     .map { obj ->
-                        val dirId = obj.optString("dir_id", obj.getString("id"))
-                        val forceOff = yukiZygiskOn && dirId in ZYGISK_IMPL_MODULE_IDS
                         ModuleInfo(
                             obj.getString("id"),
                             obj.optString("name"),
@@ -189,29 +165,23 @@ class ModuleViewModel : ViewModel() {
                             obj.optString("version", "Unknown"),
                             obj.getIntCompat("versionCode", 0),
                             obj.optString("description"),
-                            obj.getBooleanCompat("enabled") && !forceOff,
+                            obj.getBooleanCompat("enabled"),
                             obj.getBooleanCompat("update"),
                             obj.getBooleanCompat("remove"),
                             obj.optString("updateJson"),
                             obj.getBooleanCompat("web"),
                             obj.getBooleanCompat("action"),
                             obj.getBooleanCompat("metamodule"),
-                            dirId,
+                            obj.optString("dir_id", obj.getString("id")),
                             obj.optString("actionIcon").takeIf { it.isNotBlank() },
-                            obj.optString("webuiIcon").takeIf { it.isNotBlank() }
+                            obj.optString("webuiIcon").takeIf { it.isNotBlank() },
+                            parseRuntimeKind(obj.optString("runtime")),
+                            obj.getBooleanCompat("runtimeLoaded"),
+                            obj.getBooleanCompat("yzConflict")
                         )
                     }.toList()
 
                 modules = moduleInfos
-                runtimeModuleKinds = detectModuleRuntimeKinds(moduleInfos)
-
-                if (yukiZygiskOn) {
-                    moduleInfos.forEach { m ->
-                        if (m.dirId in ZYGISK_IMPL_MODULE_IDS) {
-                            runCatching { toggleModule(m.dirId, false) }
-                        }
-                    }
-                }
 
                 launch {
                     modules.forEach { module ->
@@ -269,50 +239,10 @@ class ModuleViewModel : ViewModel() {
         }
     }
 
-    private fun parseLoadedZygiskModules(status: JSONObject?): Set<String> {
-        val modules = status?.optJSONArray("modules") ?: return emptySet()
-        return (0 until modules.length())
-            .mapNotNull { modules.optString(it).takeIf(String::isNotBlank) }
-            .toSet()
-    }
-
-    private fun parseLoadedNativeModules(status: JSONObject?): Set<String> {
-        if (status == null) return emptySet()
-        val loaded = mutableSetOf<String>()
-        status.optJSONArray("native_injections")?.let { injections ->
-            for (i in 0 until injections.length()) {
-                val module = injections.optJSONObject(i)?.optString("module").orEmpty()
-                if (module.isNotBlank()) loaded += module
-            }
-        }
-        status.optJSONArray("native_modules")?.let { modules ->
-            for (i in 0 until modules.length()) {
-                val obj = modules.optJSONObject(i) ?: continue
-                val module = obj.optString("id")
-                if (obj.optString("state") == "injected" && module.isNotBlank()) {
-                    loaded += module
-                }
-            }
-        }
-        return loaded
-    }
-
-    private fun detectModuleRuntimeKinds(moduleInfos: List<ModuleInfo>): Map<String, ModuleRuntimeKind> {
-        val kinds = mutableMapOf<String, ModuleRuntimeKind>()
-        moduleInfos.forEach { module ->
-            val base = "/data/adb/modules/${module.dirId}"
-            val kind = runCatching {
-                when {
-                    SuFile.open("$base/zn_modules.txt").isFile -> ModuleRuntimeKind.Native
-                    SuFile.open("$base/zygisk").isDirectory -> ModuleRuntimeKind.Zygisk
-                    else -> null
-                }
-            }.getOrNull()
-            if (kind != null) {
-                kinds[module.dirId] = kind
-            }
-        }
-        return kinds
+    private fun parseRuntimeKind(runtime: String): ModuleRuntimeKind? = when (runtime) {
+        "native" -> ModuleRuntimeKind.Native
+        "zygisk" -> ModuleRuntimeKind.Zygisk
+        else -> null
     }
 
     private fun sanitizeVersionString(version: String): String {
@@ -394,12 +324,15 @@ fun ModuleViewModel.ModuleInfo.copy(
     dirId: String = this.dirId,
     actionIconPath: String? = this.actionIconPath,
     webUiIconPath: String? = this.webUiIconPath,
+    runtimeKind: ModuleRuntimeKind? = this.runtimeKind,
+    runtimeLoaded: Boolean = this.runtimeLoaded,
+    zygiskConflict: Boolean = this.zygiskConflict,
     config: ModuleConfig? = this.config,
 ): ModuleViewModel.ModuleInfo {
     return ModuleViewModel.ModuleInfo(
         id, name, author, version, versionCode, description,
         enabled, update, remove, updateJson, hasWebUi, hasActionScript, metamodule,
-        dirId, actionIconPath, webUiIconPath, config
+        dirId, actionIconPath, webUiIconPath, runtimeKind, runtimeLoaded, zygiskConflict, config
     )
 }
 
