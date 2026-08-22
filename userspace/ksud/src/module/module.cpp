@@ -36,6 +36,7 @@ namespace ksud {
 
 struct ModuleInfo {
     std::string id;
+    std::string dir_id;
     std::string name;
     std::string version;
     std::string version_code;
@@ -886,14 +887,14 @@ int module_run_action(const std::string& id) {
 namespace {
 
 bool is_dedicated_prop_key(const std::string& key) {
-    static constexpr std::array<std::string_view, 15> kDedicatedKeys = {
-        "id",          "name",    "version",    "versionCode", "author",
-        "description", "enabled", "update",     "remove",      "web",
-        "action",      "mount",   "metamodule", "actionIcon",  "webuiIcon"};
+    static constexpr std::array<std::string_view, 16> kDedicatedKeys = {
+        "id",          "dir_id",     "name",       "version",  "versionCode", "author",
+        "description", "enabled",    "update",     "remove",   "web",         "action",
+        "mount",       "metamodule", "actionIcon", "webuiIcon"};
     return std::find(kDedicatedKeys.begin(), kDedicatedKeys.end(), key) != kDedicatedKeys.end();
 }
 
-bool load_module_info(const std::string& module_path, const std::string& fallback_id,
+bool load_module_info(const std::string& module_path, const std::string& dir_id,
                       bool pending_update, ModuleInfo& info) {
     const std::string prop_path = module_path + "/module.prop";
     if (!file_exists(prop_path)) {
@@ -902,7 +903,10 @@ bool load_module_info(const std::string& module_path, const std::string& fallbac
 
     auto props = parse_module_prop(prop_path);
 
-    info.id = props.count("id") ? props["id"] : fallback_id;
+    // The directory name is the real identity: ksud and the manager address a
+    // module by it, while module.prop's id is only a display/update key.
+    info.dir_id = dir_id;
+    info.id = props.count("id") && !props["id"].empty() ? props["id"] : dir_id;
     info.name = props.count("name") ? props["name"] : info.id;
     info.version = props.count("version") ? props["version"] : "";
     info.version_code = props.count("versionCode") ? props["versionCode"] : "";
@@ -961,7 +965,10 @@ void collect_module_infos(const std::string& root_dir, bool pending_update,
             continue;
         }
 
-        const auto [it, inserted] = module_index.emplace(info.id, modules.size());
+        // Index by directory name: the pending copy under MODULE_UPDATE_DIR shares
+        // it with the installed module even when the update changes module.prop's
+        // id, and two distinct directories declaring the same id stay separate.
+        const auto [it, inserted] = module_index.emplace(info.dir_id, modules.size());
         if (inserted) {
             modules.push_back(std::move(info));
             continue;
@@ -987,6 +994,7 @@ int module_list() {
         const auto& m = modules[i];
         printf("  {\n");
         printf("    \"id\": \"%s\",\n", escape_json(m.id).c_str());
+        printf("    \"dir_id\": \"%s\",\n", escape_json(m.dir_id).c_str());
         printf("    \"name\": \"%s\",\n", escape_json(m.name).c_str());
         printf("    \"version\": \"%s\",\n", escape_json(m.version).c_str());
         printf("    \"versionCode\": \"%s\",\n", escape_json(m.version_code).c_str());
