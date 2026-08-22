@@ -164,9 +164,8 @@ bool query_runtime(RuntimeSnapshot* snapshot) {
     if (command.count > result.records.size())
         return false;
     result.records.resize(command.count);
-    const auto [feature_value, feature_supported] = get_feature(KSU_FEATURE_YUKIZYGISK);
     result.generation = command.generation;
-    result.enabled = feature_supported && feature_value != 0;
+    result.enabled = yz_feature_enabled();
     result.safe_mode = command.safe_mode != 0;
     result.zygote_crashes = command.zygote_crashes;
     result.safe_mode_zygote = bounded_string(command.safe_mode_zygote);
@@ -218,8 +217,7 @@ ModuleInventory scan_modules() {
 
     for (const std::string& module_id : active_module_ids()) {
         const std::string base = std::string(kModulesDir) + "/" + module_id;
-        if (access((base + "/zygisk/" + kAbi64 + ".so").c_str(), F_OK) == 0 ||
-            access((base + "/zygisk/" + kAbi32 + ".so").c_str(), F_OK) == 0) {
+        if (yz_is_zygisk_module(base)) {
             inventory.zygisk_modules.push_back(module_id);
         }
 
@@ -501,6 +499,38 @@ void print_human_status(const RuntimeSnapshot& snapshot) {
 }
 
 }  // namespace
+
+bool yz_feature_enabled() {
+    const auto [value, supported] = get_feature(KSU_FEATURE_YUKIZYGISK);
+    return supported && value != 0;
+}
+
+bool yz_is_zygisk_module(const std::string& module_path) {
+    return access((module_path + "/zygisk/" + kAbi64 + ".so").c_str(), F_OK) == 0 ||
+           access((module_path + "/zygisk/" + kAbi32 + ".so").c_str(), F_OK) == 0;
+}
+
+bool yz_has_native_modules(const std::string& module_path) {
+    return access((module_path + "/zn_modules.txt").c_str(), F_OK) == 0;
+}
+
+std::set<std::string> yz_loaded_module_ids() {
+    RuntimeSnapshot snapshot;
+    if (!query_runtime(&snapshot))
+        return {};
+
+    const ModuleInventory inventory = scan_modules();
+    const std::vector<NativeInjection> injections = build_native_injections(snapshot, inventory);
+
+    std::set<std::string> loaded(inventory.zygisk_modules.begin(), inventory.zygisk_modules.end());
+    for (const NativeInjection& injection : injections)
+        loaded.insert(injection.module_id);
+    for (const NativeModuleView& view : build_native_module_views(inventory, injections)) {
+        if (view.state == "injected")
+            loaded.insert(view.module_id);
+    }
+    return loaded;
+}
 
 int yzctl_run(const std::vector<std::string>& args) {
     if (args.empty() || args[0] == "help" || args[0] == "-h" || args[0] == "--help") {

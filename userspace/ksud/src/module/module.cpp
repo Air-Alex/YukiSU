@@ -7,6 +7,7 @@
 #include "../sepolicy/sepolicy.hpp"
 #include "../utils.hpp"
 #include "../yukizygisk_snapshot.hpp"
+#include "../yzctl.hpp"
 #include "metamodule.hpp"
 
 #include <dirent.h>
@@ -24,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -51,6 +53,10 @@ struct ModuleInfo {
     bool metamodule{};
     std::string actionIcon;
     std::string webuiIcon;
+    // How YukiZygisk would load this module: "zygisk", "native" or empty.
+    std::string runtime;
+    bool runtime_loaded{};
+    bool yz_conflict{};
     // Remaining module.prop entries, forwarded verbatim (updateJson, support, ...).
     std::map<std::string, std::string> extra_props;
 };
@@ -887,11 +893,53 @@ int module_run_action(const std::string& id) {
 namespace {
 
 bool is_dedicated_prop_key(const std::string& key) {
-    static constexpr std::array<std::string_view, 16> kDedicatedKeys = {
-        "id",          "dir_id",     "name",       "version",  "versionCode", "author",
-        "description", "enabled",    "update",     "remove",   "web",         "action",
-        "mount",       "metamodule", "actionIcon", "webuiIcon"};
+    static constexpr std::array<std::string_view, 19> kDedicatedKeys = {
+        "id",        "dir_id",      "name",          "version",    "versionCode",
+        "author",    "description", "enabled",       "update",     "remove",
+        "web",       "action",      "mount",         "metamodule", "actionIcon",
+        "webuiIcon", "runtime",     "runtimeLoaded", "yzConflict"};
     return std::find(kDedicatedKeys.begin(), kDedicatedKeys.end(), key) != kDedicatedKeys.end();
+}
+
+// Third-party Zygisk implementations that cannot coexist with built-in YukiZygisk.
+constexpr std::array<std::string_view, 3> kZygiskImplModuleIds = {"zygisksu", "rezygisk",
+                                                                  "yukizygisk"};
+
+bool is_zygisk_impl_module(const std::string& dir_id) {
+    return std::find(kZygiskImplModuleIds.begin(), kZygiskImplModuleIds.end(), dir_id) !=
+           kZygiskImplModuleIds.end();
+}
+
+// Create the disable flag when it is missing. Returns whether anything changed.
+bool ensure_module_disabled(const std::string& module_path) {
+    const std::string disable_flag = module_path + "/" + DISABLE_FILE_NAME;
+    if (file_exists(disable_flag)) {
+        return false;
+    }
+    std::ofstream const ofs(
+        disable_flag);  // NOLINT(misc-const-correctness) ofstream is non-const for write
+    if (!ofs) {
+        LOGW("Failed to force-disable %s", module_path.c_str());
+        return false;
+    }
+    LOGI("Force-disabled %s: conflicts with built-in YukiZygisk", module_path.c_str());
+    return true;
+}
+
+// Disable the third-party Zygisk implementations before the modules are collected,
+// so the listing already reports them off and nothing races the manager.
+bool disable_zygisk_impl_modules() {
+    bool changed = false;
+    for (const char* root : {MODULE_DIR, MODULE_UPDATE_DIR}) {
+        for (const std::string_view dir_id : kZygiskImplModuleIds) {
+            const std::string module_path = std::string(root) + std::string(dir_id);
+            if (!file_exists(module_path)) {
+                continue;
+            }
+            changed = ensure_module_disabled(module_path) || changed;
+        }
+    }
+    return changed;
 }
 
 bool load_module_info(const std::string& module_path, const std::string& dir_id,
@@ -930,6 +978,12 @@ bool load_module_info(const std::string& module_path, const std::string& dir_id,
     if (props.count("webuiIcon")) {
         info.webuiIcon =
             resolve_module_icon_path(props["webuiIcon"], info.id, module_path, "webuiIcon");
+    }
+
+    if (yz_has_native_modules(module_path)) {
+        info.runtime = "native";
+    } else if (yz_is_zygisk_module(module_path)) {
+        info.runtime = "zygisk";
     }
 
     for (auto& [key, value] : props) {
@@ -983,10 +1037,24 @@ void collect_module_infos(const std::string& root_dir, bool pending_update,
 }  // namespace
 
 int module_list() {
+    const bool yukizygisk_on = yz_feature_enabled();
+    if (yukizygisk_on && disable_zygisk_impl_modules()) {
+        warn_regenerate_preinit_rc_failed(regenerate_preinit_rc());
+        warn_refresh_yukizygisk_early_snapshot_failed();
+    }
+
     std::vector<ModuleInfo> modules;
     std::map<std::string, size_t> module_index;
     collect_module_infos(MODULE_DIR, false, modules, module_index);
     collect_module_infos(MODULE_UPDATE_DIR, true, modules, module_index);
+
+    if (yukizygisk_on) {
+        const std::set<std::string> loaded = yz_loaded_module_ids();
+        for (ModuleInfo& module : modules) {
+            module.runtime_loaded = loaded.count(module.dir_id) != 0;
+            module.yz_conflict = is_zygisk_impl_module(module.dir_id);
+        }
+    }
 
     // Output JSON array
     printf("[\n");
@@ -1007,6 +1075,11 @@ int module_list() {
         printf("    \"action\": \"%s\",\n", m.action ? "true" : "false");
         printf("    \"mount\": \"%s\",\n", m.mount ? "true" : "false");
         printf("    \"metamodule\": \"%s\"", m.metamodule ? "true" : "false");
+        if (!m.runtime.empty()) {
+            printf(",\n    \"runtime\": \"%s\"", m.runtime.c_str());
+        }
+        printf(",\n    \"runtimeLoaded\": \"%s\"", m.runtime_loaded ? "true" : "false");
+        printf(",\n    \"yzConflict\": \"%s\"", m.yz_conflict ? "true" : "false");
         if (!m.actionIcon.empty()) {
             printf(",\n    \"actionIcon\": \"%s\"", escape_json(m.actionIcon).c_str());
         }

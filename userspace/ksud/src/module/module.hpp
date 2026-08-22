@@ -22,6 +22,9 @@ int module_undo_uninstall(const std::string& id);
 int module_enable(const std::string& id);
 int module_disable(const std::string& id);
 int module_run_action(const std::string& id);
+// Reports each module's runtime kind and load state. When the built-in YukiZygisk
+// feature is on, it also force-disables the conflicting Zygisk implementations
+// before the scan, so the listing can never hand out a stale enabled state.
 int module_list();
 
 // Internal functions
