@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,21 +38,48 @@ void print_su_usage() {
     printf("  -g, --group GROUP        specify the primary group\n");
     printf("  -G, --supp-group GROUP   specify a supplementary group\n");
     printf("  -W, --no-wrapper         don't use ksu fd wrapper\n");
+    printf("  -Z, -z, --context CONTEXT  run in the given SELinux context\n");
     printf("      --ksu-no-new-privs   block this process and its children from re-escalating\n");
 }
 
-void set_identity(uid_t uid, gid_t gid, const std::vector<gid_t>& groups) {
-    if (!groups.empty()) {
-        setgroups(groups.size(), groups.data());
+bool set_identity(uid_t uid, gid_t gid, const std::vector<gid_t>& groups) {
+    if (!groups.empty() && setgroups(groups.size(), groups.data()) != 0) {
+        LOGE("Failed to set supplementary groups: %s", strerror(errno));
+        return false;
     }
     // Only change creds when not already the target (when already root, no setres* — avoids
     // seccomp).
-    if (getegid() != gid) {
-        setresgid(gid, gid, gid);
+    if (getegid() != gid && setresgid(gid, gid, gid) != 0) {
+        LOGE("Failed to setresgid %u: %s", gid, strerror(errno));
+        return false;
     }
-    if (geteuid() != uid) {
-        setresuid(uid, uid, uid);
+    if (geteuid() != uid && setresuid(uid, uid, uid) != 0) {
+        LOGE("Failed to setresuid %u: %s", uid, strerror(errno));
+        return false;
     }
+    return true;
+}
+
+// Dyntransition this thread; the program exec'd afterwards inherits the context.
+bool set_selinux_context(const std::string& context) {
+    if (context.empty()) {
+        LOGE("Empty SELinux context");
+        return false;
+    }
+    const int fd = open("/proc/thread-self/attr/current", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) {
+        LOGE("Failed to open attr/current: %s", strerror(errno));
+        return false;
+    }
+    const ssize_t written = write(fd, context.c_str(), context.size());
+    const int write_errno = errno;
+    close(fd);
+    if (written != static_cast<ssize_t>(context.size())) {
+        LOGE("Failed to set SELinux context %s: %s", context.c_str(),
+             written < 0 ? strerror(write_errno) : "short write");
+        return false;
+    }
+    return true;
 }
 
 void wrap_tty(int fd) {
@@ -96,6 +124,7 @@ int run_su_shell(int argc, char** argv) {
     bool mount_master = false;
     bool use_fd_wrapper = true;
     bool ksu_no_new_privs = false;
+    std::optional<std::string> selinux_context;
     uid_t target_uid = 0;
     gid_t target_gid = 0;
     bool gid_specified = false;
@@ -139,7 +168,7 @@ int run_su_shell(int argc, char** argv) {
     argv = new_argv.data();
 
     constexpr int OPT_KSU_NO_NEW_PRIVS = 0x100;  // long-only option id
-    static const std::array<struct option, 12> long_options = {{
+    static const std::array<struct option, 13> long_options = {{
         {"command", required_argument, nullptr, 'c'},
         {"help", no_argument, nullptr, 'h'},
         {"login", no_argument, nullptr, 'l'},
@@ -150,13 +179,14 @@ int run_su_shell(int argc, char** argv) {
         {"group", required_argument, nullptr, 'g'},
         {"supp-group", required_argument, nullptr, 'G'},
         {"no-wrapper", no_argument, nullptr, 'W'},
+        {"context", required_argument, nullptr, 'z'},
         {"ksu-no-new-privs", no_argument, nullptr, OPT_KSU_NO_NEW_PRIVS},
         {nullptr, 0, nullptr, 0},
     }};
 
     optind = 1;  // Reset getopt
     int opt;
-    while ((opt = getopt_long(argc, argv, "+c:hlps:vVMg:G:W", long_options.data(), nullptr)) !=
+    while ((opt = getopt_long(argc, argv, "+c:hlps:vVMg:G:Wz:Z:", long_options.data(), nullptr)) !=
            -1) {
         switch (opt) {
         case 'c':
@@ -192,6 +222,11 @@ int run_su_shell(int argc, char** argv) {
             break;
         case 'W':
             use_fd_wrapper = false;
+            break;
+        // -Z matches upstream ksud, -z (and the legacy -cn alias) matches Magisk su.
+        case 'z':
+        case 'Z':
+            selinux_context = optarg;
             break;
         case OPT_KSU_NO_NEW_PRIVS:
             ksu_no_new_privs = true;
@@ -300,7 +335,14 @@ int run_su_shell(int argc, char** argv) {
 
     // Set identity
     umask(022);
-    set_identity(target_uid, target_gid, groups);
+    if (!set_identity(target_uid, target_gid, groups)) {
+        return 1;
+    }
+
+    // Last, so the credential switch above still runs in the unrestricted su domain.
+    if (selinux_context.has_value() && !set_selinux_context(*selinux_context)) {
+        return 1;
+    }
 
     const bool has_exec_args = command.empty() && !exec_args.empty();
     const std::string executable = has_exec_args ? exec_args.front() : shell;
