@@ -32,6 +32,9 @@ class PluginRepositoryManager(
     companion object {
         private const val TAG = "PluginRepository"
         private const val MAX_INDEX_BYTES = 4L * 1024L * 1024L
+        const val BUILTIN_FOLKPATCH_SOURCE_ID = "builtin-folkpatch-plugins"
+        const val BUILTIN_FOLKPATCH_URL =
+            "https://raw.githubusercontent.com/Anatdx/YukiPluginRepo/main/index/plugin.json"
     }
 
     private data class PersistedState(
@@ -161,7 +164,20 @@ class PluginRepositoryManager(
         val state = readAtomic(stateFile)?.let { json ->
             runCatching { gson.fromJson(json, PersistedState::class.java) }.getOrNull()
         }
-        val loaded = state?.sources.orEmpty()
+        val loaded = state?.sources.orEmpty().toMutableList()
+        val builtInUrl = canonicalUrl(BUILTIN_FOLKPATCH_URL)
+        if (loaded.none { it.id == BUILTIN_FOLKPATCH_SOURCE_ID || canonicalUrl(it.url) == builtInUrl }) {
+            loaded.add(
+                PluginRepositorySource(
+                    id = BUILTIN_FOLKPATCH_SOURCE_ID,
+                    name = "FolkPatch Plugin Mirror",
+                    url = BUILTIN_FOLKPATCH_URL,
+                    builtIn = true,
+                    priority = 0,
+                    nameOverridden = true,
+                )
+            )
+        }
         _sources.value = loaded.sortedBy(PluginRepositorySource::priority)
             .mapIndexed { index, source -> source.copy(priority = index) }
         _sources.value.forEach { source ->
