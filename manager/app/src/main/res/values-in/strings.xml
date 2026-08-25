@@ -509,4 +509,6 @@
     <string name="su_request_deny_hide">Tolak &amp; sembunyikan</string>
     <string name="magisk_compat_title">Permintaan su gaya Magisk</string>
     <string name="magisk_compat_summary">Tampilkan su yang terlihat ke aplikasi dan minta otorisasi saat pertama kali digunakan, alih-alih su gagal secara diam-diam untuk aplikasi yang tidak ada di daftar izin.</string>
+    <!-- locale-only keys -->
+    <string name="profile">Profil Aplikasi</string>
 </resources>
