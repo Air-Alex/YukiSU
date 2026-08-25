@@ -1,8 +1,5 @@
 package com.anatdx.yukisu.core.tasks
 
-import chromeos_update_engine.UpdateMetadata.DeltaArchiveManifest
-import chromeos_update_engine.UpdateMetadata.InstallOperation
-import chromeos_update_engine.UpdateMetadata.PartitionUpdate
 import com.anatdx.yukisu.core.utils.DataSourceChannel
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
@@ -36,14 +33,14 @@ class Payload(private val channel: DataSourceChannel) {
 
         val actualHash = extractPartition(outputFile, partition, console)
 
-        if (!partition.newPartitionInfo.hasHash()) {
+        val expectedHash = partition.newPartitionInfo.hash
+        if (expectedHash == null) {
             logger("Hash verification skipped")
             return
         }
 
         fun toHex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
 
-        val expectedHash = partition.newPartitionInfo.hash.toByteArray()
         if (!expectedHash.contentEquals(actualHash)) {
             throw IOException(
                 "Hash mismatch, expected ${toHex(expectedHash)}, but got ${toHex(actualHash)}"
@@ -52,7 +49,7 @@ class Payload(private val channel: DataSourceChannel) {
         logger("Hash verification passed")
     }
 
-    fun partitionNames(): List<String> = manifest.partitionsList.map { it.partitionName }
+    fun partitionNames(): List<String> = manifest.partitions.map { it.partitionName }
 
     /**
      * Extracts the KMI from the payload's boot partition with minimal reads.
@@ -61,7 +58,7 @@ class Payload(private val channel: DataSourceChannel) {
      */
     fun kernelKmi(onProgress: ((String) -> Unit)? = null): String? {
         for (name in BOOT_PARTITION_NAMES) {
-            val partition = manifest.partitionsList.find { it.partitionName == name } ?: continue
+            val partition = manifest.partitions.find { it.partitionName == name } ?: continue
             kernelKmi(partition, onProgress)?.let { return it }
         }
         return null
@@ -88,33 +85,33 @@ class Payload(private val channel: DataSourceChannel) {
         val ranges = opRanges(partition)
         val firstIndex = ranges.indexOfFirst { it.first == 0L }
         if (firstIndex < 0) return null
-        val first = partition.operationsList[firstIndex]
-        if (first.dataLength <= 0 || first.getType() !in KMI_OPERATION_TYPES) return null
+        val first = partition.operations[firstIndex]
+        if (first.dataLength <= 0 || first.type !in KMI_OPERATION_TYPES) return null
 
         // Locate the kernel block from the first op's header.
         val header = channel.readFully(
             dataBase + first.dataOffset,
             minOf(first.dataLength, HEADER_PROBE_LIMIT),
         ) ?: return null
-        val headerChunk = decodeChunk(header, first.getType()) ?: return null
+        val headerChunk = decodeChunk(header, first.type) ?: return null
         val (kernelOffset, kernelSize) = BootKernelVersion.bootKernelBlock(headerChunk) ?: return null
         if (kernelSize <= 0) return null
 
         val target = kernelOffset.toLong() + kernelSize / 2L
         val middleIndex = ranges.indexOfFirst { it.first <= target && target < it.second }
         if (middleIndex < 0) return null
-        val count = partition.operationsCount
+        val count = partition.operations.size
         // The banner can sit just left of the middle op boundary; also cover the
         // previous op.
         for (index in middleIndex downTo maxOf(0, middleIndex - 1)) {
-            val operation = partition.operationsList[index]
-            if (operation.dataLength <= 0 || operation.getType() !in KMI_OPERATION_TYPES) continue
+            val operation = partition.operations[index]
+            if (operation.dataLength <= 0 || operation.type !in KMI_OPERATION_TYPES) continue
             onProgress?.invoke("- Analyzing boot partition ${index + 1}/$count")
             val data = channel.readFully(
                 dataBase + operation.dataOffset,
                 minOf(operation.dataLength, KMI_PROBE_LIMIT),
             ) ?: return null
-            val chunk = decodeChunk(data, operation.getType()) ?: continue
+            val chunk = decodeChunk(data, operation.type) ?: continue
             BootKernelVersion.scanKmi(chunk)?.let { return it }
         }
         return null
@@ -126,13 +123,13 @@ class Payload(private val channel: DataSourceChannel) {
     ): String? {
         val prefix = ByteArrayOutputStream()
         var scannedPrefix = 0
-        val count = partition.operationsCount
-        for ((index, operation) in partition.operationsList.withIndex()) {
+        val count = partition.operations.size
+        for ((index, operation) in partition.operations.withIndex()) {
             if (onProgress != null && (index % 5 == 0 || index == count - 1)) {
                 onProgress("- Analyzing boot partition ${index + 1}/$count")
             }
-            if (operation.dataLength <= 0 || operation.dstExtentsCount == 0) continue
-            val type = operation.getType()
+            if (operation.dataLength <= 0 || operation.dstExtents.isEmpty()) continue
+            val type = operation.type
             if (type !in KMI_OPERATION_TYPES) continue
 
             val readLength = minOf(operation.dataLength, KMI_PROBE_LIMIT)
@@ -147,10 +144,10 @@ class Payload(private val channel: DataSourceChannel) {
         return null
     }
 
-    private fun decodeChunk(data: ByteArray, type: InstallOperation.Type): ByteArray? {
+    private fun decodeChunk(data: ByteArray, type: InstallOperationType): ByteArray? {
         return when (type) {
-            InstallOperation.Type.REPLACE -> data
-            InstallOperation.Type.REPLACE_BZ, InstallOperation.Type.REPLACE_XZ ->
+            InstallOperationType.REPLACE -> data
+            InstallOperationType.REPLACE_BZ, InstallOperationType.REPLACE_XZ ->
                 decompressPrefix(data, type)
 
             else -> null
@@ -159,19 +156,19 @@ class Payload(private val channel: DataSourceChannel) {
 
     private fun opRanges(partition: PartitionUpdate): List<Pair<Long, Long>> {
         var offset = 0L
-        return partition.operationsList.map { operation ->
-            val size = operation.dstExtentsList.sumOf { it.numBlocks } * manifest.blockSize
+        return partition.operations.map { operation ->
+            val size = operation.dstExtents.sumOf { it.numBlocks } * manifest.blockSize
             val range = offset to (offset + size)
             offset += size
             range
         }
     }
 
-    private fun decompressPrefix(data: ByteArray, type: InstallOperation.Type): ByteArray? {
+    private fun decompressPrefix(data: ByteArray, type: InstallOperationType): ByteArray? {
         return try {
             val stream = when (type) {
-                InstallOperation.Type.REPLACE_BZ -> BZip2CompressorInputStream(ByteArrayInputStream(data))
-                InstallOperation.Type.REPLACE_XZ -> XZCompressorInputStream(ByteArrayInputStream(data))
+                InstallOperationType.REPLACE_BZ -> BZip2CompressorInputStream(ByteArrayInputStream(data))
+                InstallOperationType.REPLACE_XZ -> XZCompressorInputStream(ByteArrayInputStream(data))
                 else -> return null
             }
             stream.use { decompressPrefix(it) }
@@ -243,7 +240,7 @@ class Payload(private val channel: DataSourceChannel) {
 
     @Throws(IOException::class)
     private fun findPartition(partitionName: String): PartitionUpdate {
-        return manifest.partitionsList.find { it.partitionName == partitionName }
+        return manifest.partitions.find { it.partitionName == partitionName }
             ?: throw IOException("partition $partitionName not found in payload")
     }
 
@@ -263,8 +260,8 @@ class Payload(private val channel: DataSourceChannel) {
             val size = partition.newPartitionInfo.size
             outChannel.write(ByteBuffer.allocate(1), size - 1)
 
-            val count = partition.operationsCount
-            partition.operationsList.forEachIndexed { index, operation ->
+            val count = partition.operations.size
+            partition.operations.forEachIndexed { index, operation ->
                 if (index % 5 == 0 || index == count - 1) {
                     console("- Downloading ${index + 1}/$count")
                 }
@@ -280,8 +277,8 @@ class Payload(private val channel: DataSourceChannel) {
 
     @Throws(IOException::class)
     private fun processOperation(outChannel: FileChannel, operation: InstallOperation) {
-        val dataType = operation.getType()
-        if (dataType == InstallOperation.Type.ZERO) {
+        val dataType = operation.type
+        if (dataType == InstallOperationType.ZERO) {
             return
         }
 
@@ -289,17 +286,17 @@ class Payload(private val channel: DataSourceChannel) {
         channel.read(dataBuffer, dataBase + operation.dataOffset)
         dataBuffer.flip()
 
-        val dstExtent = operation.getDstExtents(0)
+        val dstExtent = operation.dstExtents[0]
         val outOffset = dstExtent.startBlock * manifest.blockSize
 
         when (dataType) {
-            InstallOperation.Type.REPLACE -> {
+            InstallOperationType.REPLACE -> {
                 outChannel.write(dataBuffer, outOffset)
             }
 
-            InstallOperation.Type.REPLACE_BZ, InstallOperation.Type.REPLACE_XZ -> {
+            InstallOperationType.REPLACE_BZ, InstallOperationType.REPLACE_XZ -> {
                 val inputStream = dataBuffer.array().inputStream()
-                if (dataType == InstallOperation.Type.REPLACE_BZ) {
+                if (dataType == InstallOperationType.REPLACE_BZ) {
                     BZip2CompressorInputStream(inputStream)
                 } else {
                     XZCompressorInputStream(inputStream)
@@ -322,9 +319,9 @@ class Payload(private val channel: DataSourceChannel) {
         // KMI comes from the kernel block; init_boot only carries the ramdisk.
         private val BOOT_PARTITION_NAMES = listOf("boot", "vendor_kernel_boot")
         private val KMI_OPERATION_TYPES = setOf(
-            InstallOperation.Type.REPLACE,
-            InstallOperation.Type.REPLACE_BZ,
-            InstallOperation.Type.REPLACE_XZ,
+            InstallOperationType.REPLACE,
+            InstallOperationType.REPLACE_BZ,
+            InstallOperationType.REPLACE_XZ,
         )
         private const val KMI_PROBE_LIMIT = 24L * 1024 * 1024
         private const val HEADER_PROBE_LIMIT = 64L * 1024

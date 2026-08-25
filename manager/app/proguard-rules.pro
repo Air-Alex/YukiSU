@@ -57,6 +57,5 @@
 -keep class com.anatdx.yukisu.data.repository.RepositorySnapshot { *; }
 -keep class com.anatdx.yukisu.data.repository.InstalledModuleBinding { *; }
 
-# Protobuf and commons-compress
--shrinkunusedprotofields
+# commons-compress reaches for zstd-jni, which we do not ship.
 -dontwarn com.github.luben.zstd.**
