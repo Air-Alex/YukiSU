@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.dergoogler.mmrl.platform.model.ModId
 import com.dergoogler.mmrl.webui.interfaces.WXOptions
+import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.ui.util.createRootShell
 import com.anatdx.yukisu.ui.util.setTaskDescriptionLabel
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
@@ -66,7 +67,11 @@ class WebUIActivity : ComponentActivity() {
         setTaskDescriptionLabel("YukiSU - $name")
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        WebView.setWebContentsDebuggingEnabled(prefs.getBoolean("enable_web_debugging", false))
+        // Release builds have no toggle for this, so pin it off rather than
+        // trusting a preference an older build may have left set.
+        WebView.setWebContentsDebuggingEnabled(
+            BuildConfig.DEBUG && prefs.getBoolean("enable_web_debugging", false)
+        )
 
         val moduleDir = "/data/adb/modules/${moduleId}"
         val webRoot = File("${moduleDir}/webroot")

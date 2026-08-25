@@ -73,8 +73,13 @@ class WebUIXActivity : ComponentActivity() {
                     return@KernelSUTheme
                 }
 
-                val webDebugging = prefs.getBoolean("enable_web_debugging", false)
-                val erudaInject = prefs.getBoolean("use_webuix_eruda", false)
+                // Release builds have no toggle for either and ship no Eruda
+                // bundle, so pin them off rather than trusting a preference an
+                // older build may have left set.
+                val webDebugging = BuildConfig.DEBUG &&
+                    prefs.getBoolean("enable_web_debugging", false)
+                val erudaInject = BuildConfig.DEBUG &&
+                    prefs.getBoolean("use_webuix_eruda", false)
                 val dark = isSystemInDarkTheme()
 
                 val options = rememberWebUIOptions(

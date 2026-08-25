@@ -38,6 +38,7 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.YukiIcon
@@ -476,6 +477,11 @@ private fun AdvancedSettings(
             },
             checked = state.magiskCompatEnabled,
             enabled = magiskCompatStatus == "supported",
+            groupPosition = if (BuildConfig.DEBUG) {
+                MoreSettingsItemPosition.Middle
+            } else {
+                MoreSettingsItemPosition.Last
+            },
             onChange = { enabled ->
                 if (handlers.handleMagiskCompatChange(enabled) && enabled) {
                     coroutineScope.launch {
@@ -485,34 +491,39 @@ private fun AdvancedSettings(
             },
         )
 
-        SettingsDivider()
+        // Web debugging and the Eruda console it feeds are developer tools, and
+        // the Eruda bundle is stripped from release APKs, so the toggles would
+        // have nothing to switch on there.
+        if (BuildConfig.DEBUG) {
+            SettingsDivider()
 
-        SwitchSettingItem(
-            icon = Icons.Filled.DeveloperMode,
-            title = stringResource(R.string.enable_web_debugging),
-            summary = stringResource(R.string.enable_web_debugging_summary),
-            checked = state.enableWebDebugging,
-            groupPosition = if (state.enableWebDebugging && state.webuiEngine == "wx") {
-                MoreSettingsItemPosition.Middle
-            } else {
-                MoreSettingsItemPosition.Last
-            },
-            onChange = handlers::handleWebDebuggingChange
-        )
-
-        AnimatedVisibility(
-            visible = state.enableWebDebugging && state.webuiEngine == "wx",
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
             SwitchSettingItem(
-                icon = Icons.Filled.FormatListNumbered,
-                title = stringResource(R.string.use_webuix_eruda),
-                summary = stringResource(R.string.use_webuix_eruda_summary),
-                checked = state.useWebUIXEruda,
-                groupPosition = MoreSettingsItemPosition.Last,
-                onChange = handlers::handleWebUIXErudaChange
+                icon = Icons.Filled.DeveloperMode,
+                title = stringResource(R.string.enable_web_debugging),
+                summary = stringResource(R.string.enable_web_debugging_summary),
+                checked = state.enableWebDebugging,
+                groupPosition = if (state.enableWebDebugging && state.webuiEngine == "wx") {
+                    MoreSettingsItemPosition.Middle
+                } else {
+                    MoreSettingsItemPosition.Last
+                },
+                onChange = handlers::handleWebDebuggingChange
             )
+
+            AnimatedVisibility(
+                visible = state.enableWebDebugging && state.webuiEngine == "wx",
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                SwitchSettingItem(
+                    icon = Icons.Filled.FormatListNumbered,
+                    title = stringResource(R.string.use_webuix_eruda),
+                    summary = stringResource(R.string.use_webuix_eruda_summary),
+                    checked = state.useWebUIXEruda,
+                    groupPosition = MoreSettingsItemPosition.Last,
+                    onChange = handlers::handleWebUIXErudaChange
+                )
+            }
         }
     }
 }

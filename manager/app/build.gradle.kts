@@ -550,6 +550,14 @@ android {
 
 androidComponents {
     onVariants { variant ->
+        if (variant.buildType == "release") {
+            // Eruda is the WebUI debug console that mmrl-webui carries in its
+            // assets. The toggle that injects it lives behind BuildConfig.DEBUG,
+            // so nothing in a release build can reach it -- and it is 251,732
+            // bytes of the APK.
+            variant.androidResources.ignoreAssetsPatterns.add("eruda")
+        }
+
         variant.instrumentation.setAsmFramesComputationMode(
             FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_CLASSES
         )
