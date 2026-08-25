@@ -2,25 +2,22 @@ package com.anatdx.yukisu.core.utils
 
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.apache.commons.io.input.BoundedInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.channels.ClosedChannelException
-import java.nio.channels.FileChannel
 import java.nio.channels.NonWritableChannelException
 import java.nio.channels.SeekableByteChannel
 
 class DataSourceChannel private constructor(
-    private val client: OkHttpClient?,
-    private val url: String?,
-    private val fileChannel: FileChannel?,
+    private val client: OkHttpClient,
+    private val url: String,
     private val startOffset: Long,
     private val totalSize: Long,
 ) : SeekableByteChannel {
 
-    constructor(client: OkHttpClient, url: String) : this(client, url, null, 0, fetchTotalSize(client, url))
+    constructor(client: OkHttpClient, url: String) : this(client, url, 0, fetchTotalSize(client, url))
 
     private var pos = 0L
     private var open = true
@@ -43,7 +40,6 @@ class DataSourceChannel private constructor(
     override fun close() {
         open = false
         cache = null
-        fileChannel?.close()
     }
 
     override fun read(dst: ByteBuffer): Int {
@@ -89,7 +85,7 @@ class DataSourceChannel private constructor(
         if (offset < 0 || sliceSize <= 0 || offset + sliceSize > totalSize) {
             throw IllegalArgumentException("Invalid slice parameters")
         }
-        return DataSourceChannel(client, url, fileChannel, startOffset + offset, sliceSize)
+        return DataSourceChannel(client, url, startOffset + offset, sliceSize)
     }
 
     /** Reads up to [length] bytes at [position] into a fresh array. */
@@ -105,25 +101,15 @@ class DataSourceChannel private constructor(
     }
 
     fun streamRead(position: Long, length: Long): InputStream {
-        val endPosition = minOf(position + length, totalSize) + startOffset
         val startPosition = startOffset + position
-        val readLength = endPosition - startPosition
-
-        if (fileChannel != null) {
-            fileChannel.position(startPosition)
-            return BoundedInputStream.builder()
-                .setInputStream(Channels.newInputStream(fileChannel))
-                .setMaxCount(readLength)
-                .setPropagateClose(false)
-                .get()
-        }
+        val endPosition = minOf(position + length, totalSize) + startOffset
 
         val request = Request.Builder()
-            .url(url!!)
+            .url(url)
             .header("Range", "bytes=$startPosition-${endPosition - 1}")
             .build()
 
-        val response = client!!.newCall(request).execute()
+        val response = client.newCall(request).execute()
         if (response.code != 206) {
             response.close()
             throw IOException("Unexpected response code ${response.code}")
