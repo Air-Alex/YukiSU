@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dergoogler.mmrl.platform.Platform
 import com.dergoogler.mmrl.platform.model.ModuleConfig
 import com.dergoogler.mmrl.platform.model.ModuleConfig.Companion.asModuleConfig
 import com.ramcosta.composedestinations.annotation.Destination
@@ -471,19 +470,14 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                                 val selectedEngine = when (globalEngine) {
                                     "wx" -> wxEngine
                                     "ksu" -> ksuEngine
-                                    "default" -> {
-                                        when (moduleEngine) {
-                                            "wx" -> wxEngine
-                                            "ksu" -> ksuEngine
-                                            else -> {
-                                                if (Platform.isAlive) {
-                                                    wxEngine
-                                                } else {
-                                                    ksuEngine
-                                                }
-                                            }
-                                        }
-                                    }
+                                    // WebUI X has the richer API but the worse
+                                    // compatibility record, so automatic means
+                                    // opt-in: a module gets it by asking for
+                                    // it. A module that declares nothing used
+                                    // to land on WebUI X whenever the MMRL
+                                    // platform happened to be up; it now runs
+                                    // on KSU WebUI.
+                                    "default" -> if (moduleEngine == "wx") wxEngine else ksuEngine
                                     else -> ksuEngine
                                 }
                                 webUILauncher.launch(selectedEngine)
