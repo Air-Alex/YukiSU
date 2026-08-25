@@ -480,32 +480,85 @@ struct BootPatchArgs {
     std::string adb_debug_prop;     // --adb-debug-prop
     std::string uts_config;         // --uts-config
     bool uts_config_seen = false;
+    bool help = false;  // -h, --help
     bool valid = true;
+    std::string invalid_reason;  // names the offending argument when valid is false
 };
 
 namespace {
 
+// Without -b, boot-patch detects the boot partition itself, reads it, and -- with
+// -f -- writes it back. That makes an argument this parser does not understand
+// dangerous rather than merely useless: dropping a mistyped --boot silently turns
+// "patch this file" into "patch the partition I picked". Every unrecognized or
+// incomplete argument therefore stops the run.
+void print_boot_patch_usage() {
+    printf("Usage: ksud boot-patch [-b <boot.img>] [-o <dir>] [options]\n"
+           "\n"
+           "Without -b the boot partition is detected and read.\n"
+           "Without -f nothing is written to any partition.\n"
+           "\n"
+           "  -b, --boot <img>       patch this image instead of the boot partition\n"
+           "  -f, --flash            write the result back to the boot partition\n"
+           "  -o, --out <dir>        directory to write the patched image into\n"
+           "      --out-name <name>  filename for the patched image\n"
+           "  -m, --module <ko>      use this LKM instead of the embedded one\n"
+           "  -k, --kernel <img>     replace the kernel\n"
+           "  -i, --init <bin>       replace init\n"
+           "  -u, --ota              target the inactive slot\n"
+           "      --partition <name> boot partition to use (boot, init_boot)\n"
+           "      --kmi <kmi>        override the detected KMI\n"
+           "      --backup           back up the stock image\n"
+           "  -s, --superkey <key>   set the SuperKey\n"
+           "      --signature-bypass relax LKM signature checking\n"
+           "      --allow-shell      keep a root shell available\n"
+           "      --no-custom-rc     skip the custom init.rc injection\n"
+           "      --enable-adbd      run adbd as root\n"
+           "      --adb-debug-prop <file>  adb debug properties to embed\n"
+           "      --uts-config <file>      UTS template to embed (at most once)\n"
+           "      --magiskboot <path>      accepted for compatibility; ignored\n"
+           "  -h, --help             show this message\n");
+}
+
 BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
     BootPatchArgs result;
+
+    // Keep the first failure. Once the command line is known to be wrong there is
+    // nothing to gain from diagnosing the rest of it.
+    auto reject = [&result](std::string reason) {
+        if (result.valid) {
+            result.valid = false;
+            result.invalid_reason = std::move(reason);
+        }
+    };
 
     for (size_t i = 0; i < args.size(); i++) {
         const std::string& arg = args[i];
 
-        if (arg == "-b" || arg == "--boot") {
-            if (i + 1 < args.size())
-                result.boot_image = args[++i];
+        // arg stays bound to the flag itself across the ++i below, so it still
+        // names the right thing in the messages here.
+        auto take_value = [&](std::string& destination) {
+            if (i + 1 >= args.size()) {
+                reject(arg + " requires a value");
+                return;
+            }
+            destination = args[++i];
+            if (destination.empty())
+                reject(arg + " requires a non-empty value");
+        };
+
+        if (arg == "-h" || arg == "--help") {
+            result.help = true;
+        } else if (arg == "-b" || arg == "--boot") {
+            take_value(result.boot_image);
         } else if (arg == "-k" || arg == "--kernel") {
-            if (i + 1 < args.size())
-                result.kernel = args[++i];
+            take_value(result.kernel);
         } else if (arg == "-m" || arg == "--module") {
-            if (i + 1 < args.size())
-                result.module = args[++i];
+            take_value(result.module);
         } else if (arg == "-i" || arg == "--init") {
-            if (i + 1 < args.size())
-                result.init = args[++i];
+            take_value(result.init);
         } else if (arg == "-s" || arg == "--superkey") {
-            if (i + 1 < args.size())
-                result.superkey = args[++i];
+            take_value(result.superkey);
         } else if (arg == "--signature-bypass") {
             result.signature_bypass = true;
         } else if (arg == "-u" || arg == "--ota") {
@@ -515,20 +568,15 @@ BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
         } else if (arg == "--backup") {
             result.backup = true;
         } else if (arg == "-o" || arg == "--out") {
-            if (i + 1 < args.size())
-                result.out = args[++i];
+            take_value(result.out);
         } else if (arg == "--magiskboot") {
-            if (i + 1 < args.size())
-                result.magiskboot = args[++i];
+            take_value(result.magiskboot);
         } else if (arg == "--kmi") {
-            if (i + 1 < args.size())
-                result.kmi = args[++i];
+            take_value(result.kmi);
         } else if (arg == "--partition") {
-            if (i + 1 < args.size())
-                result.partition = args[++i];
+            take_value(result.partition);
         } else if (arg == "--out-name") {
-            if (i + 1 < args.size())
-                result.out_name = args[++i];
+            take_value(result.out_name);
         } else if (arg == "--allow-shell") {
             result.allow_shell = true;
         } else if (arg == "--no-custom-rc") {
@@ -536,17 +584,16 @@ BootPatchArgs parse_boot_patch_args(const std::vector<std::string>& args) {
         } else if (arg == "--enable-adbd") {
             result.enable_adbd = true;
         } else if (arg == "--adb-debug-prop") {
-            if (i + 1 < args.size())
-                result.adb_debug_prop = args[++i];
+            take_value(result.adb_debug_prop);
         } else if (arg == "--uts-config") {
-            if (i + 1 < args.size() && !result.uts_config_seen) {
-                result.uts_config_seen = true;
-                result.uts_config = args[++i];
-                if (result.uts_config.empty())
-                    result.valid = false;
+            if (result.uts_config_seen) {
+                reject("--uts-config may only be given once");
             } else {
-                result.valid = false;
+                take_value(result.uts_config);
+                result.uts_config_seen = true;
             }
+        } else {
+            reject("unknown argument: " + arg);
         }
     }
 
@@ -769,8 +816,13 @@ DirectLkmRestoreStatus prepare_direct_lkm_boot_restore(const std::string& workdi
 
 int boot_patch_impl(const std::vector<std::string>& args) {
     auto parsed = parse_boot_patch_args(args);
+    if (parsed.help) {
+        print_boot_patch_usage();
+        return 0;
+    }
     if (!parsed.valid) {
-        LOGE("--uts-config requires exactly one path argument");
+        LOGE("boot-patch: %s", parsed.invalid_reason.c_str());
+        print_boot_patch_usage();
         return 1;
     }
     const std::string ota_slot = parsed.ota ? get_slot_suffix(true) : "";
@@ -1447,25 +1499,62 @@ struct BootRestoreArgs {
     bool flash = false;      // -f, --flash
     std::string magiskboot;  // --magiskboot
     std::string out_name;    // --out-name
+    bool help = false;       // -h, --help
+    bool valid = true;
+    std::string invalid_reason;
 };
+
+// boot-restore flashes and prunes the stock backups, so it gets the same
+// treatment as boot-patch: an argument this parser cannot place stops the run
+// instead of leaving -b empty and letting the partition path take over.
+void print_boot_restore_usage() {
+    printf("Usage: ksud boot-restore [-b <boot.img>] [options]\n"
+           "\n"
+           "Without -b the boot partition is detected and read.\n"
+           "Without -f nothing is written to any partition.\n"
+           "\n"
+           "  -b, --boot <img>       restore from this image instead of the partition\n"
+           "  -f, --flash            write the restored image back to the partition\n"
+           "      --out-name <name>  filename for the restored image\n"
+           "      --magiskboot <path>  accepted for compatibility; ignored\n"
+           "  -h, --help             show this message\n");
+}
 
 BootRestoreArgs parse_boot_restore_args(const std::vector<std::string>& args) {
     BootRestoreArgs result;
 
+    auto reject = [&result](std::string reason) {
+        if (result.valid) {
+            result.valid = false;
+            result.invalid_reason = std::move(reason);
+        }
+    };
+
     for (size_t i = 0; i < args.size(); i++) {
         const std::string& arg = args[i];
 
-        if (arg == "-b" || arg == "--boot") {
-            if (i + 1 < args.size())
-                result.boot_image = args[++i];
+        auto take_value = [&](std::string& destination) {
+            if (i + 1 >= args.size()) {
+                reject(arg + " requires a value");
+                return;
+            }
+            destination = args[++i];
+            if (destination.empty())
+                reject(arg + " requires a non-empty value");
+        };
+
+        if (arg == "-h" || arg == "--help") {
+            result.help = true;
+        } else if (arg == "-b" || arg == "--boot") {
+            take_value(result.boot_image);
         } else if (arg == "-f" || arg == "--flash") {
             result.flash = true;
         } else if (arg == "--magiskboot") {
-            if (i + 1 < args.size())
-                result.magiskboot = args[++i];
+            take_value(result.magiskboot);
         } else if (arg == "--out-name") {
-            if (i + 1 < args.size())
-                result.out_name = args[++i];
+            take_value(result.out_name);
+        } else {
+            reject("unknown argument: " + arg);
         }
     }
 
@@ -1492,6 +1581,15 @@ int boot_patch(const std::vector<std::string>& args) {
 
 int boot_restore(const std::vector<std::string>& args) {
     auto parsed = parse_boot_restore_args(args);
+    if (parsed.help) {
+        print_boot_restore_usage();
+        return 0;
+    }
+    if (!parsed.valid) {
+        LOGE("boot-restore: %s", parsed.invalid_reason.c_str());
+        print_boot_restore_usage();
+        return 1;
+    }
     // Create temp working directory
     std::array<char, 32> tmpdir_buf{};
     (void)strncpy(tmpdir_buf.data(), "/data/local/tmp/KernelSU_XXXXXX", tmpdir_buf.size() - 1);
