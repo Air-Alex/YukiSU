@@ -28,11 +28,23 @@ set(KSUD_SRC "${REPO_ROOT}/userspace/ksud/src")
 add_executable(su
     src/su_client.cpp
     ${KSUD_SRC}/magisk_compat/su_protocol.cpp
+    ${REPO_ROOT}/userspace/common/cxx_slim.cpp
 )
 # KSUD_SRC on the include path resolves su_client.cpp's "magisk_compat/su_protocol.hpp".
 target_include_directories(su PRIVATE src ${KSUD_SRC})
-target_compile_options(su PRIVATE -Os -ffunction-sections -fdata-sections)
-target_link_options(su PRIVATE -Wl,--gc-sections -Wl,--strip-all)
+# Match ksuinit's flag set: this target previously built without LTO or hidden
+# visibility, so it kept an export table and cross-TU dead code it never needs.
+target_compile_options(su PRIVATE
+    -Os -flto=full
+    -ffunction-sections -fdata-sections
+    -fvisibility=hidden -fvisibility-inlines-hidden
+    -fno-rtti -fno-exceptions -fno-asynchronous-unwind-tables
+    -fmerge-all-constants -fno-ident -fno-stack-protector
+    -faddrsig -fno-semantic-interposition)
+target_link_options(su PRIVATE
+    -fuse-ld=lld -flto=full
+    -Wl,--gc-sections -Wl,--icf=all -Wl,--strip-all -Wl,--exclude-libs,ALL
+    -Wl,-O2 -Wl,--lto-O3 -Wl,--hash-style=gnu -Wl,--build-id=none -Wl,-z,norelro)
 yukisu_enable_clang_tidy(su CXX)
 
 # Shrink the embedded binary (notes/comment), matching the old in-ksud su target.
