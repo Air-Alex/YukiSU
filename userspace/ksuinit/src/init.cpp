@@ -16,7 +16,6 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -114,10 +113,13 @@ void setup_kmsg() {
  * Disable kmsg rate limiting
  */
 void unlimit_kmsg() {
-    std::ofstream rate("/proc/sys/kernel/printk_devkmsg");
-    if (rate.is_open()) {
-        rate << "on\n";
+    const int fd = open("/proc/sys/kernel/printk_devkmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return;
     }
+    constexpr char kOn[] = "on\n";
+    (void)!write(fd, kOn, sizeof(kOn) - 1);
+    close(fd);
 }
 
 }  // anonymous namespace

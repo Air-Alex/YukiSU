@@ -11,17 +11,18 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include <elf.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -32,23 +33,89 @@ namespace {
 constexpr size_t kMaximumKmsgCapture = size_t{256} * 1024;
 constexpr size_t kMaximumKmsgRecords = 256;
 
+// Bulk POSIX text I/O. The stream versions pulled in the whole locale/facet
+// machinery, which is dead weight in a statically linked early-boot init.
+bool read_text_file(const char* path, std::string* out) {
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+    out->clear();
+    char buffer[65536];
+    bool ok = true;
+    for (;;) {
+        const ssize_t count = read(fd, buffer, sizeof(buffer));
+        if (count > 0) {
+            out->append(buffer, static_cast<size_t>(count));
+            continue;
+        }
+        if (count == 0) {
+            break;
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        ok = false;
+        break;
+    }
+    close(fd);
+    if (!ok) {
+        out->clear();
+    }
+    return ok;
+}
+
+// Pop the next whitespace-delimited token from `rest`, advancing it. Stands in
+// for `stream >> token`.
+std::string_view next_token(std::string_view* rest) {
+    constexpr std::string_view kWhitespace = " \t\r\n\f\v";
+    const size_t begin = rest->find_first_not_of(kWhitespace);
+    if (begin == std::string_view::npos) {
+        *rest = {};
+        return {};
+    }
+    const size_t end = rest->find_first_of(kWhitespace, begin);
+    const std::string_view token = rest->substr(begin, end - begin);
+    *rest = (end == std::string_view::npos) ? std::string_view{} : rest->substr(end);
+    return token;
+}
+
+bool write_text_file(const char* path, const std::string& text) {
+    const int fd = open(path, O_WRONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+    size_t written = 0;
+    bool ok = true;
+    while (written < text.size()) {
+        const ssize_t count = write(fd, text.data() + written, text.size() - written);
+        if (count > 0) {
+            written += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        ok = false;
+        break;
+    }
+    close(fd);
+    return ok;
+}
+
 /**
  * RAII class to manage kptr_restrict setting
  */
 class KptrGuard {
 public:
     KptrGuard() {
-        // Save original value
-        std::ifstream ifs("/proc/sys/kernel/kptr_restrict");
-        if (ifs.is_open()) {
-            std::getline(ifs, original_value_);
+        std::string current;
+        if (read_text_file(kPath, &current)) {
+            // Keep only the first line, matching the previous std::getline.
+            const size_t newline = current.find('\n');
+            original_value_ = current.substr(0, newline);
         }
-
-        // Set to 1 to allow reading kallsyms
-        std::ofstream ofs("/proc/sys/kernel/kptr_restrict");
-        if (ofs.is_open()) {
-            ofs << "1";
-        }
+        write_text_file(kPath, "1");
     }
 
     KptrGuard(const KptrGuard&) = delete;
@@ -57,16 +124,13 @@ public:
     KptrGuard& operator=(KptrGuard&&) = delete;
 
     ~KptrGuard() {
-        // Restore original value
         if (!original_value_.empty()) {
-            std::ofstream ofs("/proc/sys/kernel/kptr_restrict");
-            if (ofs.is_open()) {
-                ofs << original_value_;
-            }
+            write_text_file(kPath, original_value_);
         }
     }
 
 private:
+    static constexpr const char* kPath = "/proc/sys/kernel/kptr_restrict";
     std::string original_value_;
 };
 
@@ -180,41 +244,72 @@ std::unordered_map<std::string, uint64_t> parse_kallsyms() {
 
     std::unordered_map<std::string, uint64_t> symbols;
 
-    std::ifstream ifs("/proc/kallsyms");
-    if (!ifs.is_open()) {
+    // /proc/kallsyms is several MB, so stream it rather than buffering it whole.
+    const int fd = open("/proc/kallsyms", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
         KLOGE("Cannot open /proc/kallsyms");
         return symbols;
     }
 
-    std::string line;
-    while (std::getline(ifs, line)) {
-        std::istringstream iss(line);
-        std::string addr_str;
-        std::string type;
-        std::string name;
-
-        if (!(iss >> addr_str >> type >> name)) {
-            continue;
+    std::string pending;
+    char buffer[65536];
+    std::string name;
+    const auto handle_line = [&](std::string_view line) {
+        std::string_view rest = line;
+        const std::string_view addr_str = next_token(&rest);
+        (void)next_token(&rest);  // symbol type
+        const std::string_view sym_name = next_token(&rest);
+        if (addr_str.empty() || sym_name.empty()) {
+            return;
         }
 
         uint64_t addr = 0;
-        try {
-            addr = std::stoull(addr_str, nullptr, 16);
-        } catch (...) {
-            continue;
+        const auto [end, error] =
+            std::from_chars(addr_str.data(), addr_str.data() + addr_str.size(), addr, 16);
+        if (error != std::errc{} || end != addr_str.data() + addr_str.size()) {
+            return;
         }
 
         // Strip version suffixes like "$..." or ".llvm...."
+        name.assign(sym_name);
         auto pos = name.find('$');
         if (pos == std::string::npos) {
             pos = name.find(".llvm.");
         }
         if (pos != std::string::npos) {
-            name = name.substr(0, pos);
+            name.resize(pos);
         }
 
         symbols[name] = addr;
+    };
+
+    for (;;) {
+        const ssize_t count = read(fd, buffer, sizeof(buffer));
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        if (count == 0) {
+            break;
+        }
+        pending.append(buffer, static_cast<size_t>(count));
+        size_t begin = 0;
+        for (;;) {
+            const size_t newline = pending.find('\n', begin);
+            if (newline == std::string::npos) {
+                break;
+            }
+            handle_line(std::string_view(pending.data() + begin, newline - begin));
+            begin = newline + 1;
+        }
+        pending.erase(0, begin);
     }
+    if (!pending.empty()) {
+        handle_line(pending);
+    }
+    close(fd);
 
     return symbols;
 }
@@ -223,20 +318,35 @@ std::unordered_map<std::string, uint64_t> parse_kallsyms() {
  * Read entire file into a vector
  */
 bool read_file(const char* path, std::vector<uint8_t>& buffer) {
-    std::ifstream ifs(path, std::ios::binary | std::ios::ate);
-    if (!ifs.is_open()) {
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
         KLOGE("Cannot open file: %s", path);
         return false;
     }
 
-    auto size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    buffer.resize(static_cast<size_t>(size));
-    if (!ifs.read(reinterpret_cast<char*>(buffer.data()), size)) {
-        KLOGE("Cannot read file: %s", path);
+    struct stat status{};
+    if (fstat(fd, &status) != 0 || status.st_size < 0) {
+        KLOGE("Cannot stat file: %s", path);
+        close(fd);
         return false;
     }
+
+    buffer.resize(static_cast<size_t>(status.st_size));
+    size_t filled = 0;
+    while (filled < buffer.size()) {
+        const ssize_t count = read(fd, buffer.data() + filled, buffer.size() - filled);
+        if (count > 0) {
+            filled += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        KLOGE("Cannot read file: %s", path);
+        close(fd);
+        return false;
+    }
+    close(fd);
 
     return true;
 }
@@ -347,12 +457,8 @@ bool load_module(const char* path) {
     std::string param_values;
     bool config_loaded = false;
     {
-        const std::ifstream config("/ksu_config", std::ios::binary);
-        if (config.is_open()) {
+        if (read_text_file("/ksu_config", &param_values)) {
             config_loaded = true;
-            std::ostringstream buffer;
-            buffer << config.rdbuf();
-            param_values = buffer.str();
             while (!param_values.empty() &&
                    (param_values.back() == '\n' || param_values.back() == '\r' ||
                     param_values.back() == '\0')) {
