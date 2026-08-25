@@ -301,7 +301,7 @@ private fun buildBugreportFile(context: Context, bugreportDir: File, shell: Shel
     val kernelConfig = File(bugreportDir, "defconfig.gz")
     val kallsyms = File(bugreportDir, "kallsyms.txt")
 
-    val yukiZygiskEnabled = getFeatureValueOrNull("yukizygisk", shell)
+    val yukiZygiskEnabled = getFeatureValueOrNull(Natives.FEATURE_YUKIZYGISK)
     val yukiZygiskEvidence = findYukiZygiskReportEvidence(shell)
 
     // busybox ps has very few features for embed devices

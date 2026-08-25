@@ -180,6 +180,33 @@ object Natives {
 
     external fun getHookType(): String
 
+    /**
+     * Feature ids, mirroring `enum ksu_feature_id` in uapi/feature.h. Ids
+     * 0-99 are upstream KernelSU's; YukiSU extensions start at 100.
+     */
+    const val FEATURE_SU_COMPAT = 0
+    const val FEATURE_KERNEL_UMOUNT = 1
+    const val FEATURE_SULOG = 2
+    const val FEATURE_ADB_ROOT = 3
+    const val FEATURE_SELINUX_HIDE = 4
+    const val FEATURE_ENHANCED_SECURITY = 100
+    const val FEATURE_MAGISK_COMPAT = 101
+    const val FEATURE_DEFAULT_NO_NEW_PRIVS = 102
+    const val FEATURE_YUKIZYGISK = 103
+
+    /**
+     * Reads a feature's value straight from the kernel, or -1 when the kernel
+     * does not support it. Prefer [isFeatureSupported] / [isFeatureEnabled];
+     * this is the raw form for features whose value is not just a flag.
+     */
+    external fun getFeature(id: Int): Long
+
+    /** Whether the running kernel knows about this feature at all. */
+    fun isFeatureSupported(id: Int): Boolean = getFeature(id) >= 0
+
+    /** Whether the feature is both supported and turned on. */
+    fun isFeatureEnabled(id: Int): Boolean = getFeature(id) > 0
+
     external fun getUserName(uid: Int): String?
 
     /**

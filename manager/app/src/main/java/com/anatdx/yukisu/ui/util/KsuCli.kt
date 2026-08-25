@@ -445,40 +445,23 @@ suspend fun getYukiZygiskStatusJson(): String? = withContext(Dispatchers.IO) {
         ?.takeIf { it.startsWith('{') && it.endsWith('}') }
 }
 
-suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.IO) {
-    ksudReadLines("feature check $feature")
-        .firstOrNull { it == "supported" || it == "unsupported" || it == "managed" }
-        .orEmpty()
-}
+/** Feature state as the settings screens want to render it. The kernel only
+ *  reports supported/unsupported; "managed" is reserved for the day ksud can
+ *  tell us a module owns the feature. */
+fun getFeatureStatus(feature: Int): String =
+    if (Natives.isFeatureSupported(feature)) "supported" else "unsupported"
 
-/** Read a feature's current on/off value via `ksud feature get` (parses the
- *  "Status: enabled/disabled" line). Returns false when unsupported. */
-suspend fun getFeatureValue(feature: String): Boolean = withContext(Dispatchers.IO) {
-    getFeatureValueOrNull(feature, getRootShell()) ?: false
-}
+/** A feature's on/off state. Unsupported reads as off. */
+fun getFeatureValue(feature: Int): Boolean = Natives.isFeatureEnabled(feature)
 
-internal fun getFeatureValueOrNull(feature: String, shell: Shell): Boolean? {
-    val output = ArrayList<String>()
-    val result = shell.newJob()
-        .add(ksudCmd("feature get $feature"))
-        .to(output, null)
-        .exec()
-    if (!result.isSuccess) return null
+/** Like [getFeatureValue], but distinguishes "off" from "the kernel has never
+ *  heard of this". */
+internal fun getFeatureValueOrNull(feature: Int): Boolean? =
+    Natives.getFeature(feature).takeIf { it >= 0 }?.let { it > 0 }
 
-    return parseFeatureValue(output)
-}
-
-internal fun parseFeatureValue(output: Iterable<String>): Boolean? {
-    val enabled = output.any { it.trim().equals("Status: enabled", ignoreCase = true) }
-    val disabled = output.any { it.trim().equals("Status: disabled", ignoreCase = true) }
-    return when {
-        enabled == disabled -> null
-        enabled -> true
-        else -> false
-    }
-}
-
-/** Set a feature value and persist it; returns whether ksud reported success. */
+/** Set a feature value and persist it; returns whether ksud reported success.
+ *  Unlike the reads above this cannot go straight to the kernel: ksud also
+ *  brings up sulogd/msud and refreshes the YukiZygisk early snapshot. */
 suspend fun setFeatureValue(feature: String, enabled: Boolean): Boolean =
     withContext(Dispatchers.IO) {
         execKsud("feature set $feature ${if (enabled) 1 else 0}", true) &&
@@ -1845,7 +1828,7 @@ private const val YUKIZYGISK_STANDALONE_DISPLAY_NAME = "YukiZygisk-Standalone"
 
 suspend fun getZygiskImplement(): String = withContext(Dispatchers.IO) {
     // Built-in YukiZygisk wins: it's a kernel feature, not a /data/adb module.
-    if (getFeatureValue("yukizygisk")) return@withContext "YukiZygisk"
+    if (getFeatureValue(Natives.FEATURE_YUKIZYGISK)) return@withContext "YukiZygisk"
 
     for (moduleId in ZYGISK_IMPL_MODULE_IDS) {
         // skip disabled / pending-removal modules

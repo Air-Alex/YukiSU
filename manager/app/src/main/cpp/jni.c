@@ -454,6 +454,10 @@ NativeBridge(setDefaultNoNewPrivsEnabled, jboolean, jboolean enabled) {
   return set_default_no_new_privs_enabled(enabled);
 }
 
+NativeBridge(getFeature, jlong, jint id) {
+  return (jlong)query_feature((uint32_t)id);
+}
+
 NativeBridge(getUserName, jstring, jint uid) {
   struct passwd *pw = getpwuid((uid_t)uid);
   if (pw && pw->pw_name && pw->pw_name[0] != '\0') {

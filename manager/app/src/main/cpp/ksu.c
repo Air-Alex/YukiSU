@@ -265,6 +265,21 @@ static inline bool set_feature(uint32_t feature_id, uint64_t value) {
   return ksuctl(KSU_IOCTL_SET_FEATURE, &cmd) == 0;
 }
 
+int64_t query_feature(uint32_t feature_id) {
+  uint64_t value = 0;
+  bool supported = false;
+  if (!get_feature(feature_id, &value, &supported) || !supported) {
+    return -1;
+  }
+  // Feature values are flags today, so the truncation an INT64_MAX-and-above
+  // value would suffer is theoretical. Clamp rather than wrap into a negative,
+  // which the caller reads as "unsupported".
+  if (value > (uint64_t)INT64_MAX) {
+    return INT64_MAX;
+  }
+  return (int64_t)value;
+}
+
 bool set_kernel_umount_enabled(bool enabled) {
   return set_feature(KSU_FEATURE_KERNEL_UMOUNT, enabled ? 1 : 0);
 }

@@ -38,6 +38,7 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.theme.*
@@ -413,10 +414,10 @@ private fun AdvancedSettings(
     val coroutineScope = rememberCoroutineScope()
     val rebootMsg = stringResource(R.string.reboot_to_apply)
     val enhancedStatus by produceState(initialValue = "") {
-        value = getFeatureStatus("enhanced_security")
+        value = getFeatureStatus(Natives.FEATURE_ENHANCED_SECURITY)
     }
     val magiskCompatStatus by produceState(initialValue = "") {
-        value = getFeatureStatus("magisk_compat")
+        value = getFeatureStatus(Natives.FEATURE_MAGISK_COMPAT)
     }
 
     SettingsCard(title = stringResource(R.string.advanced_settings)) {

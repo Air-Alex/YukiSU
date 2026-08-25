@@ -237,7 +237,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             mutableStateOf(Natives.isSelinuxHideEnabled())
                         }
                         val selinuxHideStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("selinux_hide")
+                            value = getFeatureStatus(Natives.FEATURE_SELINUX_HIDE)
                         }
                         val selinuxHideSummary = when (selinuxHideStatus) {
                             "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
@@ -271,7 +271,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             mutableStateOf(!Natives.isSuEnabled())
                         }
                         val suStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("su_compat")
+                            value = getFeatureStatus(Natives.FEATURE_SU_COMPAT)
                         }
                         val suSummary = when (suStatus) {
                             "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
@@ -296,7 +296,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             mutableStateOf(!Natives.isKernelUmountEnabled())
                         }
                         val umountStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("kernel_umount")
+                            value = getFeatureStatus(Natives.FEATURE_KERNEL_UMOUNT)
                         }
                         val umountSummary = when (umountStatus) {
                             "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
@@ -321,7 +321,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             mutableStateOf(Natives.isSuLogEnabled())
                         }
                         val suLogStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("sulog")
+                            value = getFeatureStatus(Natives.FEATURE_SULOG)
                         }
                         val suLogSummary = when (suLogStatus) {
                             "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
@@ -347,7 +347,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             mutableStateOf(Natives.isAdbRootEnabled())
                         }
                         val adbRootStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("adb_root")
+                            value = getFeatureStatus(Natives.FEATURE_ADB_ROOT)
                         }
                         val adbRootSummary = when (adbRootStatus) {
                             "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
@@ -403,10 +403,10 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         // YukiZygisk：内核捕获 zygote、注入 zygisk 模块（接全局防逃逸之后）
                         var yukiZygiskEnabled by remember { mutableStateOf(false) }
                         val yukiZygiskStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus("yukizygisk")
+                            value = getFeatureStatus(Natives.FEATURE_YUKIZYGISK)
                         }
                         LaunchedEffect(Unit) {
-                            yukiZygiskEnabled = getFeatureValue("yukizygisk")
+                            yukiZygiskEnabled = getFeatureValue(Natives.FEATURE_YUKIZYGISK)
                         }
                         val yukiZygiskSummary = when (yukiZygiskStatus) {
                             "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
@@ -432,7 +432,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                                             )
                                         )
                                     } else {
-                                        yukiZygiskEnabled = getFeatureValue("yukizygisk")
+                                        yukiZygiskEnabled = getFeatureValue(Natives.FEATURE_YUKIZYGISK)
                                         snackBarHost.showSnackbar(
                                             resources.getString(R.string.settings_yukizygisk_toast_failed)
                                         )

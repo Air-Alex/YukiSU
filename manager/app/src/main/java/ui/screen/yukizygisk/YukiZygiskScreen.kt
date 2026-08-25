@@ -71,11 +71,13 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.util.execKsud
+import com.anatdx.yukisu.ui.util.getFeatureValue
 import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
 import com.anatdx.yukisu.ui.util.getRootShell
 import com.anatdx.yukisu.ui.util.withNewRootShell
@@ -319,9 +321,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
 
     LaunchedEffect(Unit) {
         config = readYzConfig()
-        injectionActive =
-            ShellUtils.fastCmd(getRootShell(), "ksud feature get yukizygisk 2>/dev/null")
-                .contains("enabled", ignoreCase = true)
+        injectionActive = getFeatureValue(Natives.FEATURE_YUKIZYGISK)
     }
 
     LaunchedEffect(Unit) {
