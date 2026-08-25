@@ -408,6 +408,29 @@ fun signingValue(propertyName: String, environmentName: String): String? {
         ?.takeIf(String::isNotBlank)
 }
 
+/**
+ * The locales res/ actually translates, for `androidResources.localeFilters`.
+ *
+ * Without a filter every library we depend on contributes its own translations
+ * -- AppCompat alone carries around forty more languages than we do -- so a
+ * device set to one of them shows an English app dotted with localized widget
+ * labels, and resources.arsc grows by roughly 380 KB that nobody reads.
+ *
+ * Derived from the directory names so adding a translation stays a one-step
+ * change. Only the values-xx and values-xx-rYY forms are recognised, which is
+ * how translations actually arrive; a locale contributed as values-b+xx+Yyyy
+ * would need this widened, or it would silently not ship.
+ */
+fun appLocaleFilters(): List<String> {
+    val localeQualifier = Regex("""[a-z]{2,3}(-r[A-Z]{2})?""")
+    return file("src/main/res").listFiles().orEmpty()
+        .filter { it.isDirectory && it.name.startsWith("values-") }
+        .map { it.name.substringAfter("values-") }
+        .filter(localeQualifier::matches)
+        .plus("en")
+        .sorted()
+}
+
 val signingStoreFile = signingValue("KEYSTORE_FILE", "YUKISU_KEYSTORE")
 val signingStorePassword = signingValue("KEYSTORE_PASSWORD", "YUKISU_KEYSTORE_PASSWORD")
 val signingKeyAlias = signingValue("KEY_ALIAS", "YUKISU_KEY_ALIAS")
@@ -514,6 +537,7 @@ android {
     }
 
     androidResources {
+        localeFilters += appLocaleFilters()
         generateLocaleConfig = true
     }
 
