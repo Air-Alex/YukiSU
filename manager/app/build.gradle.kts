@@ -482,6 +482,16 @@ android {
     }
 
     packaging {
+        dex {
+            // AGP stores classes.dex uncompressed once minSdk >= 28 so ART can
+            // mmap it straight from the APK and the vdex need not hold a second
+            // copy. That is the better deal for a Play-delivered app, but YukiSU
+            // ships APKs people re-download from CI, and leaving it on cost ~2.9
+            // MB of download on every one of them. Compressing trades roughly
+            // that much back for ~3 MB of resident storage per device -- the
+            // dex ends up materialized in the vdex instead.
+            useLegacyPackaging = true
+        }
         jniLibs {
             useLegacyPackaging = true
             excludes += "lib/*/libandroidx.graphics.path.so"
