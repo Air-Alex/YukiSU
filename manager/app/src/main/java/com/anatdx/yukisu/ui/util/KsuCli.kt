@@ -133,6 +133,10 @@ object KsuCli {
                     )
                 }
                 Log.d(TAG, "ksud is up-to-date: $installedKsudVersion")
+                // The binary matching does not mean /data/adb/ksu/bin does. An
+                // older manager's `ksud install --magiskboot` left a full copy
+                // where a symlink belongs, and nothing else here would fix it.
+                getRootShell().takeIf { it.isRoot }?.let(::installKsudToolLinks)
                 refreshYukiZygiskSnapshotForNextBoot()
             }
         } catch (e: Exception) {
@@ -297,6 +301,30 @@ object KsuCli {
             result.isSuccess
         }
 
+    /** Applet names that resolve to the same multi-call ksud via argv[0]. */
+    private val KSUD_APPLETS =
+        arrayOf("ksud", "magiskboot", "bootctl", "resetprop", "yzctl")
+
+    /**
+     * Point /data/adb/ksu/bin at the daemon and fix its contexts.
+     *
+     * Kept separate from installOrUpdateKsudDaemon() because it has to run even
+     * when the installed ELF already matches: `ksud install` used to drop a full
+     * copy of the binary on top of the magiskboot link, and an install that is
+     * already up to date would otherwise never replace it.
+     */
+    private fun installKsudToolLinks(shell: Shell) {
+        val cmds = KSUD_APPLETS.map { applet ->
+            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/$applet"
+        } + listOf(
+            // Fix SELinux contexts (ignore errors on non-SEAndroid systems)
+            "restorecon ${KsuPaths.KSUD_BIN} || true",
+            "restorecon -R ${KsuPaths.KSU_ROOT} || true",
+        )
+        val result = shell.newJob().add(*cmds.toTypedArray()).exec()
+        Log.i(TAG, "installKsudToolLinks: isSuccess=${result.isSuccess}")
+    }
+
     /**
      * Install or update the ksud daemon binary itself, without touching boot image.
      *
@@ -326,23 +354,16 @@ object KsuCli {
             // Copy new daemon binary (multi-call tools dispatch via argv0)
             "cp -f ${shellArg(ksudSo.absolutePath)} ${KsuPaths.KSUD_BIN}",
             "chmod 0755 ${KsuPaths.KSUD_BIN}",
-            // Tool symlinks all point to the same multi-call binary.
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/ksud",
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/magiskboot",
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/bootctl",
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/resetprop",
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/yzctl",
-            // Fix SELinux contexts (ignore errors on non-SEAndroid systems)
-            "restorecon ${KsuPaths.KSUD_BIN} || true",
-            "restorecon -R ${KsuPaths.KSU_ROOT} || true",
-            // Precompute YukiZygisk's early native snapshot before reboot. If the
-            // feature is off, ksud clears the snapshot and returns success.
-            "${KsuPaths.KSUD_BIN} yzctl refresh-snapshot || true"
         )
 
         Log.i(TAG, "installOrUpdateKsudDaemon: syncing ${ksudSo.absolutePath} -> /data/adb/ksud")
         val result = shell.newJob().add(*cmds).exec()
         Log.i(TAG, "installOrUpdateKsudDaemon: result code=${result.code}, isSuccess=${result.isSuccess}")
+
+        installKsudToolLinks(shell)
+        // Precompute YukiZygisk's early native snapshot before reboot. If the
+        // feature is off, ksud clears the snapshot and returns success.
+        refreshYukiZygiskSnapshotForNextBoot()
     }
 
     private fun refreshYukiZygiskSnapshotForNextBoot() {
@@ -1075,12 +1096,12 @@ fun install() {
     val ksudPath = getKsuDaemonPath()
     val libadbrootPath =
         ksuApp.applicationInfo.nativeLibraryDir + File.separator + "libadbroot.so"
-    // magiskboot is built into ksud (multi-call binary); pass ksud path so it can exec itself as magiskboot
+    // No --magiskboot: it would copy this whole ELF over
+    // /data/adb/ksu/bin/magiskboot, replacing the symlink installKsudToolLinks()
+    // puts there. Both dispatch correctly, but the symlink is the one we keep in
+    // sync, so let it own that path.
     Log.i(TAG, "install: ksud=$ksudPath")
-    val result = execKsud(
-        "install --magiskboot ${shellArg(ksudPath)} --libadbroot ${shellArg(libadbrootPath)}",
-        true,
-    )
+    val result = execKsud("install --libadbroot ${shellArg(libadbrootPath)}", true)
     Log.w(TAG, "install result: $result, cost: ${SystemClock.elapsedRealtime() - start}ms")
 }
 
@@ -1252,12 +1273,7 @@ fun runModuleAction(
 fun restoreBoot(
     onFinish: (Boolean, Int) -> Unit, onStdout: (String) -> Unit, onStderr: (String) -> Unit
 ): Boolean {
-    val ksudPath = getKsuDaemonPath()
-    val result = flashWithIO(
-        ksudCmd("boot-restore -f --magiskboot ${shellArg(ksudPath)}"),
-        onStdout,
-        onStderr
-    )
+    val result = flashWithIO(ksudCmd("boot-restore -f"), onStdout, onStderr)
     onFinish(result.isSuccess, result.code)
     return result.isSuccess
 }
@@ -1265,10 +1281,7 @@ fun restoreBoot(
 fun uninstallPermanently(
     onFinish: (Boolean, Int) -> Unit, onStdout: (String) -> Unit, onStderr: (String) -> Unit
 ): Boolean {
-    val ksudPath = getKsuDaemonPath()
-    val result = flashWithIO(
-        ksudCmd("uninstall --magiskboot ${shellArg(ksudPath)}"), onStdout, onStderr
-    )
+    val result = flashWithIO(ksudCmd("uninstall"), onStdout, onStderr)
     onFinish(result.isSuccess, result.code)
     return result.isSuccess
 }
@@ -1318,8 +1331,7 @@ private fun patchBootImage(
         template = patchedUtsBootDraft,
     )
 
-    val ksudPath = getKsuDaemonPath()
-    var cmd = "boot-patch --magiskboot ${shellArg(ksudPath)}"
+    var cmd = "boot-patch"
 
     cmd += if (bootFile == null) {
         // no boot.img, use -f to force install
@@ -1454,10 +1466,8 @@ fun patchBootImageV2(
                     "${UUID.randomUUID().toString().take(8)}.img",
             )
         }
-        val ksudPath = getKsuDaemonPath()
         val command = buildString {
-            append("boot-patch-v2 --magiskboot ")
-            append(shellArg(ksudPath))
+            append("boot-patch-v2")
             if (inputFile != null && outputFile != null) {
                 append(" --boot ")
                 append(shellArg(inputFile.absolutePath))
