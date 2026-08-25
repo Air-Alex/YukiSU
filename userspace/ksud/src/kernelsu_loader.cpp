@@ -1,18 +1,19 @@
 #include "kernelsu_loader.hpp"
 
 #include "log.hpp"
+#include "utils.hpp"
 
 #include <elf.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -24,23 +25,15 @@ namespace {
 class KptrGuard {
 public:
     KptrGuard() {
-        std::ifstream ifs("/proc/sys/kernel/kptr_restrict");
-        if (ifs.is_open()) {
-            std::getline(ifs, original_value_);
+        if (const auto current = read_file(kPath)) {
+            original_value_.assign(trim_view(*current));
         }
-
-        std::ofstream ofs("/proc/sys/kernel/kptr_restrict");
-        if (ofs.is_open()) {
-            ofs << "1";
-        }
+        (void)write_file(kPath, "1");
     }
 
     ~KptrGuard() {
         if (!original_value_.empty()) {
-            std::ofstream ofs("/proc/sys/kernel/kptr_restrict");
-            if (ofs.is_open()) {
-                ofs << original_value_;
-            }
+            (void)write_file(kPath, original_value_);
         }
     }
 
@@ -50,6 +43,7 @@ public:
     KptrGuard& operator=(KptrGuard&&) = delete;
 
 private:
+    static constexpr const char* kPath = "/proc/sys/kernel/kptr_restrict";
     std::string original_value_;
 };
 
@@ -63,21 +57,36 @@ void normalize_symbol_name(std::string* name) {
     }
 }
 
-bool read_file(const char* path, std::vector<uint8_t>* buffer) {
-    std::ifstream ifs(path, std::ios::binary | std::ios::ate);
-    if (!ifs.is_open()) {
+bool read_file_bytes(const char* path, std::vector<uint8_t>* buffer) {
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
         LOGE("loader: cannot open %s", path);
         return false;
     }
 
-    const auto size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    buffer->resize(static_cast<size_t>(size));
-    if (!ifs.read(reinterpret_cast<char*>(buffer->data()), size)) {
-        LOGE("loader: cannot read %s", path);
+    struct stat st{};
+    if (fstat(fd, &st) != 0 || st.st_size < 0) {
+        LOGE("loader: cannot stat %s", path);
+        close(fd);
         return false;
     }
+
+    buffer->resize(static_cast<size_t>(st.st_size));
+    size_t filled = 0;
+    while (filled < buffer->size()) {
+        const ssize_t n = read(fd, buffer->data() + filled, buffer->size() - filled);
+        if (n > 0) {
+            filled += static_cast<size_t>(n);
+            continue;
+        }
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        LOGE("loader: cannot read %s", path);
+        close(fd);
+        return false;
+    }
+    close(fd);
 
     return true;
 }
@@ -140,41 +149,48 @@ bool patch_undefined_symbols(std::vector<uint8_t>* buffer) {
     }
 
     KptrGuard const guard;
-    std::ifstream ifs("/proc/kallsyms");
-    if (!ifs.is_open()) {
-        LOGE("loader: cannot open /proc/kallsyms");
-        return false;
-    }
-
-    std::string line;
-    while (!unresolved_symbols.empty() && std::getline(ifs, line)) {
-        std::istringstream iss(line);
-        std::string addr_str;
-        std::string type;
-        std::string name;
-        std::string module_name;
-        if (!(iss >> addr_str >> type >> name)) {
-            continue;
+    // Streamed, not read whole: /proc/kallsyms is several MB and this scan stops
+    // at the first module-owned symbol.
+    std::string name;
+    const bool opened = for_each_file_line("/proc/kallsyms", [&](std::string_view line) {
+        if (unresolved_symbols.empty()) {
+            return false;
+        }
+        std::string_view rest = line;
+        const std::string_view addr_str = next_token(&rest);
+        const std::string_view type = next_token(&rest);
+        const std::string_view sym_name = next_token(&rest);
+        (void)type;
+        if (addr_str.empty() || sym_name.empty()) {
+            return true;
         }
 
         // Kernel symbols come before module symbols in /proc/kallsyms. Stop scanning once we
         // reach module-owned entries so we don't accidentally relocate against them.
-        if (iss >> module_name) {
-            break;
+        if (!next_token(&rest).empty()) {
+            return false;
         }
 
+        // next_token yields a view into `line`, which is not NUL-terminated, so
+        // bound strtoull explicitly rather than relying on *end == '\0'.
+        std::array<char, 32> addr_buf{};
+        if (addr_str.size() >= addr_buf.size()) {
+            return true;
+        }
+        std::memcpy(addr_buf.data(), addr_str.data(), addr_str.size());
         char* end = nullptr;
         errno = 0;
-        uint64_t const addr = std::strtoull(addr_str.c_str(), &end, 16);
-        if (end == addr_str.c_str() || *end != '\0' || errno == ERANGE) {
-            continue;
+        uint64_t const addr = std::strtoull(addr_buf.data(), &end, 16);
+        if (end == addr_buf.data() || *end != '\0' || errno == ERANGE) {
+            return true;
         }
 
+        name.assign(sym_name);
         normalize_symbol_name(&name);
 
         const auto it = unresolved_symbols.find(name);
         if (it == unresolved_symbols.end()) {
-            continue;
+            return true;
         }
 
         for (auto* sym : it->second) {
@@ -182,10 +198,10 @@ bool patch_undefined_symbols(std::vector<uint8_t>* buffer) {
             sym->st_value = static_cast<decltype(sym->st_value)>(addr);
         }
         unresolved_symbols.erase(it);
-    }
-
-    if (!ifs.eof() && ifs.fail()) {
-        LOGE("loader: failed while reading /proc/kallsyms");
+        return true;
+    });
+    if (!opened) {
+        LOGE("loader: cannot open /proc/kallsyms");
         return false;
     }
 
@@ -200,7 +216,7 @@ bool patch_undefined_symbols(std::vector<uint8_t>* buffer) {
 
 bool load_module(const char* path, const std::string& param_values) {
     std::vector<uint8_t> buffer;
-    if (!read_file(path, &buffer)) {
+    if (!read_file_bytes(path, &buffer)) {
         return false;
     }
 

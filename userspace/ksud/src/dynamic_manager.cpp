@@ -14,9 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <iomanip>
 #include <limits>
-#include <sstream>
 
 namespace ksud {
 
@@ -135,12 +133,12 @@ void append_signs(const json::Value& value, std::vector<DynamicManagerSign>* sig
 }
 
 std::string sign_to_json(const DynamicManagerSign& sign) {
-    std::ostringstream ss;
-    ss << "  {\n";
-    ss << "    \"size\": \"0x" << std::hex << std::nouppercase << sign.size << "\",\n";
-    ss << "    \"hash\": \"" << sign.hash << "\"\n";
-    ss << "  }";
-    return ss.str();
+    std::string json = "  {\n    \"size\": \"";
+    append_hex(&json, sign.size);
+    json += "\",\n    \"hash\": \"";
+    json += sign.hash;
+    json += "\"\n  }";
+    return json;
 }
 
 std::string signs_to_json(const std::vector<DynamicManagerSign>& signs) {
@@ -148,17 +146,16 @@ std::string signs_to_json(const std::vector<DynamicManagerSign>& signs) {
         return "[]\n";
     }
 
-    std::ostringstream ss;
-    ss << "[\n";
+    std::string json = "[\n";
     for (size_t i = 0; i < signs.size(); i++) {
-        ss << sign_to_json(signs[i]);
+        json += sign_to_json(signs[i]);
         if (i + 1 < signs.size()) {
-            ss << ",";
+            json += ',';
         }
-        ss << "\n";
+        json += '\n';
     }
-    ss << "]\n";
-    return ss.str();
+    json += "]\n";
+    return json;
 }
 
 bool save_signs(const std::vector<DynamicManagerSign>& signs) {
@@ -451,12 +448,7 @@ std::vector<DynamicManagerSign> load_dynamic_manager_signs() {
     }
 
     std::vector<DynamicManagerSign> signs;
-    try {
-        append_signs(json::parse(*content), &signs);
-    } catch (...) {
-        LOGW("dynamic_manager: failed to parse %s", DYNAMIC_MANAGER_CONFIG_PATH);
-        return {};
-    }
+    append_signs(json::parse(*content), &signs);
 
     if (signs.size() > KSU_DYNAMIC_MANAGER_MAX_SIGNS) {
         signs.resize(KSU_DYNAMIC_MANAGER_MAX_SIGNS);

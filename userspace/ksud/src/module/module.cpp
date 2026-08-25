@@ -23,10 +23,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <set>
-#include <sstream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -115,7 +114,8 @@ bool file_exists(const std::string& path) {
 }
 
 std::filesystem::path preinit_ksu_dir() {
-    if (std::filesystem::is_directory("/metadata/watchdog")) {
+    std::error_code error;
+    if (std::filesystem::is_directory("/metadata/watchdog", error) && !error) {
         return PREINIT_DIR_WATCHDOG;
     }
     return PREINIT_DIR_DEFAULT;
@@ -125,20 +125,60 @@ bool has_rc_extension(const std::filesystem::path& path) {
     return path.extension() == ".rc";
 }
 
-void collect_rc_files(const std::filesystem::path& dir, const std::string* module_id,
-                      std::ofstream& out) {
-    std::error_code ec;
-    if (!std::filesystem::is_directory(dir, ec)) {
-        return;
+bool write_all_fd(int fd, std::string_view data) {
+    size_t written = 0;
+    while (written < data.size()) {
+        const ssize_t count = write(fd, data.data() + written, data.size() - written);
+        if (count > 0) {
+            written += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        return false;
     }
+    return true;
+}
+
+bool copy_path_to_fd(const std::filesystem::path& path, int out_fd, bool* source_opened) {
+    *source_opened = false;
+    const int in_fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (in_fd < 0)
+        return false;
+    *source_opened = true;
+    std::array<char, 65536> buffer{};
+    bool ok = true;
+    for (;;) {
+        const ssize_t count = read(in_fd, buffer.data(), buffer.size());
+        if (count == 0)
+            break;
+        if (count < 0) {
+            if (errno == EINTR)
+                continue;
+            ok = false;
+            break;
+        }
+        if (!write_all_fd(out_fd, std::string_view(buffer.data(), static_cast<size_t>(count)))) {
+            ok = false;
+            break;
+        }
+    }
+    close(in_fd);
+    return ok;
+}
+
+bool collect_rc_files(const std::filesystem::path& dir, const std::string* module_id, int out_fd) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(dir, ec))
+        return true;
 
     std::vector<std::filesystem::directory_entry> entries;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (ec) {
-            return;
-        }
-        entries.push_back(entry);
+    for (auto it = std::filesystem::directory_iterator(dir, ec);
+         it != std::filesystem::directory_iterator() && !ec; it.increment(ec)) {
+        entries.push_back(*it);
     }
+    if (ec)
+        return false;
 
     std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
         return lhs.path().filename().string() < rhs.path().filename().string();
@@ -146,28 +186,32 @@ void collect_rc_files(const std::filesystem::path& dir, const std::string* modul
 
     for (const auto& entry : entries) {
         const std::filesystem::path path = entry.path();
-        if (!std::filesystem::is_regular_file(path, ec) || !has_rc_extension(path)) {
+        if (!std::filesystem::is_regular_file(path, ec) || !has_rc_extension(path))
             continue;
-        }
-
-        if (module_id == nullptr && access(path.c_str(), X_OK) != 0) {
+        if (module_id == nullptr && access(path.c_str(), X_OK) != 0)
             continue;
-        }
 
+        std::string header = "# === from ";
         if (module_id != nullptr) {
-            out << "# === from " << *module_id << ":" << path.string() << " ===\n";
-        } else {
-            out << "# === from " << path.string() << " ===\n";
+            header += *module_id;
+            header += ':';
         }
-
-        std::ifstream const input(path, std::ios::binary);
-        if (!input) {
-            LOGW("Failed to read init rc: %s", path.c_str());
-            continue;
+        header += path.string();
+        header += " ===\n";
+        if (!write_all_fd(out_fd, header))
+            return false;
+        bool source_opened = false;
+        if (!copy_path_to_fd(path, out_fd, &source_opened)) {
+            if (!source_opened) {
+                LOGW("Failed to read init rc: %s", path.c_str());
+                continue;
+            }
+            return false;
         }
-        out << input.rdbuf();
-        out << "\n";
+        if (!write_all_fd(out_fd, "\n"))
+            return false;
     }
+    return true;
 }
 
 void warn_regenerate_preinit_rc_failed(int ret) {
@@ -218,23 +262,21 @@ std::string resolve_module_icon_path(
     return icon_value;
 }
 
-std::map<std::string, std::string> parse_module_prop(const std::string& path) {
+std::map<std::string, std::string> parse_module_prop_content(std::string_view content) {
     std::map<std::string, std::string> props;
-    std::ifstream ifs(path);
-    if (!ifs)
-        return props;
-
-    std::string line;
-    while (std::getline(ifs, line)) {
+    for_each_line(content, [&props](std::string_view line) {
         const size_t eq = line.find('=');
-        if (eq != std::string::npos) {
-            const std::string key = trim(line.substr(0, eq));
-            const std::string value = trim(line.substr(eq + 1));
-            props[key] = value;
+        if (eq != std::string_view::npos) {
+            props[std::string(trim_view(line.substr(0, eq)))] =
+                std::string(trim_view(line.substr(eq + 1)));
         }
-    }
-
+    });
     return props;
+}
+
+std::map<std::string, std::string> parse_module_prop(const std::string& path) {
+    const auto content = read_file(path);
+    return content ? parse_module_prop_content(*content) : std::map<std::string, std::string>{};
 }
 
 // Validate module ID like official ksud: ^[a-zA-Z][a-zA-Z0-9._-]+$
@@ -369,7 +411,11 @@ bool create_metamodule_symlink(const std::string& module_id) {
         if (S_ISLNK(st.st_mode)) {
             unlink(link_path.c_str());
         } else if (S_ISDIR(st.st_mode)) {
-            exec_command({"rm", "-rf", link_path});
+            std::error_code remove_error;
+            std::filesystem::remove_all(link_path, remove_error);
+            if (remove_error) {
+                LOGW("Failed to remove %s: %s", link_path.c_str(), remove_error.message().c_str());
+            }
         }
     }
 
@@ -397,9 +443,9 @@ void remove_metamodule_symlink() {
 
 std::string build_install_wrapper_script(bool installing_metamodule) {
     const std::string installer_path = std::string(BINARY_DIR) + INSTALLER_SCRIPT_NAME;
-    std::ostringstream script;
-    script << "#!/system/bin/sh\n";
-    script << ". " << installer_path << "\n";
+    std::string script = "#!/system/bin/sh\n. ";
+    script += installer_path;
+    script += '\n';
 
     if (!installing_metamodule) {
         const std::string metamodule_path = get_metamodule_path_impl();
@@ -407,15 +453,15 @@ std::string build_install_wrapper_script(bool installing_metamodule) {
         if (!metamodule_path.empty() && !file_exists(metamodule_path + "/" + DISABLE_FILE_NAME) &&
             file_exists(metainstall_path)) {
             LOGI("Using metainstall.sh from metamodule: %s", metainstall_path.c_str());
-            script << ". " << metainstall_path << "\n";
-            script << "exit 0\n";
-            return script.str();
+            script += ". ";
+            script += metainstall_path;
+            script += "\nexit 0\n";
+            return script;
         }
     }
 
-    script << "install_module\n";
-    script << "exit 0\n";
-    return script.str();
+    script += "install_module\nexit 0\n";
+    return script;
 }
 
 bool exec_install_script(const std::string& zip_path, bool installing_metamodule,
@@ -561,54 +607,51 @@ int regenerate_preinit_rc() {
     const std::filesystem::path tmp_path = preinit_dir / MODULES_RC_TMP_FILE;
     const std::filesystem::path out_path = preinit_dir / MODULES_RC_FILE;
 
-    {
-        std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            LOGW("Failed to create %s", tmp_path.c_str());
-            return 1;
-        }
+    const int out_fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (out_fd < 0) {
+        LOGW("Failed to create %s", tmp_path.c_str());
+        return 1;
+    }
 
-        collect_rc_files(std::filesystem::path(ADB_DIR) / "initrc.d", nullptr, out);
+    bool write_ok = collect_rc_files(std::filesystem::path(ADB_DIR) / "initrc.d", nullptr, out_fd);
+    std::map<std::string, std::filesystem::path> modules;
+    std::map<std::string, bool> skipped_modules;
 
-        std::map<std::string, std::filesystem::path> modules;
-        std::map<std::string, bool> skipped_modules;
-
-        for (const char* root : {MODULE_UPDATE_DIR, MODULE_DIR}) {
-            if (!std::filesystem::is_directory(root, ec)) {
+    for (const char* root : {MODULE_UPDATE_DIR, MODULE_DIR}) {
+        if (!std::filesystem::is_directory(root, ec))
+            continue;
+        for (auto it = std::filesystem::directory_iterator(root, ec);
+             it != std::filesystem::directory_iterator() && !ec; it.increment(ec)) {
+            const auto& entry = *it;
+            if (!entry.is_directory(ec))
+                continue;
+            const std::string id = entry.path().filename().string();
+            if (id.empty())
+                continue;
+            if (file_exists((entry.path() / DISABLE_FILE_NAME).string()) ||
+                file_exists((entry.path() / REMOVE_FILE_NAME).string())) {
+                modules.erase(id);
+                skipped_modules[id] = true;
                 continue;
             }
-            for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
-                if (ec) {
-                    break;
-                }
-                if (!entry.is_directory(ec)) {
-                    continue;
-                }
-                const std::string id = entry.path().filename().string();
-                if (id.empty()) {
-                    continue;
-                }
-                if (file_exists((entry.path() / DISABLE_FILE_NAME).string()) ||
-                    file_exists((entry.path() / REMOVE_FILE_NAME).string())) {
-                    modules.erase(id);
-                    skipped_modules[id] = true;
-                    continue;
-                }
-                if (skipped_modules.count(id) == 0 && modules.count(id) == 0) {
-                    modules.emplace(id, entry.path());
-                }
-            }
+            if (skipped_modules.count(id) == 0 && modules.count(id) == 0)
+                modules.emplace(id, entry.path());
         }
+    }
 
-        for (const auto& [id, path] : modules) {
-            collect_rc_files(path / MODULE_INIT_RC_DIR, &id, out);
+    for (const auto& [id, path] : modules) {
+        if (!collect_rc_files(path / MODULE_INIT_RC_DIR, &id, out_fd)) {
+            write_ok = false;
+            break;
         }
+    }
 
-        out.flush();
-        if (!out) {
-            LOGW("Failed to write %s", tmp_path.c_str());
-            return 1;
-        }
+    if (close(out_fd) != 0)
+        write_ok = false;
+    if (!write_ok) {
+        LOGW("Failed to write %s", tmp_path.c_str());
+        unlink(tmp_path.c_str());
+        return 1;
     }
 
     std::filesystem::rename(tmp_path, out_path, ec);
@@ -672,18 +715,16 @@ int module_install(const std::string& zip_path) {
         return 1;
     }
 
-    const std::string tmp_module_prop = "/dev/ksud_module_install";
-    exec_command({"rm", "-rf", tmp_module_prop});
-    const auto extract_result =
-        exec_command({"unzip", "-o", "-q", zip_path, "module.prop", "-d", tmp_module_prop});
-    if (extract_result.exit_code != 0) {
-        printf("! Unable to extract zip file\n");
-        exec_command({"rm", "-rf", tmp_module_prop});
+    // module.prop is read straight out of the archive. The previous flow shelled
+    // out to `unzip` to drop it in /dev, parsed it back off disk, and needed two
+    // more `rm -rf` calls to clean up after itself: three processes and a temp
+    // directory to read a few hundred bytes miniz already had in hand.
+    const auto prop_text = read_zip_entry(zip_path, "module.prop");
+    if (!prop_text) {
+        printf("! Unable to read module.prop from zip file\n");
         return 1;
     }
-
-    const auto props = parse_module_prop(tmp_module_prop + "/module.prop");
-    exec_command({"rm", "-rf", tmp_module_prop});
+    const auto props = parse_module_prop_content(*prop_text);
 
     const std::string mod_id = props.count("id") ? trim(props.at("id")) : "";
     if (mod_id.empty()) {
@@ -742,11 +783,19 @@ int module_install(const std::string& zip_path) {
     }
 
     const std::string final_module = std::string(MODULE_DIR) + mod_id;
-    exec_command({"mkdir", "-p", std::string(MODULE_DIR)});
-    exec_command({"mkdir", "-p", final_module});
-    exec_command({"cp", "-f", std::string(MODULE_UPDATE_DIR) + mod_id + "/module.prop",
-                  final_module + "/module.prop"});
-    exec_command({"touch", final_module + "/" + UPDATE_FILE_NAME});
+    if (!ensure_dir_exists(std::string(MODULE_DIR)) || !ensure_dir_exists(final_module)) {
+        printf("! Failed to create module directory\n");
+        return 1;
+    }
+    if (!copy_file_data(std::string(MODULE_UPDATE_DIR) + mod_id + "/module.prop",
+                        final_module + "/module.prop")) {
+        printf("! Failed to stage module.prop\n");
+        return 1;
+    }
+    if (!touch_file(final_module + "/" + std::string(UPDATE_FILE_NAME))) {
+        printf("! Failed to mark module as updated\n");
+        return 1;
+    }
 
     if (installing_metamodule && !create_metamodule_symlink(mod_id)) {
         printf("! Failed to create metamodule symlink\n");
@@ -774,9 +823,7 @@ int module_uninstall(const std::string& id) {
 
     // Create remove flag
     const std::string remove_flag = module_dir + "/" + REMOVE_FILE_NAME;
-    std::ofstream const ofs(
-        remove_flag);  // NOLINT(misc-const-correctness) ofstream is non-const for write
-    if (!ofs) {
+    if (!ensure_file_exists(remove_flag)) {
         LOGE("Failed to create remove flag for %s", id.c_str());
         return 1;
     }
@@ -853,9 +900,7 @@ int module_disable(const std::string& id) {
     }
 
     const std::string disable_flag = module_dir + "/" + DISABLE_FILE_NAME;
-    std::ofstream const ofs(
-        disable_flag);  // NOLINT(misc-const-correctness) ofstream is non-const for write
-    if (!ofs) {
+    if (!ensure_file_exists(disable_flag)) {
         LOGE("Failed to create disable flag for %s", id.c_str());
         return 1;
     }
@@ -916,9 +961,7 @@ bool ensure_module_disabled(const std::string& module_path) {
     if (file_exists(disable_flag)) {
         return false;
     }
-    std::ofstream const ofs(
-        disable_flag);  // NOLINT(misc-const-correctness) ofstream is non-const for write
-    if (!ofs) {
+    if (!ensure_file_exists(disable_flag)) {
         LOGW("Failed to force-disable %s", module_path.c_str());
         return false;
     }
@@ -1155,7 +1198,12 @@ int prune_modules() {
                 }
             }
 
-            exec_command({"rm", "-rf", std::string(MODULE_CONFIG_DIR) + module_id});
+            std::error_code config_error;
+            std::filesystem::remove_all(std::string(MODULE_CONFIG_DIR) + module_id, config_error);
+            if (config_error) {
+                LOGW("Failed to remove config for %s: %s", module_id.c_str(),
+                     config_error.message().c_str());
+            }
 
             std::error_code ec;
             std::filesystem::remove_all(module_path, ec);
@@ -1441,15 +1489,17 @@ int load_sepolicy_rule() {
             continue;
 
         // Read and apply rules
-        std::ifstream ifs(rule_file);
-        std::string line;
+        const auto content = read_file(rule_file);
+        if (!content)
+            continue;
         std::string all_rules;
-        while (std::getline(ifs, line)) {
-            line = trim(line);
+        for_each_line(*content, [&all_rules](std::string_view line) {
+            line = trim_view(line);
             if (line.empty() || line[0] == '#')
-                continue;
-            all_rules += line + "\n";
-        }
+                return;
+            all_rules.append(line);
+            all_rules += '\n';
+        });
 
         if (!all_rules.empty()) {
             LOGI("Applying sepolicy rules from %s", entry->d_name);
@@ -1469,12 +1519,14 @@ int load_system_prop() {
     if (!dir)
         return 0;
 
-    // Check if resetprop exists
+#if !defined(RESETPROP_ALONE_AVAILABLE) || !RESETPROP_ALONE_AVAILABLE
+    // Only relevant without the built-in: the fallback path below execs this binary.
     if (!file_exists(RESETPROP_PATH)) {
         LOGW("resetprop not found at %s, skipping system.prop loading", RESETPROP_PATH);
         closedir(dir);
         return 0;
     }
+#endif  // #if !defined(RESETPROP_ALONE_AVAILABLE) ...
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
@@ -1495,46 +1547,45 @@ int load_system_prop() {
 
         LOGI("Loading system.prop from %s", entry->d_name);
 
-        // Read and set properties
-        std::ifstream ifs(prop_file);
-        std::string line;
-        while (std::getline(ifs, line)) {
-            line = trim(line);
+        // Read and set properties. The built-in resetprop is safe to call
+        // directly; forking once per property only duplicated ksud's page
+        // tables and added a waitpid round-trip for no isolation benefit.
+        const auto content = read_file(prop_file);
+        if (!content)
+            continue;
+        for_each_line(*content, [](std::string_view line) {
+            line = trim_view(line);
             if (line.empty() || line[0] == '#')
-                continue;
+                return;
 
             const size_t eq = line.find('=');
-            if (eq == std::string::npos)
-                continue;
+            if (eq == std::string_view::npos)
+                return;
 
-            const std::string key = trim(line.substr(0, eq));
-            const std::string value = trim(line.substr(eq + 1));
-
-            // Execute resetprop in a child process
+            const std::string key(trim_view(line.substr(0, eq)));
+            const std::string value(trim_view(line.substr(eq + 1)));
+#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+            std::array<char*, 5> argv_c = {
+                const_cast<char*>("resetprop"),
+                const_cast<char*>("-n"),
+                const_cast<char*>(key.c_str()),
+                const_cast<char*>(value.c_str()),
+                nullptr,
+            };
+            if (resetprop_main(4, argv_c.data()) != 0)
+                LOGW("Failed to apply property %s", key.c_str());
+#else
             const pid_t pid = fork();
             if (pid == 0) {
-#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
-                const char* k = key.c_str();
-                const char* v = value.c_str();
-                std::array<char*, 5> argv_c = {
-                    const_cast<char*>("resetprop"),
-                    const_cast<char*>("-n"),
-                    const_cast<char*>(k),
-                    const_cast<char*>(v),
-                    nullptr,
-                };
-                const int rc = resetprop_main(4, argv_c.data());
-                _exit(rc);
-#else
                 execl(RESETPROP_PATH, "resetprop", "-n", key.c_str(), value.c_str(), nullptr);
                 _exit(127);
-#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
             }
             if (pid > 0) {
                 int status;
                 waitpid(pid, &status, 0);
             }
-        }
+#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
+        });
     }
 
     closedir(dir);
@@ -1557,35 +1608,20 @@ std::map<std::string, std::string> merge_module_configs(const std::string& modul
     const std::string persist_path = config_dir + PERSIST_CONFIG_NAME;
     const std::string temp_path = config_dir + TEMP_CONFIG_NAME;
 
-    // Load persist config first
-    auto persist_content = read_file(persist_path);
-    if (persist_content) {
-        std::istringstream iss(*persist_content);
-        std::string line;
-        while (std::getline(iss, line)) {
+    const auto merge_content = [&config](const std::optional<std::string>& content) {
+        if (!content)
+            return;
+        for_each_line(*content, [&config](std::string_view line) {
             const size_t eq = line.find('=');
-            if (eq != std::string::npos) {
-                const std::string key = line.substr(0, eq);
-                const std::string value = line.substr(eq + 1);
-                config[key] = value;
+            if (eq != std::string_view::npos) {
+                config[std::string(line.substr(0, eq))] = std::string(line.substr(eq + 1));
             }
-        }
-    }
+        });
+    };
 
-    // Load temp config (overrides persist)
-    auto temp_content = read_file(temp_path);
-    if (temp_content) {
-        std::istringstream iss(*temp_content);
-        std::string line;
-        while (std::getline(iss, line)) {
-            const size_t eq = line.find('=');
-            if (eq != std::string::npos) {
-                const std::string key = line.substr(0, eq);
-                const std::string value = line.substr(eq + 1);
-                config[key] = value;
-            }
-        }
-    }
+    // Temp values override persisted ones.
+    merge_content(read_file(persist_path));
+    merge_content(read_file(temp_path));
 
     return config;
 }

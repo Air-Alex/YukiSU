@@ -20,9 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <limits>
-#include <new>
 #include <optional>
 
 namespace fs = std::filesystem;
@@ -85,46 +83,14 @@ BootPatchV2Args parse_args(const std::vector<std::string>& args) {
 }
 
 std::optional<std::vector<std::uint8_t>> read_binary(const fs::path& path) {
-    if (path.empty())
-        return std::nullopt;
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
-        return std::nullopt;
-    stream.seekg(0, std::ios::end);
-    const std::streamoff length = stream.tellg();
-    if (length < 0 ||
-        static_cast<std::uintmax_t>(length) >
-            static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()) ||
-        static_cast<std::uintmax_t>(length) >
-            static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max()))
-        return std::nullopt;
-    stream.clear();
-    stream.seekg(0, std::ios::beg);
-    if (!stream)
-        return std::nullopt;
     std::vector<std::uint8_t> data;
-    try {
-        data.resize(static_cast<std::size_t>(length));
-    } catch (const std::bad_alloc&) {
-        return std::nullopt;
-    }
-    if (!data.empty() &&
-        !stream.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(length)))
+    if (path.empty() || !read_file_bytes(path, &data))
         return std::nullopt;
     return data;
 }
 
 bool write_binary(const fs::path& path, const std::vector<std::uint8_t>& data) {
-    if (path.empty() ||
-        data.size() > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max()))
-        return false;
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream)
-        return false;
-    if (!data.empty())
-        stream.write(reinterpret_cast<const char*>(data.data()),
-                     static_cast<std::streamsize>(data.size()));
-    return stream.good();
+    return !path.empty() && write_file_bytes(path, data.data(), data.size(), 0600);
 }
 
 fs::path weak_absolute(const fs::path& path) {
@@ -212,9 +178,10 @@ bool find_unpacked_kernel(const fs::path& workdir, fs::path* kernel) {
 
 bool cpio_entry_exists(const std::string& magiskboot, const fs::path& workdir,
                        const fs::path& ramdisk, const char* entry) {
-    const auto result = exec_command_magiskboot(
-        magiskboot, {"cpio", ramdisk.string(), "exists " + std::string(entry)}, workdir.string());
-    return result.exit_code == 0;
+    // Read-only query: runs in-process, and ramdisk is already absolute.
+    (void)magiskboot;
+    (void)workdir;
+    return magiskboot_query({"cpio", ramdisk.string(), "exists " + std::string(entry)}) == 0;
 }
 
 bool run_cpio_command(const std::string& magiskboot, const fs::path& workdir,
@@ -231,9 +198,7 @@ bool run_cpio_command(const std::string& magiskboot, const fs::path& workdir,
 
 bool ramdisk_is_magisk_patched(const std::string& magiskboot, const fs::path& workdir,
                                const fs::path& ramdisk) {
-    const auto test =
-        exec_command_magiskboot(magiskboot, {"cpio", ramdisk.string(), "test"}, workdir.string());
-    if (test.exit_code != 1)
+    if (magiskboot_query({"cpio", ramdisk.string(), "test"}) != 1)
         return false;
     return cpio_entry_exists(magiskboot, workdir, ramdisk, "init.magisk.rc") ||
            cpio_entry_exists(magiskboot, workdir, ramdisk, "overlay.d");
@@ -392,9 +357,8 @@ std::optional<CleanedRamdiskImage> clean_legacy_ramdisk_image(const std::string&
 bool flash_partition_image(const fs::path& image, const std::string& device) {
     if (image.empty() || device.empty())
         return false;
-    const auto set_rw = exec_command({"blockdev", "--setrw", device});
-    if (set_rw.exit_code != 0)
-        LOGW("boot-patch-v2: blockdev --setrw failed for %s; continuing", device.c_str());
+    if (!set_block_device_rw(device))
+        LOGW("boot-patch-v2: continuing to flash %s anyway", device.c_str());
     if (!exec_dd(image.string(), device)) {
         LOGE("boot-patch-v2: failed to flash %s", device.c_str());
         return false;
@@ -623,11 +587,9 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         if (backup_exists) {
             printf("- Preserving original boot backup: %s\n", backup_path.string().c_str());
         } else {
-            std::error_code copy_error;
-            fs::copy_file(requested_input_path, backup_path, fs::copy_options::none, copy_error);
-            if (copy_error) {
+            if (!copy_file_data(requested_input_path, backup_path, 0644, false)) {
                 LOGE("boot-patch-v2: failed to save original boot backup %s: %s",
-                     backup_path.string().c_str(), copy_error.message().c_str());
+                     backup_path.string().c_str(), strerror(errno));
                 cleanup();
                 return 1;
             }
@@ -832,11 +794,9 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     }
     const fs::path output_backup = fs::path(parsed.output + ".yukisu-original.img");
     if (!same_path(file_backup_path, output_backup)) {
-        error.clear();
-        fs::copy_file(file_backup_path, output_backup, fs::copy_options::overwrite_existing, error);
-        if (error) {
+        if (!copy_file_data(file_backup_path, output_backup)) {
             LOGE("boot-patch-v2: failed to save output's original boot backup %s: %s",
-                 output_backup.string().c_str(), error.message().c_str());
+                 output_backup.string().c_str(), strerror(errno));
             cleanup();
             return 1;
         }
@@ -855,10 +815,9 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
-    error.clear();
-    const bool copied = fs::copy_file(repacked, temporary, fs::copy_options::none, error);
-    if (!copied || error) {
-        LOGE("boot-patch-v2: failed to stage output image: %s", error.message().c_str());
+    const bool copied = copy_file_data(repacked, temporary, 0644, false);
+    if (!copied) {
+        LOGE("boot-patch-v2: failed to stage output image: %s", strerror(errno));
         std::error_code remove_error;
         fs::remove(temporary, remove_error);
         cleanup();

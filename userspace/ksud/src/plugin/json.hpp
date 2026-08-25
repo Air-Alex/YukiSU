@@ -1,17 +1,16 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
-#include <iomanip>
-#include <limits>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -140,30 +139,33 @@ inline bool has_valid_utf8(const Value& value) {
 }
 
 inline std::string escape_string(const std::string& s) {
-    std::ostringstream ss;
-    ss << '"';
+    std::string out;
+    out.reserve(s.size() + 2);
+    out += '"';
     for (char c : s) {
         if (c == '"')
-            ss << "\\\"";
+            out += "\\\"";
         else if (c == '\\')
-            ss << "\\\\";
+            out += "\\\\";
         else if (c == '\b')
-            ss << "\\b";
+            out += "\\b";
         else if (c == '\f')
-            ss << "\\f";
+            out += "\\f";
         else if (c == '\n')
-            ss << "\\n";
+            out += "\\n";
         else if (c == '\r')
-            ss << "\\r";
+            out += "\\r";
         else if (c == '\t')
-            ss << "\\t";
-        else if ((unsigned char)c < 0x20)
-            ss << "\\u" << std::setfill('0') << std::setw(4) << std::hex << (int)(unsigned char)c;
-        else
-            ss << c;
+            out += "\\t";
+        else if ((unsigned char)c < 0x20) {
+            std::array<char, 7> escaped{};
+            (void)snprintf(escaped.data(), escaped.size(), "\\u%04x", (unsigned)(unsigned char)c);
+            out += escaped.data();
+        } else
+            out += c;
     }
-    ss << '"';
-    return ss.str();
+    out += '"';
+    return out;
 }
 
 inline std::string dump(const Value& v, int indent = -1, int level = 0) {
@@ -177,48 +179,58 @@ inline std::string dump(const Value& v, int indent = -1, int level = 0) {
     case Type::Number: {
         if (!std::isfinite(v.n))
             return "null";
-        std::ostringstream ss;
-        ss << std::setprecision(std::numeric_limits<double>::max_digits10) << v.n;
-        return ss.str();
+        std::array<char, 64> text{};
+        const int length = snprintf(text.data(), text.size(), "%.17g", v.n);
+        return length > 0 && static_cast<size_t>(length) < text.size()
+                   ? std::string(text.data(), static_cast<size_t>(length))
+                   : std::string("null");
     }
     case Type::String:
         return escape_string(v.s);
     case Type::Array: {
         if (v.a.empty())
             return "[]";
-        std::ostringstream ss;
-        ss << "[" << (indent >= 0 ? "\n" : "");
+        std::string out = "[";
+        if (indent >= 0)
+            out += '\n';
         for (size_t i = 0; i < v.a.size(); ++i) {
             if (indent >= 0)
-                ss << std::string((level + 1) * indent, ' ');
-            ss << dump(v.a[i], indent, level + 1);
-            if (i < v.a.size() - 1)
-                ss << "," << (indent >= 0 ? "\n" : " ");
+                out.append((size_t)((level + 1) * indent), ' ');
+            out += dump(v.a[i], indent, level + 1);
+            if (i + 1 < v.a.size())
+                out += (indent >= 0) ? ",\n" : ", ";
         }
-        if (indent >= 0)
-            ss << "\n" << std::string(level * indent, ' ');
-        ss << "]";
-        return ss.str();
+        if (indent >= 0) {
+            out += '\n';
+            out.append((size_t)(level * indent), ' ');
+        }
+        out += ']';
+        return out;
     }
     case Type::Object: {
         if (v.o.empty())
             return "{}";
-        std::ostringstream ss;
-        ss << "{" << (indent >= 0 ? "\n" : "");
+        std::string out = "{";
+        if (indent >= 0)
+            out += '\n';
         size_t i = 0;
         for (const auto& kv : v.o) {
             if (indent >= 0)
-                ss << std::string((level + 1) * indent, ' ');
-            ss << escape_string(kv.first) << ":" << (indent >= 0 ? " " : "");
-            ss << dump(kv.second, indent, level + 1);
-            if (i < v.o.size() - 1)
-                ss << "," << (indent >= 0 ? "\n" : " ");
-            i++;
+                out.append((size_t)((level + 1) * indent), ' ');
+            out += escape_string(kv.first);
+            out += ':';
+            if (indent >= 0)
+                out += ' ';
+            out += dump(kv.second, indent, level + 1);
+            if (++i < v.o.size())
+                out += (indent >= 0) ? ",\n" : ", ";
         }
-        if (indent >= 0)
-            ss << "\n" << std::string(level * indent, ' ');
-        ss << "}";
-        return ss.str();
+        if (indent >= 0) {
+            out += '\n';
+            out.append((size_t)(level * indent), ' ');
+        }
+        out += '}';
+        return out;
     }
     }
     return "";

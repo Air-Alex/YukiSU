@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
-#include <fstream>
-#include <sstream>  // for std::istringstream
 #include <string>
 #include <string_view>
 #include <vector>
@@ -220,8 +218,11 @@ std::vector<std::string> get_all_partitions(const std::string& slot_suffix) {
 
     // Scan /dev/block/by-name directory for physical partitions
     const std::string by_name_dir = "/dev/block/by-name";
-    if (fs::exists(by_name_dir)) {
-        for (const auto& entry : fs::directory_iterator(by_name_dir)) {
+    std::error_code scan_error;
+    if (fs::exists(by_name_dir, scan_error) && !scan_error) {
+        for (auto it = fs::directory_iterator(by_name_dir, scan_error);
+             it != fs::directory_iterator() && !scan_error; it.increment(scan_error)) {
+            const auto& entry = *it;
             if (!is_block_device_path(entry.path().string())) {
                 LOGD("Skipping non-block by-name entry: %s", entry.path().c_str());
                 continue;
@@ -248,14 +249,19 @@ std::vector<std::string> get_all_partitions(const std::string& slot_suffix) {
                 partitions.push_back(name);
             }
         }
+    } else if (scan_error) {
+        LOGW("Failed to scan %s: %s", by_name_dir.c_str(), scan_error.message().c_str());
     } else {
         LOGW("Directory %s does not exist", by_name_dir.c_str());
     }
 
     // Scan /dev/block/mapper directory for logical partitions
     const std::string mapper_dir = "/dev/block/mapper";
-    if (fs::exists(mapper_dir)) {
-        for (const auto& entry : fs::directory_iterator(mapper_dir)) {
+    scan_error.clear();
+    if (fs::exists(mapper_dir, scan_error) && !scan_error) {
+        for (auto it = fs::directory_iterator(mapper_dir, scan_error);
+             it != fs::directory_iterator() && !scan_error; it.increment(scan_error)) {
+            const auto& entry = *it;
             if (!is_block_device_path(entry.path().string())) {
                 LOGD("Skipping non-block mapper entry: %s", entry.path().c_str());
                 continue;
@@ -289,6 +295,9 @@ std::vector<std::string> get_all_partitions(const std::string& slot_suffix) {
                 partitions.push_back(name);
             }
         }
+    }
+    if (scan_error) {
+        LOGW("Failed to scan %s: %s", mapper_dir.c_str(), scan_error.message().c_str());
     }
 
     // Sort alphabetically
@@ -340,7 +349,8 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
                                      bool verify_hash) {
     LOGI("Flashing %s to %s (physical)", image_path.c_str(), block_device.c_str());
 
-    if (!fs::exists(image_path)) {
+    std::error_code image_error;
+    if (!fs::exists(image_path, image_error) || image_error) {
         LOGE("Image file not found: %s", image_path.c_str());
         return "";
     }
@@ -366,19 +376,20 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
 
     // Open both ends before modifying the target. This avoids clearing a
     // partition only to discover that the source cannot be read.
-    std::ifstream input(image_path, std::ios::binary);
-    if (!input) {
-        LOGE("Failed to open image file");
+    const int input_fd = open(image_path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (input_fd < 0) {
+        LOGE("Failed to open image file: %s", strerror(errno));
         return "";
     }
 
-    const int fd = open(block_device.c_str(), O_WRONLY | O_SYNC);
+    const int fd = open(block_device.c_str(), O_WRONLY | O_SYNC | O_CLOEXEC);
     if (fd < 0) {
         LOGE("Failed to open block device for writing: %s", strerror(errno));
+        close(input_fd);
         return "";
     }
 
-    std::array<char, 4096> buffer{};
+    std::array<char, 65536> buffer{};
     bool success = true;
     mbedtls_sha256_context source_hash_context{};
     std::array<unsigned char, 32> source_digest{};
@@ -387,11 +398,24 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
         LOGE("Failed to initialize source SHA256");
         mbedtls_sha256_free(&source_hash_context);
         close(fd);
+        close(input_fd);
         return "";
     }
 
-    while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
-        const auto bytes_read = static_cast<size_t>(input.gcount());
+    for (;;) {
+        const ssize_t read_result = read(input_fd, buffer.data(), buffer.size());
+        if (read_result == 0) {
+            break;
+        }
+        if (read_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            LOGE("Failed while reading image file: %s", strerror(errno));
+            success = false;
+            break;
+        }
+        const size_t bytes_read = static_cast<size_t>(read_result);
 
         if (verify_hash &&
             mbedtls_sha256_update(
@@ -416,10 +440,6 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
         if (!success) {
             break;
         }
-    }
-    if (input.bad()) {
-        LOGE("Failed while reading image file");
-        success = false;
     }
 
     // Clear only the unwritten tail after the image has been copied. This keeps
@@ -454,7 +474,7 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
         success = false;
     }
     close(fd);
-    input.close();
+    close(input_fd);
 
     if (verify_hash &&
         mbedtls_sha256_finish(&source_hash_context, source_digest.data()) != 0) {
@@ -672,13 +692,16 @@ bool map_logical_partitions(const std::string& slot_suffix) {
 
     // Get all partitions from mapper directory
     const std::string mapper_dir = "/dev/block/mapper";
-    if (!fs::exists(mapper_dir)) {
-        LOGE("Mapper directory does not exist");
+    std::error_code mapper_error;
+    if (!fs::exists(mapper_dir, mapper_error) || mapper_error) {
+        LOGE("Mapper directory does not exist: %s", mapper_error.message().c_str());
         return false;
     }
 
     std::vector<std::string> logical_partitions;
-    for (const auto& entry : fs::directory_iterator(mapper_dir)) {
+    for (auto it = fs::directory_iterator(mapper_dir, mapper_error);
+         it != fs::directory_iterator() && !mapper_error; it.increment(mapper_error)) {
+        const auto& entry = *it;
         if (!is_block_device_path(entry.path().string())) {
             LOGD("Skipping non-block mapper entry while mapping: %s", entry.path().c_str());
             continue;
@@ -698,6 +721,10 @@ bool map_logical_partitions(const std::string& slot_suffix) {
                 logical_partitions.push_back(name);
             }
         }
+    }
+    if (mapper_error) {
+        LOGE("Failed to scan mapper directory: %s", mapper_error.message().c_str());
+        return false;
     }
 
     if (logical_partitions.empty()) {
@@ -854,58 +881,52 @@ std::string get_kernel_version(const std::string& slot_suffix) {
     if (unpack_result.exit_code == 0) {
         LOGI("Boot image unpacked successfully");
 
-        // Try using strings command first (most efficient)
-        auto strings_result = exec_command_sync({"strings", kernel_path});
-        if (strings_result.exit_code == 0) {
-            std::istringstream iss(strings_result.stdout_str);
-            std::string line;
-            while (std::getline(iss, line)) {
-                if (line.find("Linux version ") != std::string::npos) {
-                    result = line;
-                    LOGI("Found kernel version: %s", result.c_str());
+        // Search the unpacked kernel directly. Spawning `strings` first meant a
+        // fork+exec and then parsing its full captured stdout; the data is
+        // already local and the marker can straddle at most two read chunks.
+        const int kernel_fd = open(kernel_path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (kernel_fd < 0) {
+            LOGE("Failed to open kernel file: %s", strerror(errno));
+        } else {
+            constexpr std::string_view kMarker = "Linux version ";
+            constexpr size_t kMaxScan = 64UL * 1024 * 1024;
+            std::array<char, 65536> scan_buffer{};
+            std::string pending;
+            pending.reserve(scan_buffer.size() + 512);
+            size_t total_read = 0;
+            while (total_read < kMaxScan && result.empty()) {
+                const size_t requested = std::min(scan_buffer.size(), kMaxScan - total_read);
+                const ssize_t n = read(kernel_fd, scan_buffer.data(), requested);
+                if (n == 0)
+                    break;
+                if (n < 0) {
+                    if (errno == EINTR)
+                        continue;
+                    LOGE("Failed to read kernel file: %s", strerror(errno));
                     break;
                 }
-            }
-        }
+                total_read += static_cast<size_t>(n);
+                pending.append(scan_buffer.data(), static_cast<size_t>(n));
 
-        // Fallback: read kernel file directly if strings failed
-        if (result.empty()) {
-            LOGW("strings command failed, reading kernel file directly");
-            std::ifstream kernel_file(kernel_path, std::ios::binary);
-            if (kernel_file) {
-                const std::string search_str = "Linux version ";
-                std::array<char, 4096> buffer{};
-                std::string content_buffer;
-                const size_t max_bytes =
-                    static_cast<size_t>(64) * 1024 * 1024;  // Limit to first 64MB
-                size_t total_read = 0;
-
-                while (total_read < max_bytes && kernel_file.read(buffer.data(), buffer.size())) {
-                    const size_t bytes_read = kernel_file.gcount();
-                    total_read += bytes_read;
-                    content_buffer.append(buffer.data(), bytes_read);
-
-                    const size_t pos = content_buffer.find(search_str);
-                    if (pos != std::string::npos) {
-                        size_t end_pos = content_buffer.find('\0', pos);
-                        if (end_pos == std::string::npos) {
-                            end_pos = content_buffer.find('\n', pos);
-                        }
-                        if (end_pos != std::string::npos) {
-                            result = content_buffer.substr(pos, end_pos - pos);
-                            LOGI("Found kernel version: %s", result.c_str());
-                            break;
-                        }
+                const size_t pos = pending.find(kMarker);
+                if (pos != std::string::npos) {
+                    const size_t nul = pending.find('\0', pos);
+                    const size_t newline = pending.find('\n', pos);
+                    const size_t end = std::min(nul, newline);
+                    if (end != std::string::npos) {
+                        result.assign(pending, pos, end - pos);
+                        break;
                     }
-                    // Keep last part of buffer to handle version string across chunks
-                    if (content_buffer.length() > search_str.length() + 256) {
-                        content_buffer = content_buffer.substr(content_buffer.length() - 256);
-                    }
+                    // Preserve a partial version line until the next chunk.
+                    if (pos > 0)
+                        pending.erase(0, pos);
+                } else if (pending.size() > kMarker.size() - 1) {
+                    pending.erase(0, pending.size() - (kMarker.size() - 1));
                 }
-                kernel_file.close();
-            } else {
-                LOGE("Failed to open kernel file: %s", kernel_path.c_str());
             }
+            close(kernel_fd);
+            if (!result.empty())
+                LOGI("Found kernel version: %s", result.c_str());
         }
     } else {
         LOGE("magiskboot unpack failed with code %d: %s", unpack_result.exit_code,

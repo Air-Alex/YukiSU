@@ -11,11 +11,11 @@
 #include <unistd.h>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <sstream>
+#include <string_view>
 
 namespace ksud {
 
@@ -249,14 +249,17 @@ int load_persisted_config(ksu_uts_view_config* config, const ksu_uts_view_status
     if (stat(uts_config_path().c_str(), &metadata) != 0)
         return errno == ENOENT ? 0 : -1;
 
-    std::ifstream input(uts_config_path(), std::ios::binary);
-    if (!input)
+    const auto content = read_file(uts_config_path());
+    if (!content)
         return -1;
 
     PersistedUtsConfig file{};
-    input.read(reinterpret_cast<char*>(&file), sizeof(file));
-    if (input.gcount() != static_cast<std::streamsize>(sizeof(file)) || input.peek() != EOF ||
-        file.magic != UTS_CONFIG_MAGIC || file.size != sizeof(file) || file.reserved != 0) {
+    if (content->size() != sizeof(file)) {
+        LOGE("UTS View persistent config is invalid");
+        return -1;
+    }
+    memcpy(&file, content->data(), sizeof(file));
+    if (file.magic != UTS_CONFIG_MAGIC || file.size != sizeof(file) || file.reserved != 0) {
         LOGE("UTS View persistent config is invalid");
         return -1;
     }
@@ -293,7 +296,7 @@ void print_template(const char* title, const ksu_uts_template& config) {
         printf("  domainname=%s\n", config.domainname);
 }
 
-uint32_t field_bit(const std::string& name) {
+uint32_t field_bit(std::string_view name) {
     if (name == "sysname")
         return KSU_UTS_FIELD_SYSNAME;
     if (name == "nodename")
@@ -328,8 +331,8 @@ char* field_buffer(ksu_uts_template* config, uint32_t bit) {
     }
 }
 
-bool set_field(ksu_uts_template* config, uint32_t bit, const std::string& value) {
-    if (value.size() >= KSU_UTS_NAME_LEN || value.find('\0') != std::string::npos)
+bool set_field(ksu_uts_template* config, uint32_t bit, std::string_view value) {
+    if (value.size() >= KSU_UTS_NAME_LEN || value.find('\0') != std::string_view::npos)
         return false;
     char* field = field_buffer(config, bit);
     if (field == nullptr)
@@ -339,7 +342,8 @@ bool set_field(ksu_uts_template* config, uint32_t bit, const std::string& value)
         config->field_mask &= ~bit;
         return true;
     }
-    memcpy(field, value.c_str(), value.size() + 1);
+    memcpy(field, value.data(), value.size());
+    field[value.size()] = '\0';
     config->field_mask |= bit;
     return true;
 }
@@ -516,17 +520,21 @@ std::string hex_encode(const char field[KSU_UTS_NAME_LEN]) {
     return "hex:" + hex_encode_raw(field);
 }
 
-bool parse_config_uint32(const std::string& value, uint32_t* result) {
+bool parse_config_uint32(std::string_view value, uint32_t* result) {
     if (result == nullptr || value.empty())
         return false;
     const bool hexadecimal =
         value.size() > 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X');
-    char* end = nullptr;
-    errno = 0;
-    const unsigned long parsed = strtoul(value.c_str(), &end, hexadecimal ? 16 : 10);
-    if (end == value.c_str() || *end != '\0' || errno == ERANGE || parsed > UINT32_MAX)
+    if (hexadecimal)
+        value.remove_prefix(2);
+    if (value.empty())
         return false;
-    *result = static_cast<uint32_t>(parsed);
+    uint32_t parsed = 0;
+    const auto [end, error] =
+        std::from_chars(value.data(), value.data() + value.size(), parsed, hexadecimal ? 16 : 10);
+    if (error != std::errc{} || end != value.data() + value.size())
+        return false;
+    *result = parsed;
     return true;
 }
 
@@ -716,8 +724,8 @@ bool load_uts_boot_config(const std::string& path, ksu_uts_template* config, std
         return false;
     *config = {};
 
-    std::ifstream input(path);
-    if (!input) {
+    const auto content = read_file(path);
+    if (!content) {
         if (error != nullptr)
             *error = "cannot open config";
         return false;
@@ -728,60 +736,50 @@ bool load_uts_boot_config(const std::string& path, ksu_uts_template* config, std
     uint32_t format_version = 0;
     uint32_t declared_mask = 0;
     std::array<bool, 6> field_present{};
-    std::string line;
-    while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r')
-            line.pop_back();
-        const std::string stripped = trim(line);
+    bool parse_ok = true;
+    const auto fail = [&](const char* message) {
+        if (error != nullptr)
+            *error = message;
+        parse_ok = false;
+        return false;
+    };
+    for_each_line(*content, [&](std::string_view line) {
+        const std::string_view stripped = trim_view(line);
         if (stripped.empty() || stripped[0] == '#')
-            continue;
+            return true;
         const size_t separator = line.find('=');
-        if (separator == std::string::npos) {
-            if (error != nullptr)
-                *error = "expected key=value";
-            return false;
-        }
-        const std::string key = trim(line.substr(0, separator));
-        const std::string value = line.substr(separator + 1);
+        if (separator == std::string_view::npos)
+            return fail("expected key=value");
+        const std::string_view key = trim_view(line.substr(0, separator));
+        const std::string_view value = line.substr(separator + 1);
         if (key == "format_version") {
-            if (have_format_version || !parse_config_uint32(trim(value), &format_version)) {
-                if (error != nullptr)
-                    *error = "invalid format version";
-                return false;
+            if (have_format_version || !parse_config_uint32(trim_view(value), &format_version)) {
+                return fail("invalid format version");
             }
             have_format_version = true;
-            continue;
+            return true;
         }
         if (key == "mask") {
-            if (have_mask || !parse_config_uint32(trim(value), &declared_mask)) {
-                if (error != nullptr)
-                    *error = "invalid mask";
-                return false;
-            }
+            if (have_mask || !parse_config_uint32(trim_view(value), &declared_mask))
+                return fail("invalid mask");
             have_mask = true;
-            continue;
+            return true;
         }
         const uint32_t bit = field_bit(key);
-        if (bit == 0) {
-            if (error != nullptr)
-                *error = "unknown field";
-            return false;
-        }
+        if (bit == 0)
+            return fail("unknown field");
         unsigned int index = 0;
         while (((1U << index) & bit) == 0)
             ++index;
-        if (field_present[index]) {
-            if (error != nullptr)
-                *error = "duplicate field";
-            return false;
-        }
-        if (!set_field(config, bit, value)) {
-            if (error != nullptr)
-                *error = "field exceeds 64 bytes or contains NUL";
-            return false;
-        }
+        if (field_present[index])
+            return fail("duplicate field");
+        if (!set_field(config, bit, value))
+            return fail("field exceeds 64 bytes or contains NUL");
         field_present[index] = true;
-    }
+        return true;
+    });
+    if (!parse_ok)
+        return false;
 
     config->field_mask = declared_mask;
     if (!have_format_version || format_version != UTS_BOOT_CONFIG_VERSION || !have_mask ||

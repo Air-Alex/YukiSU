@@ -1,9 +1,21 @@
 # Prefer Ninja: cmake -G Ninja .. [options] && ninja
 cmake_minimum_required(VERSION 3.14)
 
-# Android minimum API 28 (getrandom/sethostname etc. require bionic symbols from API 28+)
+# Android API floor: 31 (Android 12). This is a compatibility floor, not just a
+# bionic-symbol requirement -- it stops YukiSU being rebuilt against an older
+# platform with builtin support stripped out.
+#
+# CMAKE_ANDROID_API does NOT control this: CMake derives its own --target from
+# CMAKE_SYSTEM_VERSION and appends it after the versioned NDK wrapper's --target,
+# so the wrapper loses and CMAKE_SYSTEM_VERSION is what actually selects the API
+# level. Fail at configure time when it is too low; userspace/common/api_floor.hpp
+# then backs this up at compile time.
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-  set(CMAKE_ANDROID_API 28 CACHE STRING "Android API level (min 28)" FORCE)
+  if(CMAKE_SYSTEM_VERSION LESS 31)
+    message(FATAL_ERROR
+      "YukiSU requires Android API 31+; got CMAKE_SYSTEM_VERSION=${CMAKE_SYSTEM_VERSION}. "
+      "Configure with -DCMAKE_SYSTEM_VERSION=31 (setting CMAKE_ANDROID_API has no effect).")
+  endif()
 endif()
 
 # Prefer Clang for C and CXX (LTO, -faddrsig, etc. require Clang; do not use GCC)
@@ -98,6 +110,7 @@ else()
     string(CONCAT _LINKER_FLAGS
         " -fuse-ld=lld"               # Use lld linker
         " -flto=full"                 # Full LTO: maximum cross-module optimization (smaller than thin LTO)
+        " -fwhole-program-vtables"    # Matches the per-target compile flag; enables LTO-time devirtualization
         " -Wl,--gc-sections"          # Garbage-collect unused sections
         " -Wl,--icf=all"              # Identical Code Folding: merge functions with identical bodies
         " -Wl,--strip-all"            # Strip all symbols
@@ -461,12 +474,37 @@ endif()
 if(TOYBOX_READELF_AVAILABLE)
     list(APPEND KSUD_DEFINES TOYBOX_READELF_AVAILABLE=1)
 endif()
+# Whole-program devirtualization, applied only to first-party C++ objects.
+# It pays off on MagiskbootAlone's dyn_img_hdr hierarchy: ~45 virtual
+# getter/setters whose bodies are a single field load, reached through a
+# dyn_img_hdr* so they can neither inline nor hoist out of a loop. Sound here
+# because these objects hold every definition and use of those vtables, and
+# nothing escapes the LTO unit.
+#
+# Deliberately NOT in the global CMAKE_CXX_FLAGS: FetchContent subprojects such
+# as mbedTLS replace CMAKE_C_FLAGS_RELEASE with their own -O2, which drops the
+# -flto=full this flag requires and makes clang reject it outright.
+set(KSUD_DEVIRT_FLAGS)
+if(NOT KSUD_DISABLE_LTO)
+    set(KSUD_DEVIRT_FLAGS -fwhole-program-vtables)
+endif()
+
 # Object library: our sources (with clang-tidy when enabled). The Android NDK
 # compilation database supplies the real target sysroot and flags to clang-tidy.
+list(APPEND KSUD_OUR_SOURCES ${REPO_ROOT}/userspace/common/cxx_slim.cpp)
 add_library(ksud_our_objs OBJECT ${KSUD_OUR_SOURCES})
 target_include_directories(ksud_our_objs PRIVATE ${KSUD_INCLUDE_DIRS})
 target_compile_definitions(ksud_our_objs PRIVATE ${KSUD_DEFINES})
 target_compile_features(ksud_our_objs PUBLIC cxx_std_17)
+# Most daemon code neither throws nor catches. Compile it without exception
+# landing pads/unwind metadata, then opt the Lua/C++ API boundary back in: it
+# translates native exceptions into Lua errors. Source options are appended
+# after target options, so -fexceptions wins for that translation unit.
+target_compile_options(ksud_our_objs PRIVATE ${KSUD_DEVIRT_FLAGS} -fno-exceptions)
+set_source_files_properties(
+    src/plugin/lua_engine.cpp
+    PROPERTIES COMPILE_OPTIONS -fexceptions
+)
 yukisu_enable_clang_tidy(ksud_our_objs CXX)
 
 # Generated compressed asset bytes are compiled into ksud, but are not useful
@@ -474,11 +512,31 @@ yukisu_enable_clang_tidy(ksud_our_objs CXX)
 add_library(ksud_generated_objs OBJECT ${ASSETS_CPP} ${LKM_BOOTSTRAP_CPP})
 target_include_directories(ksud_generated_objs PRIVATE ${KSUD_INCLUDE_DIRS})
 target_compile_definitions(ksud_generated_objs PRIVATE ${KSUD_DEFINES})
+target_compile_options(ksud_generated_objs PRIVATE -fno-exceptions)
 
 # Object library: third-party sources (no clang-tidy)
 add_library(ksud_thirdparty_objs OBJECT ${KSUD_THIRDPARTY_SOURCES})
 target_include_directories(ksud_thirdparty_objs PRIVATE ${KSUD_INCLUDE_DIRS})
 target_compile_definitions(ksud_thirdparty_objs PRIVATE ${KSUD_DEFINES})
+target_compile_options(ksud_thirdparty_objs PRIVATE ${KSUD_DEVIRT_FLAGS})
+# Magiskboot throws through several of its translation units and catches at its
+# command boundary; keep that submodule exception-enabled. The other welded
+# tools have no exception boundary and already terminate on allocation failure,
+# so landing pads only waste space.
+set(KSUD_EXCEPTION_FREE_THIRDPARTY_SOURCES)
+if(BOOTCTL_ALONE_AVAILABLE)
+    list(APPEND KSUD_EXCEPTION_FREE_THIRDPARTY_SOURCES ${BOOTCTL_ALONE_DIR}/src/main.cpp)
+endif()
+if(RESETPROP_ALONE_AVAILABLE)
+    list(APPEND KSUD_EXCEPTION_FREE_THIRDPARTY_SOURCES ${RESETPROP_ALONE_SOURCES})
+endif()
+if(MKBOOTFS_ALONE_AVAILABLE)
+    list(APPEND KSUD_EXCEPTION_FREE_THIRDPARTY_SOURCES ${MKBOOTFS_ALONE_DIR}/src/mkbootfs.cpp)
+endif()
+if(KSUD_EXCEPTION_FREE_THIRDPARTY_SOURCES)
+    set_source_files_properties(${KSUD_EXCEPTION_FREE_THIRDPARTY_SOURCES}
+        PROPERTIES COMPILE_OPTIONS -fno-exceptions)
+endif()
 if(MAGISKBOOT_ALONE_AVAILABLE)
     target_compile_features(ksud_thirdparty_objs PUBLIC cxx_std_17)
 endif()

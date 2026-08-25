@@ -21,7 +21,6 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
-#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
@@ -54,6 +53,21 @@ constexpr mz_uint64 kMaxArchiveTotalSize = mz_uint64{256} * 1024 * 1024;
 constexpr mz_uint64 kMaxArchivePackageSize = kMaxArchiveTotalSize + (mz_uint64{16} * 1024 * 1024);
 constexpr off_t kMaxPluginLogSize = off_t{1024} * 1024;
 constexpr size_t kMaxPluginLogLineSize = size_t{64} * 1024;
+
+bool path_exists(const fs::path& path) {
+    std::error_code error;
+    return fs::exists(path, error) && !error;
+}
+
+bool directory_exists(const fs::path& path) {
+    std::error_code error;
+    return fs::is_directory(path, error) && !error;
+}
+
+bool regular_file_exists(const fs::path& path) {
+    std::error_code error;
+    return fs::is_regular_file(path, error) && !error;
+}
 
 void print_error(const char* format, ...) {
     va_list arguments;
@@ -672,7 +686,9 @@ void cleanup_stale_plugin_trees() {
     const fs::directory_iterator iterator(PLUGIN_STAGE_DIR, iterator_error);
     if (iterator_error)
         return;
-    for (const auto& entry : iterator) {
+    for (auto it = iterator; it != fs::directory_iterator() && !iterator_error;
+         it.increment(iterator_error)) {
+        const auto& entry = *it;
         const std::string filename = entry.path().filename().string();
         const size_t transaction = filename.rfind(".txn.");
         if (transaction == std::string::npos || transaction + 5 >= filename.size() ||
@@ -804,13 +820,10 @@ std::string join_plugin_ids(const std::vector<std::string>& ids) {
 bool preserve_state_file(const fs::path& old_directory, const fs::path& new_directory,
                          const char* filename, std::string* error) {
     const fs::path source = old_directory / filename;
-    if (!fs::exists(source))
+    if (!path_exists(source))
         return true;
-    std::error_code copy_error;
-    fs::copy_file(source, new_directory / filename, fs::copy_options::overwrite_existing,
-                  copy_error);
-    if (copy_error) {
-        *error = "Cannot preserve " + std::string(filename) + ": " + copy_error.message();
+    if (!copy_file_data(source, new_directory / filename)) {
+        *error = "Cannot preserve " + std::string(filename) + ": " + strerror(errno);
         return false;
     }
     const ScopedFd copied(open((new_directory / filename).c_str(), O_RDONLY | O_CLOEXEC));
@@ -979,7 +992,7 @@ int plugin_install(const std::string& zip_path) {
     }
 
     auto verified = plugin_read_manifest(stage.string(), id, &error);
-    if (!verified || !fs::is_regular_file(stage / verified->entry)) {
+    if (!verified || !regular_file_exists(stage / verified->entry)) {
         print_error("Extracted plugin failed validation: %s\n", error.c_str());
         return 1;
     }
@@ -990,7 +1003,7 @@ int plugin_install(const std::string& zip_path) {
         print_error("Cannot lock plugin state: %s\n", state_lock.error().c_str());
         return 1;
     }
-    if (fs::is_directory(target)) {
+    if (directory_exists(target)) {
         if (!preserve_state_file(target, stage, PLUGIN_CONFIG_FILE, &error) ||
             !preserve_state_file(target, stage, PLUGIN_OUTPUT_LOG, &error) ||
             !preserve_state_file(target, stage, DISABLE_FILE_NAME, &error)) {
@@ -1091,7 +1104,7 @@ int plugin_uninstall(const std::string& id) {
         return 1;
     }
     const fs::path directory = plugin_directory(id);
-    if (!fs::is_directory(directory)) {
+    if (!directory_exists(directory)) {
         print_error("Plugin '%s' is not installed\n", id.c_str());
         return 1;
     }
@@ -1159,7 +1172,7 @@ int plugin_set_enabled(const std::string& id, bool enabled) {
         return 1;
     }
     const fs::path directory = plugin_directory(id);
-    if (!fs::is_directory(directory)) {
+    if (!directory_exists(directory)) {
         print_error("Plugin '%s' is not installed\n", id.c_str());
         return 1;
     }
@@ -1309,7 +1322,7 @@ int plugin_clear_log(const std::string& id) {
 }
 
 int plugin_config_handle(const std::string& id, const std::vector<std::string>& args) {
-    if (!plugin_id_is_valid(id) || !fs::is_directory(plugin_directory(id))) {
+    if (!plugin_id_is_valid(id) || !directory_exists(plugin_directory(id))) {
         print_error("Invalid or missing plugin\n");
         return 1;
     }
@@ -1609,7 +1622,8 @@ std::vector<PluginRecord> plugin_discover() {
     if (error)
         return plugins;
 
-    for (const auto& entry : iterator) {
+    for (auto it = iterator; it != fs::directory_iterator() && !error; it.increment(error)) {
+        const auto& entry = *it;
         std::error_code type_error;
         if (!entry.is_directory(type_error) || type_error)
             continue;
@@ -1619,7 +1633,7 @@ std::vector<PluginRecord> plugin_discover() {
         PluginRecord record;
         record.id = id;
         record.directory = entry.path().string();
-        record.enabled = !fs::exists(entry.path() / DISABLE_FILE_NAME);
+        record.enabled = !path_exists(entry.path() / DISABLE_FILE_NAME);
         auto manifest = plugin_read_manifest(record.directory, id, &record.error);
         if (manifest) {
             record.manifest = std::move(*manifest);
@@ -1641,7 +1655,7 @@ bool plugin_dependencies_available(const PluginManifest& manifest, std::string* 
     enum class VisitState : uint8_t { Visiting, Complete };
     std::map<std::string, VisitState> states;
     std::map<std::string, PluginManifest> manifests;
-    std::function<bool(const PluginManifest&)> visit = [&](const PluginManifest& current) {
+    const auto visit = [&](const auto& self, const PluginManifest& current) -> bool {
         const auto [state, inserted] = states.emplace(current.id, VisitState::Visiting);
         if (!inserted) {
             if (state->second == VisitState::Visiting) {
@@ -1661,7 +1675,7 @@ bool plugin_dependencies_available(const PluginManifest& manifest, std::string* 
                         "Missing dependency '" + dependency + "' required by '" + current.id + "'";
                 return false;
             }
-            if (fs::exists(directory / DISABLE_FILE_NAME)) {
+            if (path_exists(directory / DISABLE_FILE_NAME)) {
                 if (error)
                     *error = "Dependency '" + dependency + "' required by '" + current.id +
                              "' is disabled";
@@ -1686,13 +1700,13 @@ bool plugin_dependencies_available(const PluginManifest& manifest, std::string* 
                 }
                 found = manifests.emplace(dependency, std::move(*parsed)).first;
             }
-            if (!visit(found->second))
+            if (!self(self, found->second))
                 return false;
         }
         state->second = VisitState::Complete;
         return true;
     };
-    return visit(manifest);
+    return visit(visit, manifest);
 }
 
 std::vector<PluginRecord> plugin_resolve_enabled(std::vector<std::string>* errors) {
@@ -1804,7 +1818,7 @@ bool plugin_get_config_value(const std::string& id, const std::string& key, std:
 bool plugin_set_config_value(const std::string& id, const std::string& key,
                              const std::string& value, std::string* error) {
     if (!plugin_id_is_valid(id) || !plugin_config_key_is_valid(key) ||
-        !fs::is_directory(plugin_directory(id))) {
+        !directory_exists(plugin_directory(id))) {
         *error = "Invalid plugin id or config key";
         return false;
     }
@@ -1831,7 +1845,7 @@ bool plugin_set_config_value(const std::string& id, const std::string& key,
 
 bool plugin_delete_config_value(const std::string& id, const std::string& key, std::string* error) {
     if (!plugin_id_is_valid(id) || !plugin_config_key_is_valid(key) ||
-        !fs::is_directory(plugin_directory(id))) {
+        !directory_exists(plugin_directory(id))) {
         *error = "Invalid plugin id or config key";
         return false;
     }

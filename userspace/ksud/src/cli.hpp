@@ -1,6 +1,5 @@
 #pragma once
 
-#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -9,9 +8,6 @@
 namespace ksud {
 
 int cli_run(int argc, char** argv);
-
-// Command handler type
-using CommandHandler = std::function<int(const std::vector<std::string>&)>;
 
 // CLI argument parser helpers
 struct CliOption {

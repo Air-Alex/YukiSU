@@ -72,6 +72,7 @@ def main():
 #include <map>
 #include <sys/stat.h>
 #include <cerrno>
+#include <fcntl.h>
 #include <unistd.h>
 #include <vector>
 #include <zlib.h>
@@ -118,15 +119,15 @@ static const std::array<AssetEntry, ''' + str(n_entries) + '''> asset_registry =
 }};
 
 const std::vector<std::string>& list_assets() {
-    static std::vector<std::string> names;
-    static bool initialized = false;
-    if (!initialized) {
+    static const std::vector<std::string> names = [] {
+        std::vector<std::string> result;
+        result.reserve(asset_registry.size() - 1);  // exclude sentinel
         for (const auto& entry : asset_registry) {
             if (entry.name == nullptr) break;
-            names.push_back(entry.name);
+            result.emplace_back(entry.name);
         }
-        initialized = true;
-    }
+        return result;
+    }();
     return names;
 }
 
@@ -160,30 +161,59 @@ bool copy_asset_to_file(const std::string& name, const std::string& dest_path) {
     // Remove existing file first
     unlink(dest_path.c_str());
     
-    // Decompress
-    std::vector<uint8_t> buffer(entry->original_size);
-    uLongf destLen = entry->original_size;
-    const int ret = uncompress(buffer.data(), &destLen, entry->data, entry->size);
-    if (ret != Z_OK) {
-        LOGE("Decompression failed for %s: %d", name.c_str(), ret);
-        return false;
-    }
-    
-    std::ofstream ofs(dest_path, std::ios::binary);
-    if (!ofs) {
+    // Stream decompression directly to disk. `uncompress()` required a heap
+    // buffer as large as the original asset (ksuinit alone is hundreds of KiB)
+    // and then copied it again through write(). A fixed output window keeps the
+    // extraction memory bounded regardless of asset size.
+    const int fd = open(dest_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd < 0) {
         LOGE("Failed to open file for writing: %s (errno=%d: %s)", dest_path.c_str(), errno, strerror(errno));
         return false;
     }
-    ofs.write(reinterpret_cast<const char*>(buffer.data()), destLen);
-    if (!ofs.good()) {
-        LOGE("Failed to write asset %s to %s", name.c_str(), dest_path.c_str());
-        return false;
+    z_stream stream{};
+    stream.next_in = const_cast<Bytef*>(entry->data);
+    stream.avail_in = static_cast<uInt>(entry->size);
+    int ret = inflateInit(&stream);
+    bool ok = ret == Z_OK;
+    std::array<uint8_t, 65536> buffer{};
+    while (ok && ret != Z_STREAM_END) {
+        stream.next_out = buffer.data();
+        stream.avail_out = static_cast<uInt>(buffer.size());
+        ret = inflate(&stream, Z_NO_FLUSH);
+        if (ret != Z_OK && ret != Z_STREAM_END) {
+            ok = false;
+            break;
+        }
+        const size_t produced = buffer.size() - stream.avail_out;
+        size_t written = 0;
+        while (written < produced) {
+            const ssize_t n = write(fd, buffer.data() + written, produced - written);
+            if (n > 0) {
+                written += static_cast<size_t>(n);
+                continue;
+            }
+            if (n < 0 && errno == EINTR) {
+                continue;
+            }
+            ok = false;
+            break;
+        }
     }
-    return true;
+    ok = ok && ret == Z_STREAM_END && stream.total_out == entry->original_size;
+    inflateEnd(&stream);
+    if (close(fd) != 0) {
+        ok = false;
+    }
+    if (!ok) {
+        LOGE("Decompression failed for %s: %d", name.c_str(), ret);
+        unlink(dest_path.c_str());
+    }
+    return ok;
 }
 
 std::vector<std::string> list_supported_kmi() {
     std::vector<std::string> result;
+    result.reserve(list_assets().size());
     for (const auto& name : list_assets()) {
         // Format: android15-6.6_kernelsu.ko
         const char* suffix = "_kernelsu.ko";

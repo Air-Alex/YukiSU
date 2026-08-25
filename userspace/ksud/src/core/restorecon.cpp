@@ -37,11 +37,11 @@ bool setsyscon(const fs::path& path) {
 }
 
 bool restore_syscon(const fs::path& dir) {
-    if (!fs::exists(dir)) {
-        return true;
+    std::error_code ec;
+    if (!fs::exists(dir, ec)) {
+        return !ec;
     }
 
-    std::error_code ec;
     for (auto it = fs::recursive_directory_iterator(dir, ec);
          it != fs::recursive_directory_iterator() && !ec; it.increment(ec)) {
         if (!setsyscon(it->path())) {
@@ -56,11 +56,11 @@ bool restore_syscon(const fs::path& dir) {
 }
 
 bool restore_syscon_if_unlabeled(const fs::path& dir) {
-    if (!fs::exists(dir)) {
-        return true;
+    std::error_code ec;
+    if (!fs::exists(dir, ec)) {
+        return !ec;
     }
 
-    std::error_code ec;
     for (auto it = fs::recursive_directory_iterator(dir, ec);
          it != fs::recursive_directory_iterator() && !ec; it.increment(ec)) {
         const std::string con = lgetfilecon(it->path());
@@ -96,7 +96,8 @@ bool restorecon() {
 }
 
 bool restorecon(const fs::path& path, bool recursive) {
-    if (!fs::exists(path)) {
+    std::error_code ec;
+    if (!fs::exists(path, ec) || ec) {
         LOGW("Path does not exist: %s", path.c_str());
         return false;
     }
@@ -104,11 +105,16 @@ bool restorecon(const fs::path& path, bool recursive) {
     // For /data/adb, use ADB context
     const char* context = (path == "/data/adb") ? ADB_CON : SYSTEM_CON;
 
-    if (recursive && fs::is_directory(path)) {
-        return restore_syscon_if_unlabeled(path);
-    } else {
-        return lsetfilecon(path, context);
+    if (recursive) {
+        const bool directory = fs::is_directory(path, ec);
+        if (ec) {
+            LOGW("Failed to inspect %s: %s", path.c_str(), ec.message().c_str());
+            return false;
+        }
+        if (directory)
+            return restore_syscon_if_unlabeled(path);
     }
+    return lsetfilecon(path, context);
 }
 
 }  // namespace ksud

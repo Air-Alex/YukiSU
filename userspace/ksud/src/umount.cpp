@@ -6,8 +6,6 @@
 
 #include <unistd.h>
 #include <algorithm>
-#include <fstream>
-#include <sstream>
 #include <vector>
 
 namespace ksud {
@@ -19,51 +17,45 @@ struct UmountEntry {
 
 namespace {
 
-// Parse a decimal uint32_t without exceptions.  Returns true on success.
-
 std::vector<UmountEntry> load_umount_config() {
     std::vector<UmountEntry> entries;
     auto content = read_file(UMOUNT_CONFIG_PATH);
     if (!content)
         return entries;
 
-    std::istringstream iss(*content);
-    std::string line;
-    while (std::getline(iss, line)) {
-        line = trim(line);
+    for_each_line(*content, [&entries](std::string_view raw_line) {
+        const std::string_view line = trim_view(raw_line);
         if (line.empty() || line[0] == '#')
-            continue;
+            return;
 
         UmountEntry entry;
         const size_t space = line.find(' ');
-        if (space != std::string::npos) {
-            entry.path = line.substr(0, space);
-            const std::string flags_str = line.substr(space + 1);
-            if (!parse_uint32(flags_str, &entry.flags)) {
-                LOGW("umount: bad flags in config line: %s", line.c_str());
-                continue;
+        if (space != std::string_view::npos) {
+            entry.path.assign(line.substr(0, space));
+            if (!parse_uint32(trim_view(line.substr(space + 1)), &entry.flags)) {
+                LOGW("umount: bad flags in config line: %.*s", static_cast<int>(line.size()),
+                     line.data());
+                return;
             }
         } else {
-            entry.path = line;
+            entry.path.assign(line);
             entry.flags = 0;
         }
         entries.push_back(entry);
-    }
+    });
 
     return entries;
 }
 
 bool save_umount_entries(const std::vector<UmountEntry>& entries) {
-    std::ofstream ofs(UMOUNT_CONFIG_PATH);
-    if (!ofs)
-        return false;
-
-    ofs << "# KernelSU umount configuration\n";
+    std::string text = "# KernelSU umount configuration\n";
     for (const auto& entry : entries) {
-        ofs << entry.path << " " << entry.flags << "\n";
+        text += entry.path;
+        text += ' ';
+        text += std::to_string(entry.flags);
+        text += '\n';
     }
-
-    return true;
+    return write_file(UMOUNT_CONFIG_PATH, text);
 }
 
 }  // namespace
@@ -103,28 +95,26 @@ int umount_save_config() {
     }
 
     std::vector<UmountEntry> entries;
-    std::istringstream iss(*list);
-    std::string line;
-    while (std::getline(iss, line)) {
-        line = trim(line);
+    for_each_line(*list, [&entries](std::string_view raw_line) {
+        const std::string_view line = trim_view(raw_line);
         if (line.empty())
-            continue;
+            return;
 
         UmountEntry entry;
         const size_t space = line.find(' ');
-        if (space != std::string::npos) {
-            entry.path = line.substr(0, space);
-            const std::string flags_str = line.substr(space + 1);
-            if (!parse_uint32(flags_str, &entry.flags)) {
-                LOGW("umount: bad flags in kernel list: %s", line.c_str());
-                continue;
+        if (space != std::string_view::npos) {
+            entry.path.assign(line.substr(0, space));
+            if (!parse_uint32(trim_view(line.substr(space + 1)), &entry.flags)) {
+                LOGW("umount: bad flags in kernel list: %.*s", static_cast<int>(line.size()),
+                     line.data());
+                return;
             }
         } else {
-            entry.path = line;
+            entry.path.assign(line);
             entry.flags = 0;
         }
         entries.push_back(entry);
-    }
+    });
 
     if (!save_umount_entries(entries)) {
         LOGE("Failed to save umount config");

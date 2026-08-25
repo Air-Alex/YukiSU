@@ -6,9 +6,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <cstdlib>
-#include <fstream>
 #include <map>
-#include <sstream>
 
 namespace ksud {
 
@@ -29,30 +27,25 @@ std::map<std::string, std::string> load_config(const std::string& path) {
     if (!content)
         return config;
 
-    std::istringstream iss(*content);
-    std::string line;
-    while (std::getline(iss, line)) {
+    for_each_line(*content, [&config](std::string_view line) {
         const size_t eq = line.find('=');
-        if (eq != std::string::npos) {
-            const std::string key = line.substr(0, eq);
-            const std::string value = line.substr(eq + 1);
-            config[key] = value;
+        if (eq != std::string_view::npos) {
+            config[std::string(line.substr(0, eq))] = std::string(line.substr(eq + 1));
         }
-    }
+    });
 
     return config;
 }
 
 bool save_config(const std::string& path, const std::map<std::string, std::string>& config) {
-    std::ofstream ofs(path);
-    if (!ofs)
-        return false;
-
+    std::string out;
     for (const auto& [key, value] : config) {
-        ofs << key << "=" << value << "\n";
+        out += key;
+        out += '=';
+        out += value;
+        out += '\n';
     }
-
-    return true;
+    return write_file(path, out);
 }
 
 }  // namespace

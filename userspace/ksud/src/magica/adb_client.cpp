@@ -12,7 +12,6 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
-#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -73,39 +72,41 @@ const char* adb_command_name(uint32_t command) {
 std::string payload_preview(std::string_view payload) {
     constexpr size_t kPreviewLimit = 80;
 
-    std::ostringstream oss;
+    std::string preview;
+    preview.reserve(std::min(payload.size(), kPreviewLimit) + 3);
     const size_t preview_size = std::min(payload.size(), kPreviewLimit);
+    constexpr char kHex[] = "0123456789abcdef";
     for (size_t i = 0; i < preview_size; ++i) {
         const unsigned char ch = static_cast<unsigned char>(payload[i]);
         switch (ch) {
         case '\0':
-            oss << "\\0";
+            preview += "\\0";
             break;
         case '\n':
-            oss << "\\n";
+            preview += "\\n";
             break;
         case '\r':
-            oss << "\\r";
+            preview += "\\r";
             break;
         case '\t':
-            oss << "\\t";
+            preview += "\\t";
             break;
         default:
             if (std::isprint(ch) != 0) {
-                oss << static_cast<char>(ch);
+                preview += static_cast<char>(ch);
             } else {
-                oss << "\\x";
-                constexpr char kHex[] = "0123456789abcdef";
-                oss << kHex[(ch >> 4U) & 0x0fU] << kHex[ch & 0x0fU];
+                preview += "\\x";
+                preview += kHex[(ch >> 4U) & 0x0fU];
+                preview += kHex[ch & 0x0fU];
             }
             break;
         }
     }
 
     if (payload.size() > preview_size) {
-        oss << "...";
+        preview += "...";
     }
-    return oss.str();
+    return preview;
 }
 
 void log_packet(const char* direction, uint32_t command, uint32_t arg0, uint32_t arg1,

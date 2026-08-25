@@ -8,7 +8,6 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <string>
 
 namespace ksud {
@@ -135,9 +134,7 @@ bool is_bl_hiding_enabled() {
 void set_bl_hiding_enabled(bool enabled) {
     if (enabled) {
         // Create config file
-        std::ofstream f(BL_HIDE_CONFIG);
-        f << "1\n";
-        f.close();
+        (void)write_file(BL_HIDE_CONFIG, "1\n");
         LOGI("hide_bl: enabled");
     } else {
         // Remove config file

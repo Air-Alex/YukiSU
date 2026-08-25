@@ -1,4 +1,5 @@
 #include "lkm_image_core.hpp"
+#include "../utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6,7 +7,6 @@
 #include <limits>
 #include <map>
 #include <set>
-#include <sstream>
 #include <unordered_set>
 
 namespace ksud::boot::lkm_image {
@@ -45,9 +45,10 @@ constexpr std::size_t kKallsymsMinMarkers = 8;
 constexpr std::size_t kKallsymsMaxMarkers = 4096;
 
 std::string hex_value(std::size_t value) {
-    std::ostringstream stream;
-    stream << "0x" << std::hex << value;
-    return stream.str();
+    std::string text;
+    text.reserve(2 + (sizeof(value) * 2));
+    append_hex(&text, value);
+    return text;
 }
 
 bool is_power_of_two(std::size_t value) {
@@ -593,16 +594,19 @@ Result<MapSymbol> SymbolMap::resolve(const std::string& requested_name) const {
         return Result<MapSymbol>::failure(ErrorCode::kKallsymsNotFound,
                                           "symbol \"" + requested_name + "\" was not found");
     }
-    std::ostringstream message;
-    message << "symbol \"" << requested_name << "\" is not unique: ";
+    std::string message = "symbol \"";
+    message += requested_name;
+    message += "\" is not unique: ";
     const std::size_t rendered = std::min<std::size_t>(8, candidates.size());
     for (std::size_t index = 0; index < rendered; ++index) {
         if (index != 0) {
-            message << ", ";
+            message += ", ";
         }
-        message << candidates[index].name << "@0x" << std::hex << candidates[index].address;
+        message += candidates[index].name;
+        message += '@';
+        append_hex(&message, candidates[index].address);
     }
-    return Result<MapSymbol>::failure(ErrorCode::kAmbiguous, message.str());
+    return Result<MapSymbol>::failure(ErrorCode::kAmbiguous, std::move(message));
 }
 
 std::optional<MapSymbol> SymbolMap::resolve_module_symbol(const std::string& requested_name) const {

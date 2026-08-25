@@ -9,8 +9,8 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
-#include <sstream>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace ksud {
@@ -610,30 +610,26 @@ int sepolicy_live_patch(const std::string& policy) {
     int errors = 0;
     std::vector<AtomicStatement> statements;
 
-    // Split by newline and semicolon
-    std::istringstream iss(policy);
-    std::string line;
-
-    while (std::getline(iss, line)) {
-        // Handle semicolon-separated rules
-        std::istringstream line_iss(line);
-        std::string rule;
-        while (std::getline(line_iss, rule, ';')) {
-            const std::string trimmed = trim(rule);
-            if (trimmed.empty() || trimmed[0] == '#') {
-                continue;
+    // Split by newline and semicolon without constructing two stream objects per
+    // line. parse_rule still owns a NUL-terminated string because its parser is
+    // pointer-based; that is the only allocation left per non-empty rule.
+    for_each_line(policy, [&](std::string_view line) {
+        for_each_field(line, ';', [&](std::string_view raw_rule) {
+            const std::string_view trimmed_view = trim_view(raw_rule);
+            if (trimmed_view.empty() || trimmed_view[0] == '#') {
+                return;
             }
-
+            const std::string trimmed(trimmed_view);
             std::vector<AtomicStatement> rule_stmts;
             if (!parse_rule(trimmed, rule_stmts)) {
                 LOGW("Failed to parse rule: %s", trimmed.c_str());
                 errors++;
-                continue;
+                return;
             }
 
             statements.insert(statements.end(), rule_stmts.begin(), rule_stmts.end());
-        }
-    }
+        });
+    });
 
     if (errors > 0) {
         return 1;
@@ -673,7 +669,7 @@ int sepolicy_apply_file(const std::string& file) {
 
 namespace {
 
-bool is_valid_rule_type(const std::string& trimmed) {
+bool is_valid_rule_type(std::string_view trimmed) {
     return starts_with(trimmed, "allow") || starts_with(trimmed, "deny") ||
            starts_with(trimmed, "auditallow") || starts_with(trimmed, "dontaudit") ||
            starts_with(trimmed, "allowxperm") || starts_with(trimmed, "auditallowxperm") ||
@@ -696,24 +692,22 @@ int sepolicy_check_rule(const std::string& policy_or_file) {
             return 1;
         }
 
-        std::istringstream iss(*content);
-        std::string line;
         int line_num = 0;
         int errors = 0;
-
-        while (std::getline(iss, line)) {
+        for_each_line(*content, [&](std::string_view line) {
             line_num++;
-            const std::string trimmed = trim(line);
+            const std::string_view trimmed = trim_view(line);
 
             if (trimmed.empty() || trimmed[0] == '#') {
-                continue;
+                return;
             }
 
             if (!is_valid_rule_type(trimmed)) {
-                printf("Line %d: Unknown rule type: %s\n", line_num, trimmed.c_str());
+                printf("Line %d: Unknown rule type: %.*s\n", line_num,
+                       static_cast<int>(trimmed.size()), trimmed.data());
                 errors++;
             }
-        }
+        });
 
         if (errors > 0) {
             printf("Found %d invalid rules\n", errors);
@@ -725,7 +719,7 @@ int sepolicy_check_rule(const std::string& policy_or_file) {
     }
 
     // Treat as a single rule
-    const std::string trimmed = trim(policy_or_file);
+    const std::string_view trimmed = trim_view(policy_or_file);
 
     if (trimmed.empty()) {
         printf("Invalid: empty rule\n");

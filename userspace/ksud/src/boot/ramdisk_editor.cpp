@@ -12,7 +12,6 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <optional>
 #include <string>
@@ -107,8 +106,6 @@ struct FrameHeader {
     std::uint32_t request_id = 0;
     std::uint64_t payload_size = 0;
 };
-
-using DumpAction = std::function<bool()>;
 
 struct SessionDocument {
     CpioDocument* document = nullptr;
@@ -526,6 +523,7 @@ bool handle_read(std::vector<SessionDocument>& documents, PayloadReader& reader,
                                             });
 }
 
+template <typename DumpAction>
 bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& dump_action,
                     bool& dirty, bool& should_close, PayloadReader& reader, int output_fd,
                     const FrameHeader& request) {
@@ -914,6 +912,7 @@ bool handle_request(std::vector<SessionDocument>& documents, const DumpAction& d
     return send_invalid_response(reader, output_fd, request);
 }
 
+template <typename DumpAction>
 int run_document_session(std::vector<SessionDocument> documents, const DumpAction& dump_action,
                          int input_fd, int output_fd) {
     if (documents.empty() || documents.size() > kMaximumDocumentCount ||

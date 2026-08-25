@@ -2,10 +2,15 @@
 #include "../log.hpp"
 #include "../utils.hpp"
 
+#include <fcntl.h>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <array>
+#include <cerrno>
 #include <climits>
+#include <cstring>
 #include <vector>
 
 namespace ksud {
@@ -30,33 +35,108 @@ std::string find_magiskboot(const std::string& specified_path, const std::string
     return {self_path.data()};
 }
 
-// DD command wrapper
+// Copy a whole image, replacing the previous `dd` exec. Beyond dropping a PATH
+// lookup and a fork+exec of toybox per call, this removes a real hazard: the old
+// code retried WITHOUT conv=fsync when the first attempt failed, so a boot
+// partition could be left unflushed before a reboot. Here the fsync is not
+// optional.
+//
+// copy_file_range/sendfile are not usable: either endpoint may be a block device
+// (a boot partition), which neither supports.
 bool exec_dd(const std::string& input, const std::string& output) {
-    auto result = exec_command({"dd", "if=" + input, "of=" + output, "bs=4M", "conv=fsync"});
-    if (result.exit_code == 0) {
-        return true;
+    const int in_fd = open(input.c_str(), O_RDONLY | O_CLOEXEC);
+    if (in_fd < 0) {
+        LOGE("dd: cannot open %s: %s", input.c_str(), strerror(errno));
+        return false;
     }
 
-    // Fallback for older toybox/busybox dd variants that may not support conv=fsync.
-    auto fallback = exec_command({"dd", "if=" + input, "of=" + output});
-    if (fallback.exit_code == 0) {
-        return true;
+    // A block-device destination is a partition: never create or truncate it.
+    // A regular-file destination is an image we do want to replace outright.
+    struct stat dst_st{};
+    const bool dst_is_block = stat(output.c_str(), &dst_st) == 0 && S_ISBLK(dst_st.st_mode);
+    int out_flags = O_WRONLY | O_CLOEXEC;
+    if (!dst_is_block) {
+        out_flags |= O_CREAT | O_TRUNC;
+    }
+    const int out_fd = open(output.c_str(), out_flags, 0600);
+    if (out_fd < 0) {
+        LOGE("dd: cannot open %s for writing: %s", output.c_str(), strerror(errno));
+        close(in_fd);
+        return false;
     }
 
-    LOGE("dd failed: if=%s of=%s", input.c_str(), output.c_str());
-    if (!result.stderr_str.empty()) {
-        LOGE("dd stderr(primary): %s", result.stderr_str.c_str());
+    // Matches the old bs=4M throughput without a 4 MiB buffer.
+    constexpr size_t kChunk = 1024UL * 1024;
+    std::vector<char> buf(kChunk);
+    bool ok = true;
+    for (;;) {
+        const ssize_t n = read(in_fd, buf.data(), buf.size());
+        if (n == 0) {
+            break;
+        }
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            LOGE("dd: read %s failed: %s", input.c_str(), strerror(errno));
+            ok = false;
+            break;
+        }
+        size_t written = 0;
+        while (written < static_cast<size_t>(n)) {
+            const ssize_t w = write(out_fd, buf.data() + written, static_cast<size_t>(n) - written);
+            if (w < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                LOGE("dd: write %s failed: %s", output.c_str(), strerror(errno));
+                ok = false;
+                break;
+            }
+            if (w == 0) {
+                // Not reachable for a non-zero count per POSIX, but a driver that
+                // does it would spin this loop forever with the partition half
+                // written. Fail the flash instead of hanging.
+                LOGE("dd: write %s made no progress", output.c_str());
+                ok = false;
+                break;
+            }
+            written += static_cast<size_t>(w);
+        }
+        if (!ok) {
+            break;
+        }
     }
-    if (!result.stdout_str.empty()) {
-        LOGE("dd stdout(primary): %s", result.stdout_str.c_str());
+
+    // Flush before reporting success: callers may reboot straight after this.
+    if (ok && fsync(out_fd) != 0) {
+        LOGE("dd: fsync %s failed: %s", output.c_str(), strerror(errno));
+        ok = false;
     }
-    if (!fallback.stderr_str.empty()) {
-        LOGE("dd stderr(fallback): %s", fallback.stderr_str.c_str());
+    if (close(out_fd) != 0 && ok) {
+        LOGE("dd: close %s failed: %s", output.c_str(), strerror(errno));
+        ok = false;
     }
-    if (!fallback.stdout_str.empty()) {
-        LOGE("dd stdout(fallback): %s", fallback.stdout_str.c_str());
+    close(in_fd);
+    return ok;
+}
+
+// `blockdev --setrw` is a single BLKROSET ioctl. Spawning a process to reach it
+// also meant a PATH lookup, and the exit code came back as an opaque number with
+// the real errno buried in the child's stderr.
+bool set_block_device_rw(const std::string& device) {
+    const int fd = open(device.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        LOGW("setrw: cannot open %s: %s", device.c_str(), strerror(errno));
+        return false;
     }
-    return false;
+    int read_only = 0;
+    const bool ok = ioctl(fd, BLKROSET, &read_only) == 0;
+    if (!ok) {
+        LOGW("setrw: BLKROSET on %s refused: %s", device.c_str(), strerror(errno));
+    }
+    close(fd);
+    return ok;
 }
 
 }  // namespace ksud

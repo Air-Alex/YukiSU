@@ -15,15 +15,15 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <iomanip>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -412,44 +412,105 @@ ScanResult scan_regular_files(const fs::path& directory, bool hash_contents = fa
     return result;
 }
 
+bool consume_int64(std::string_view* rest, int64_t* value) {
+    const std::string_view token = next_token(rest);
+    if (token.empty())
+        return false;
+    const auto [end, error] =
+        std::from_chars(token.data(), token.data() + token.size(), *value, 10);
+    return error == std::errc{} && end == token.data() + token.size();
+}
+
+// Compatible with std::quoted's default format: double-quoted, with backslash
+// escaping the next byte. `rest` is advanced past the closing quote.
+bool consume_quoted(std::string_view* rest, std::string* value) {
+    *rest = trim_view(*rest);
+    if (rest->empty() || rest->front() != '"')
+        return false;
+    value->clear();
+    bool escaped = false;
+    for (size_t index = 1; index < rest->size(); ++index) {
+        const char ch = (*rest)[index];
+        if (escaped) {
+            value->push_back(ch);
+            escaped = false;
+        } else if (ch == '\\') {
+            escaped = true;
+        } else if (ch == '"') {
+            rest->remove_prefix(index + 1);
+            return true;
+        } else {
+            value->push_back(ch);
+        }
+    }
+    return false;
+}
+
+void append_quoted(std::string* out, std::string_view value) {
+    out->push_back('"');
+    for (const char ch : value) {
+        if (ch == '"' || ch == '\\')
+            out->push_back('\\');
+        out->push_back(ch);
+    }
+    out->push_back('"');
+}
+
 std::optional<Inventory> read_inventory(const fs::path& path) {
     const auto content = read_root_regular_file_no_follow(path, kMaxInventorySize);
     if (!content)
         return std::nullopt;
 
-    std::istringstream input(*content);
     Inventory inventory;
-    std::string line;
-    while (std::getline(input, line)) {
+    bool valid = true;
+    for_each_line(*content, [&](std::string_view line) {
         if (line.empty())
-            continue;
-        std::istringstream record(line);
+            return true;
+        std::string_view rest = line;
         FileStamp stamp;
         std::string name;
-        if (!(record >> stamp.device >> stamp.inode >> stamp.size >> stamp.mtime_sec >>
-              stamp.mtime_nsec >> std::quoted(name)))
-            return std::nullopt;
-        record >> std::ws;
-        if (!record.eof()) {
-            if (!(record >> std::quoted(stamp.digest)))
-                return std::nullopt;
-            record >> std::ws;
-            if (!record.eof())
-                return std::nullopt;
+        if (!parse_uint64(next_token(&rest), &stamp.device) ||
+            !parse_uint64(next_token(&rest), &stamp.inode) ||
+            !parse_uint64(next_token(&rest), &stamp.size) ||
+            !consume_int64(&rest, &stamp.mtime_sec) || !consume_int64(&rest, &stamp.mtime_nsec) ||
+            !consume_quoted(&rest, &name)) {
+            valid = false;
+            return false;
         }
-        inventory[name] = stamp;
-    }
-    return inventory;
+        rest = trim_view(rest);
+        if (!rest.empty() && !consume_quoted(&rest, &stamp.digest)) {
+            valid = false;
+            return false;
+        }
+        if (!trim_view(rest).empty()) {
+            valid = false;
+            return false;
+        }
+        inventory[name] = std::move(stamp);
+        return true;
+    });
+    return valid ? std::optional<Inventory>(std::move(inventory)) : std::nullopt;
 }
 
 bool write_inventory(const fs::path& path, const ScanResult& scan) {
-    std::ostringstream output;
+    std::string output;
     for (const auto& [name, stamp] : scan.files) {
-        output << stamp.device << ' ' << stamp.inode << ' ' << stamp.size << ' ' << stamp.mtime_sec
-               << ' ' << stamp.mtime_nsec << ' ' << std::quoted(name) << ' '
-               << std::quoted(stamp.digest) << '\n';
+        append_uint(&output, stamp.device);
+        output += ' ';
+        append_uint(&output, stamp.inode);
+        output += ' ';
+        append_uint(&output, stamp.size);
+        output += ' ';
+        append_int(&output, stamp.mtime_sec);
+        output += ' ';
+        append_int(&output, stamp.mtime_nsec);
+        output += ' ';
+        append_quoted(&output, name);
+        output += ' ';
+        append_quoted(&output, stamp.digest);
+        output += '\n';
     }
-    return write_atomic_file(path, output.str());
+    return write_atomic_file(path, output);
 }
 
 CaptureResult capture_changed_files(const fs::path& source, const fs::path& baseline_path,
@@ -545,19 +606,26 @@ bool read_early_snapshot(yz_early_native_snapshot_header* header) {
 }
 
 bool write_early_linker(const fs::path& directory, const yz_early_native_snapshot_header& header) {
-    std::ostringstream output;
-    output << "{\n"
-           << "  \"version\": " << header.version << ",\n"
-           << "  \"flags\": " << header.flags << ",\n"
-           << "  \"module_count\": " << header.count << ",\n"
-           << "  \"arm64\": {\"dlopen\": \"0x" << std::hex << header.dlopen_offset
-           << "\", \"dlsym\": \"0x" << header.dlsym_offset << "\", \"linker_size\": \"0x"
-           << header.linker_size << "\"},\n"
-           << "  \"arm\": {\"dlopen\": \"0x" << header.dlopen32_offset << "\", \"dlsym\": \"0x"
-           << header.dlsym32_offset << "\", \"linker_size\": \"0x" << header.linker32_size
-           << "\"}\n"
-           << "}\n";
-    return write_atomic_file(directory / kEarlyLinkerName, output.str());
+    std::string output = "{\n  \"version\": ";
+    append_uint(&output, header.version);
+    output += ",\n  \"flags\": ";
+    append_uint(&output, header.flags);
+    output += ",\n  \"module_count\": ";
+    append_uint(&output, header.count);
+    output += ",\n  \"arm64\": {\"dlopen\": \"";
+    append_hex(&output, header.dlopen_offset);
+    output += "\", \"dlsym\": \"";
+    append_hex(&output, header.dlsym_offset);
+    output += "\", \"linker_size\": \"";
+    append_hex(&output, header.linker_size);
+    output += "\"},\n  \"arm\": {\"dlopen\": \"";
+    append_hex(&output, header.dlopen32_offset);
+    output += "\", \"dlsym\": \"";
+    append_hex(&output, header.dlsym32_offset);
+    output += "\", \"linker_size\": \"";
+    append_hex(&output, header.linker32_size);
+    output += "\"}\n}\n";
+    return write_atomic_file(directory / kEarlyLinkerName, output);
 }
 
 bool mark_evidence(const fs::path& directory, const char* reason) {
@@ -642,33 +710,42 @@ void capture_previous_boot(const fs::path& current) {
     if (tombstones.copied > 0 || pstore.copied > 0)
         (void)mark_evidence(current, "previous-boot-crash-data");
 
-    std::ostringstream output;
-    output << "{\n"
-           << "  \"captured_at_unix\": " << static_cast<int64_t>(time(nullptr)) << ",\n"
-           << "  \"tombstones\": {\"available\": " << (tombstones.available ? "true" : "false")
-           << ", \"copied\": " << tombstones.copied << ", \"failed\": " << tombstones.failed
-           << ", \"skipped\": " << tombstones.skipped << ", \"bytes\": " << tombstones.bytes
-           << "},\n"
-           << "  \"pstore\": {\"available\": " << (pstore.available ? "true" : "false")
-           << ", \"copied\": " << pstore.copied << ", \"failed\": " << pstore.failed
-           << ", \"skipped\": " << pstore.skipped << ", \"bytes\": " << pstore.bytes << "}\n"
-           << "}\n";
-    (void)write_atomic_file(current / kCaptureStateName, output.str());
+    std::string output = "{\n  \"captured_at_unix\": ";
+    append_int(&output, static_cast<int64_t>(time(nullptr)));
+    output += ",\n  \"tombstones\": {\"available\": ";
+    output += tombstones.available ? "true" : "false";
+    output += ", \"copied\": ";
+    append_uint(&output, tombstones.copied);
+    output += ", \"failed\": ";
+    append_uint(&output, tombstones.failed);
+    output += ", \"skipped\": ";
+    append_uint(&output, tombstones.skipped);
+    output += ", \"bytes\": ";
+    append_uint(&output, tombstones.bytes);
+    output += "},\n  \"pstore\": {\"available\": ";
+    output += pstore.available ? "true" : "false";
+    output += ", \"copied\": ";
+    append_uint(&output, pstore.copied);
+    output += ", \"failed\": ";
+    append_uint(&output, pstore.failed);
+    output += ", \"skipped\": ";
+    append_uint(&output, pstore.skipped);
+    output += ", \"bytes\": ";
+    append_uint(&output, pstore.bytes);
+    output += "}\n}\n";
+    (void)write_atomic_file(current / kCaptureStateName, output);
 }
 
 bool initialize_current_generation(const fs::path& current, const std::string& boot_id) {
     if (!ensure_secure_directory(current) || !ensure_secure_directory(current / kLogsName))
         return false;
-    std::ostringstream state;
-    state << "{\n"
-          << "  \"boot_id\": \"" << json_escape(boot_id) << "\",\n"
-          << "  \"updated_at_unix\": " << static_cast<int64_t>(time(nullptr)) << ",\n"
-          << "  \"phase\": \"early\",\n"
-          << "  \"safe_mode\": null,\n"
-          << "  \"feature_supported\": null,\n"
-          << "  \"feature_enabled\": null\n"
-          << "}\n";
-    if (!write_atomic_file(current / kBootStateName, state.str()))
+    std::string state = "{\n  \"boot_id\": \"";
+    state += json_escape(boot_id);
+    state += "\",\n  \"updated_at_unix\": ";
+    append_int(&state, static_cast<int64_t>(time(nullptr)));
+    state += ",\n  \"phase\": \"early\",\n  \"safe_mode\": null,\n"
+             "  \"feature_supported\": null,\n  \"feature_enabled\": null\n}\n";
+    if (!write_atomic_file(current / kBootStateName, state))
         return false;
 
     (void)write_inventory(current / kTombstonesBaselineName, scan_regular_files(kTombstonesPath));
@@ -861,16 +938,21 @@ void update_yukizygisk_boot_diagnostics(bool safe_mode, bool feature_supported,
     if (!boot_id)
         return;
 
-    std::ostringstream state;
-    state << "{\n"
-          << "  \"boot_id\": \"" << json_escape(*boot_id) << "\",\n"
-          << "  \"updated_at_unix\": " << static_cast<int64_t>(time(nullptr)) << ",\n"
-          << "  \"phase\": \"" << json_escape(phase ? phase : "unknown") << "\",\n"
-          << "  \"safe_mode\": " << (safe_mode ? "true" : "false") << ",\n"
-          << "  \"feature_supported\": " << (feature_supported ? "true" : "false") << ",\n"
-          << "  \"feature_enabled\": " << (feature_enabled ? "true" : "false") << '\n'
-          << "}\n";
-    (void)write_atomic_file(current / kBootStateName, state.str());
+    std::string state = "{\n  \"boot_id\": \"";
+    state += json_escape(*boot_id);
+    state += "\",\n  \"updated_at_unix\": ";
+    append_int(&state, static_cast<int64_t>(time(nullptr)));
+    state += ",\n  \"phase\": \"";
+    state += json_escape(phase ? phase : "unknown");
+    state += "\",\n  \"safe_mode\": ";
+    state += safe_mode ? "true" : "false";
+    state += ",\n  \"feature_supported\": ";
+    state += feature_supported ? "true" : "false";
+    state += ",\n  \"feature_enabled\": ";
+    state += feature_enabled ? "true" : "false";
+    state += '\n';
+    state += "}\n";
+    (void)write_atomic_file(current / kBootStateName, state);
     if (feature_supported && feature_enabled)
         (void)mark_evidence(current, "feature-enabled");
 }

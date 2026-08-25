@@ -6,7 +6,6 @@
 
 #include <dirent.h>
 #include <unistd.h>
-#include <fstream>
 
 namespace ksud {
 

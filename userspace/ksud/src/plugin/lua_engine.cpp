@@ -43,6 +43,10 @@ extern "C" {
 #include <utility>
 #include <vector>
 
+#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+extern "C" int resetprop_main(int argc, char** argv);
+#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
+
 namespace ksud {
 
 namespace fs = std::filesystem;
@@ -585,6 +589,26 @@ void drain_pipe(int* fd, std::string* output, bool* truncated) {
     }
 }
 
+// resetprop is welded into ksud as a multi-call entry, so a plugin setprop needs
+// no child process. Matches how core/hide_bootloader, init_event and magica
+// already reach it.
+CapturedCommand run_command(const std::vector<std::string>& arguments);
+
+bool set_prop_builtin(const std::string& name, const std::string& value) {
+#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+    std::array<char*, 5> argv{
+        const_cast<char*>("resetprop"),
+        const_cast<char*>("-n"),
+        const_cast<char*>(name.c_str()),
+        const_cast<char*>(value.c_str()),
+        nullptr,
+    };
+    return resetprop_main(4, argv.data()) == 0;
+#else
+    return run_command({RESETPROP_PATH, "-n", name, value}).exit_code == 0;
+#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
+}
+
 CapturedCommand run_command(const std::vector<std::string>& arguments) {
     CapturedCommand result;
     if (arguments.empty())
@@ -1104,9 +1128,8 @@ int lua_api_setprop(lua_State* state) {
         name_size + value_size > kMaxCommandArgumentBytes) {
         return luaL_error(state, "setprop arguments are invalid or too large");
     }
-    const CapturedCommand result = run_command(
-        {RESETPROP_PATH, "-n", std::string(name, name_size), std::string(value, value_size)});
-    lua_pushboolean(state, result.exit_code == 0);
+    lua_pushboolean(state,
+                    set_prop_builtin(std::string(name, name_size), std::string(value, value_size)));
     return 1;
 }
 
@@ -1787,7 +1810,9 @@ bool stop_plugin_daemons(const std::string& plugin_id, std::string* error) {
     }
     bool success = true;
     std::string first_error;
-    for (const auto& entry : iterator) {
+    for (auto it = iterator; it != fs::directory_iterator() && !iterator_error;
+         it.increment(iterator_error)) {
+        const auto& entry = *it;
         const std::string filename = entry.path().filename().string();
         if (!daemon_lock_belongs_to(filename, plugin_id))
             continue;
@@ -1798,6 +1823,11 @@ bool stop_plugin_daemons(const std::string& plugin_id, std::string* error) {
             if (first_error.empty())
                 first_error = std::move(stop_error);
         }
+    }
+    if (iterator_error) {
+        success = false;
+        if (first_error.empty())
+            first_error = "Cannot enumerate plugin daemons: " + iterator_error.message();
     }
     if (!success)
         *error = std::move(first_error);

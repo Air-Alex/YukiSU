@@ -4,6 +4,7 @@
 #include "core/ksucalls.hpp"
 #include "defs.hpp"
 #include "userspace/zygisk/daemon/native_modules.hpp"
+#include "utils.hpp"
 #include "yukizygisk_snapshot.hpp"
 
 #include "uapi/yukizygisk.h"
@@ -19,7 +20,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -221,19 +221,19 @@ ModuleInventory scan_modules() {
             inventory.zygisk_modules.push_back(module_id);
         }
 
-        std::ifstream manifest(base + "/zn_modules.txt");
+        const auto manifest = read_file(base + "/zn_modules.txt");
         if (!manifest)
             continue;
 
-        std::string line;
-        while (std::getline(manifest, line)) {
+        for_each_line(*manifest, [&](std::string_view raw_line) {
             NativeModule module;
-            if (!yukizygisk::native::parse_native_module_line(module_id, base, line, &module)) {
-                continue;
+            if (!yukizygisk::native::parse_native_module_line(module_id, base,
+                                                              std::string(raw_line), &module)) {
+                return;
             }
             const uint8_t abi = elf_abi(module.lib_path);
             if (abi == YZ_RUNTIME_ABI_UNKNOWN)
-                continue;
+                return;
             const auto key =
                 std::make_tuple(module.module_id, module.target_type, module.target, abi);
             if (native_keys.insert(key).second) {
@@ -252,7 +252,7 @@ ModuleInventory scan_modules() {
                         existing->module.has_companion || module.has_companion;
                 }
             }
-        }
+        });
     }
     std::sort(inventory.native_modules.begin(), inventory.native_modules.end(),
               [](const NativeDefinition& left, const NativeDefinition& right) {

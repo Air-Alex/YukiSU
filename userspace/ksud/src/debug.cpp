@@ -9,7 +9,6 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 
 namespace ksud {
 
@@ -18,21 +17,12 @@ static constexpr const char* KERNEL_PARAM_PATH = "/sys/module/kernelsu/parameter
 namespace {
 
 bool read_u32(const std::string& path, uint32_t& value) {
-    std::ifstream ifs(path);
-    if (!ifs) {
-        return false;
-    }
-    ifs >> value;
-    return true;
+    const auto content = read_file(path);
+    return content && parse_uint32(trim_view(*content), &value);
 }
 
 bool write_u32(const std::string& path, uint32_t value) {
-    std::ofstream ofs(path);
-    if (!ofs) {
-        return false;
-    }
-    ofs << value;
-    return ofs.good();
+    return write_file(path, std::to_string(value));
 }
 
 bool get_pkg_uid(const std::string& pkg, uint32_t& uid) {
@@ -50,7 +40,8 @@ bool get_pkg_uid(const std::string& pkg, uint32_t& uid) {
 
 int debug_set_manager(const std::string& pkg) {
     // Check if CONFIG_KSU_DEBUG is enabled
-    if (!std::filesystem::exists(KERNEL_PARAM_PATH)) {
+    std::error_code path_error;
+    if (!std::filesystem::exists(KERNEL_PARAM_PATH, path_error) || path_error) {
         printf("CONFIG_KSU_DEBUG is not enabled in kernel\n");
         return 1;
     }

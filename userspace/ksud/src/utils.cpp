@@ -8,6 +8,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -15,21 +16,99 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <thread>
+#include <limits>
+#include <string_view>
 #include <vector>
+
+#include "miniz.h"
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif  // #ifdef __ANDROID__
-#ifdef USE_LIBZIP
-#include <zip.h>
-#endif  // #ifdef USE_LIBZIP
+
+#if defined(MAGISKBOOT_ALONE_AVAILABLE) && MAGISKBOOT_ALONE_AVAILABLE
+extern int magiskboot_main(int argc, char** argv);
+#endif  // #if defined(MAGISKBOOT_ALONE_AVAILABLE)...
 
 namespace ksud {
+
+namespace {
+
+// magiskboot is welded into this binary as a multi-call entry. Keep the
+// availability check in one place so the callers below read the same either way.
+int run_magiskboot_main(int argc, char** argv) {
+#if defined(MAGISKBOOT_ALONE_AVAILABLE) && MAGISKBOOT_ALONE_AVAILABLE
+    return magiskboot_main(argc, argv);
+#else
+    (void)argc;
+    (void)argv;
+    LOGE("magiskboot is not built into this ksud");
+    return 127;
+#endif  // #if defined(MAGISKBOOT_ALONE_AVAILABLE)...
+}
+
+// Byte-for-byte file copy. The stream version (`dst << src.rdbuf()`) went
+// through streambuf one character at a time; this is a plain bulk read/write.
+bool copy_file_contents_impl(const char* src_path, const char* dst_path, mode_t mode,
+                             bool overwrite) {
+    const int in_fd = open(src_path, O_RDONLY | O_CLOEXEC);
+    if (in_fd < 0)
+        return false;
+    const int out_flags = O_WRONLY | O_CREAT | O_CLOEXEC | (overwrite ? O_TRUNC : O_EXCL);
+    const int out_fd = open(dst_path, out_flags, mode);
+    if (out_fd < 0) {
+        close(in_fd);
+        return false;
+    }
+
+    bool ok = true;
+    std::array<char, 65536> buf{};
+    for (;;) {
+        const ssize_t n = read(in_fd, buf.data(), buf.size());
+        if (n == 0)
+            break;
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            ok = false;
+            break;
+        }
+        size_t written = 0;
+        while (written < static_cast<size_t>(n)) {
+            const ssize_t w = write(out_fd, buf.data() + written, static_cast<size_t>(n) - written);
+            if (w < 0) {
+                if (errno == EINTR)
+                    continue;
+                ok = false;
+                break;
+            }
+            if (w == 0) {
+                // Cannot happen for a non-zero count per POSIX; guard anyway so a
+                // misbehaving fd cannot spin here forever.
+                ok = false;
+                break;
+            }
+            written += static_cast<size_t>(w);
+        }
+        if (!ok)
+            break;
+    }
+    if (close(out_fd) != 0)
+        ok = false;
+    close(in_fd);
+    return ok;
+}
+
+}  // namespace
+
+bool copy_file_data(const std::filesystem::path& source, const std::filesystem::path& target,
+                    mode_t mode, bool overwrite) {
+    return copy_file_contents_impl(source.c_str(), target.c_str(), mode, overwrite);
+}
 
 bool ensure_dir_exists(const std::string& path) {
     struct stat st{};
@@ -39,6 +118,7 @@ bool ensure_dir_exists(const std::string& path) {
 
     // Create directory recursively
     std::string current;
+    current.reserve(path.size());
     for (const char c : path) {
         current += c;
         if (c == '/' && !current.empty()) {
@@ -219,10 +299,7 @@ void switch_cgroup(const char* grp, pid_t pid) {
         return;
     }
 
-    std::ofstream ofs(path, std::ios::app);
-    if (ofs) {
-        ofs << pid;
-    }
+    (void)append_file(path, std::to_string(pid));
 }
 }  // namespace
 
@@ -248,13 +325,17 @@ bool has_magisk() {
     if (!path_env)
         return false;
 
-    const std::string path_str(path_env);
-    std::stringstream ss(path_str);
-    std::string dir;
-
-    while (std::getline(ss, dir, ':')) {
-        const std::string magisk_path = dir + "/magisk";
-        if (access(magisk_path.c_str(), X_OK) == 0) {
+    const std::string_view path_str(path_env);
+    std::string candidate;
+    for (size_t begin = 0; begin <= path_str.size();) {
+        const size_t end = std::min(path_str.find(':', begin), path_str.size());
+        const std::string_view dir = path_str.substr(begin, end - begin);
+        begin = end + 1;
+        if (dir.empty())
+            continue;
+        candidate.assign(dir);
+        candidate += "/magisk";
+        if (access(candidate.c_str(), X_OK) == 0) {
             return true;
         }
     }
@@ -262,62 +343,340 @@ bool has_magisk() {
     return false;
 }
 
-std::string trim(const std::string& str) {
+std::string_view trim_view(std::string_view str) {
     const size_t start = str.find_first_not_of(" \t\n\r");
-    if (start == std::string::npos)
-        return "";
-    const size_t end = str.find_last_not_of(" \t\n\r");
-    return str.substr(start, end - start + 1);
+    if (start == std::string_view::npos)
+        return {};
+    return str.substr(start, str.find_last_not_of(" \t\n\r") - start + 1);
+}
+
+std::string trim(const std::string& str) {
+    return std::string(trim_view(str));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::vector<std::string> split(const std::string& str, char delim) {
     std::vector<std::string> result;
-    std::stringstream ss(str);
-    std::string item;
-    while (std::getline(ss, item, delim)) {
-        result.push_back(item);
+    // Reproduce the getline loop this replaced exactly: an empty input yields no
+    // fields at all, and a trailing delimiter terminates the last field rather
+    // than starting an empty one after it. Interior and leading empty fields are
+    // kept. Current callers skip empty lines anyway, but this is a public helper.
+    if (str.empty()) {
+        return result;
+    }
+    result.reserve(1 + static_cast<size_t>(std::count(str.begin(), str.end(), delim)));
+    for (size_t begin = 0; begin <= str.size();) {
+        const size_t end = std::min(str.find(delim, begin), str.size());
+        result.emplace_back(str, begin, end - begin);
+        begin = end + 1;
+    }
+    if (str.back() == delim) {
+        result.pop_back();
     }
     return result;
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-bool starts_with(const std::string& str, const std::string& prefix) {
+bool starts_with(std::string_view str, std::string_view prefix) {
     return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-bool ends_with(const std::string& str, const std::string& suffix) {
+bool ends_with(std::string_view str, std::string_view suffix) {
     return str.size() >= suffix.size() &&
            str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+void append_hex(std::string* out, uint64_t value, bool prefix, size_t min_digits) {
+    std::array<char, 16> digits{};
+    const auto [end, error] =
+        std::to_chars(digits.data(), digits.data() + digits.size(), value, 16);
+    if (error != std::errc{})
+        return;
+    if (prefix)
+        out->append("0x");
+    const size_t count = static_cast<size_t>(end - digits.data());
+    if (count < min_digits)
+        out->append(min_digits - count, '0');
+    out->append(digits.data(), end);
+}
+
+void append_uint(std::string* out, uint64_t value) {
+    std::array<char, 20> digits{};
+    const auto [end, error] = std::to_chars(digits.data(), digits.data() + digits.size(), value);
+    if (error == std::errc{})
+        out->append(digits.data(), end);
+}
+
+void append_int(std::string* out, int64_t value) {
+    std::array<char, 20> digits{};
+    const auto [end, error] = std::to_chars(digits.data(), digits.data() + digits.size(), value);
+    if (error == std::errc{})
+        out->append(digits.data(), end);
+}
+
+std::optional<std::string> parse_kmi_string(std::string_view text) {
+    const auto is_digit = [](char ch) { return ch >= '0' && ch <= '9'; };
+    const auto is_space = [](char ch) {
+        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
+    };
+    constexpr std::string_view kAndroid = "android";
+
+    for (size_t begin = 0; begin < text.size(); ++begin) {
+        if (!is_digit(text[begin]))
+            continue;
+        size_t cursor = begin;
+        while (cursor < text.size() && is_digit(text[cursor]))
+            ++cursor;
+        if (cursor >= text.size() || text[cursor] != '.')
+            continue;
+        ++cursor;
+        const size_t minor_begin = cursor;
+        while (cursor < text.size() && is_digit(text[cursor]))
+            ++cursor;
+        if (cursor == minor_begin)
+            continue;
+        const size_t version_end = cursor;
+
+        size_t android_begin = std::string_view::npos;
+        size_t android_end = 0;
+        while (cursor < text.size() && !is_space(text[cursor])) {
+            if (cursor + kAndroid.size() < text.size() &&
+                text.compare(cursor, kAndroid.size(), kAndroid) == 0 &&
+                is_digit(text[cursor + kAndroid.size()])) {
+                size_t end = cursor + kAndroid.size() + 1;
+                while (end < text.size() && is_digit(text[end]))
+                    ++end;
+                // The old greedy pattern selected the last satisfiable android
+                // tag before whitespace, so keep scanning.
+                android_begin = cursor;
+                android_end = end;
+            }
+            ++cursor;
+        }
+        if (android_begin == std::string_view::npos)
+            continue;
+
+        std::string kmi(text.substr(android_begin, android_end - android_begin));
+        kmi += '-';
+        kmi.append(text.substr(begin, version_end - begin));
+        return kmi;
+    }
+    return std::nullopt;
+}
+
+std::string_view next_token(std::string_view* rest) {
+    constexpr std::string_view kSpace = " \t\r\n\f\v";
+    const size_t begin = rest->find_first_not_of(kSpace);
+    if (begin == std::string_view::npos) {
+        *rest = {};
+        return {};
+    }
+    const size_t end = rest->find_first_of(kSpace, begin);
+    const std::string_view token = rest->substr(begin, end - begin);
+    *rest = (end == std::string_view::npos) ? std::string_view{} : rest->substr(end);
+    return token;
+}
+
 std::optional<std::string> read_file(const std::string& path) {
-    std::ifstream ifs(path);  // NOLINT(misc-const-correctness) - stream has mutable state
-    if (!ifs)
+    // The stream version copied the contents three times (filebuf -> stringbuf
+    // -> returned string) and had no size hint, so the stringbuf grew
+    // geometrically. One fstat plus one reserve gets it down to a single
+    // allocation for regular files; /proc entries report st_size 0 and just
+    // grow from the first chunk.
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
         return std::nullopt;
 
-    std::stringstream ss;
-    ss << ifs.rdbuf();
-    return ss.str();
+    std::string out;
+    struct stat st{};
+    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
+        out.reserve(static_cast<size_t>(st.st_size));
+    } else {
+        // procfs/sysfs report st_size=0 despite having content.
+        out.reserve(8192);
+    }
+
+    std::array<char, 8192> buf{};
+    for (;;) {
+        const ssize_t n = read(fd, buf.data(), buf.size());
+        if (n > 0) {
+            out.append(buf.data(), static_cast<size_t>(n));
+            continue;
+        }
+        if (n == 0)
+            break;
+        if (errno == EINTR)
+            continue;
+        close(fd);
+        return std::nullopt;
+    }
+    close(fd);
+    return out;
 }
+
+bool read_file_bytes(const std::filesystem::path& path, std::vector<uint8_t>* data) {
+    if (data == nullptr)
+        return false;
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return false;
+    struct stat status{};
+    if (fstat(fd, &status) != 0 || status.st_size < 0 ||
+        static_cast<uintmax_t>(status.st_size) >
+            static_cast<uintmax_t>(std::numeric_limits<size_t>::max())) {
+        close(fd);
+        return false;
+    }
+    data->resize(static_cast<size_t>(status.st_size));
+    size_t filled = 0;
+    while (filled < data->size()) {
+        const ssize_t count = read(fd, data->data() + filled, data->size() - filled);
+        if (count > 0) {
+            filled += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        close(fd);
+        data->clear();
+        return false;
+    }
+    close(fd);
+    return true;
+}
+
+namespace {
+
+bool write_bytes_impl(const char* path, const void* data, size_t size, int extra_flags,
+                      mode_t mode) {
+    const int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC | extra_flags, mode);
+    if (fd < 0)
+        return false;
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    size_t written = 0;
+    while (written < size) {
+        const ssize_t count = write(fd, bytes + written, size - written);
+        if (count > 0) {
+            written += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        close(fd);
+        return false;
+    }
+    return close(fd) == 0;
+}
+
+// Shared by write_file/append_file: O_TRUNC vs O_APPEND is the only difference.
+bool write_file_impl(const char* path, const std::string& content, int extra_flags) {
+    return write_bytes_impl(path, content.data(), content.size(), extra_flags, 0644);
+}
+
+}  // namespace
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool write_file(const std::filesystem::path& path, const std::string& content) {
-    std::ofstream ofs(path);
-    if (!ofs)
-        return false;  // NOLINT(readability-simplify-boolean-expr)
-    ofs << content;
-    return true;
+    return write_file_impl(path.c_str(), content, O_TRUNC);
+}
+
+bool write_file_bytes(const std::filesystem::path& path, const uint8_t* data, size_t size,
+                      mode_t mode) {
+    if (size != 0 && data == nullptr)
+        return false;
+    return write_bytes_impl(path.c_str(), data, size, O_TRUNC, mode);
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+void request_reboot() {
+#ifdef __ANDROID__
+    // /system/bin/reboot is itself just a property write; spawning it bought no
+    // privilege, because the child inherits this process's SELinux domain. Do the
+    // same write directly. Deliberately not the reboot() syscall: that skips
+    // init's orderly shutdown, which is how /data gets corrupted.
+    if (__system_property_set("sys.powerctl", "reboot") == 0) {
+        return;
+    }
+    LOGW("sys.powerctl was refused; falling back to the reboot binary");
+#endif  // #ifdef __ANDROID__
+    (void)exec_command({"reboot"});
+}
+
+bool touch_file(const std::filesystem::path& path) {
+    const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+    if (fd < 0)
+        return false;
+    // futimens with a null times argument sets both stamps to now: the mtime half
+    // of touch. Creating the file above covers the other half.
+    const bool ok = futimens(fd, nullptr) == 0;
+    return close(fd) == 0 && ok;
+}
+
+namespace {
+
+// miniz is built with MINIZ_NO_STDIO, so it has no FILE* entry point; feed it a
+// pread callback the way the AnyKernel3 flasher already does.
+struct ZipFd {
+    int fd = -1;
+};
+
+size_t zip_pread(void* opaque, mz_uint64 offset, void* buffer, size_t size) {
+    auto* self = static_cast<ZipFd*>(opaque);
+    size_t total = 0;
+    while (total < size) {
+        const ssize_t count = pread(self->fd, static_cast<char*>(buffer) + total, size - total,
+                                    static_cast<off_t>(offset + total));
+        if (count > 0) {
+            total += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        break;
+    }
+    return total;
+}
+
+}  // namespace
+
+std::optional<std::string> read_zip_entry(const std::string& zip_path, const char* entry_name) {
+    ZipFd source{open(zip_path.c_str(), O_RDONLY | O_CLOEXEC)};
+    if (source.fd < 0) {
+        LOGE("zip: cannot open %s: %s", zip_path.c_str(), strerror(errno));
+        return std::nullopt;
+    }
+    struct stat status{};
+    if (fstat(source.fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size <= 0) {
+        LOGE("zip: %s is not a non-empty regular file", zip_path.c_str());
+        close(source.fd);
+        return std::nullopt;
+    }
+
+    mz_zip_archive archive{};
+    archive.m_pRead = &zip_pread;
+    archive.m_pIO_opaque = &source;
+    if (!mz_zip_reader_init(&archive, static_cast<mz_uint64>(status.st_size), 0)) {
+        LOGE("zip: %s is not a valid archive: %s", zip_path.c_str(),
+             mz_zip_get_error_string(mz_zip_get_last_error(&archive)));
+        close(source.fd);
+        return std::nullopt;
+    }
+
+    size_t size = 0;
+    void* data = mz_zip_reader_extract_file_to_heap(&archive, entry_name, &size, 0);
+    std::optional<std::string> out;
+    if (data != nullptr) {
+        out.emplace(static_cast<const char*>(data), size);
+        mz_free(data);
+    } else {
+        LOGE("zip: %s has no readable %s", zip_path.c_str(), entry_name);
+    }
+    mz_zip_reader_end(&archive);
+    close(source.fd);
+    return out;
+}
+
 bool append_file(const std::filesystem::path& path, const std::string& content) {
-    std::ofstream ofs(path, std::ios::app);
-    if (!ofs)
-        return false;  // NOLINT(readability-simplify-boolean-expr)
-    ofs << content;
-    return true;
+    return write_file_impl(path.c_str(), content, O_APPEND);
 }
 
 ExecResult exec_command(const std::vector<std::string>& args) {
@@ -468,20 +827,29 @@ ExecResult exec_command(const std::vector<std::string>& args, const std::string&
 ExecResult exec_command_magiskboot(const std::string& magiskboot_path,
                                    const std::vector<std::string>& sub_args,
                                    const std::string& workdir) {
+    // magiskboot_path is accepted for API compatibility only: magiskboot is
+    // linked into this binary, so there is nothing to locate or exec.
+    (void)magiskboot_path;
+
     std::vector<std::string> args;
     args.reserve(1 + sub_args.size());
-    args.push_back("magiskboot");
+    args.emplace_back("magiskboot");
     for (const auto& a : sub_args)
         args.push_back(a);
 
     ExecResult result{-1, "", ""};
-    if (args.empty())
-        return result;
 
     std::array<int, 2> stdout_pipe{};
     std::array<int, 2> stderr_pipe{};
     if (pipe(stdout_pipe.data()) != 0 || pipe(stderr_pipe.data()) != 0)
         return result;
+    // Drain our own stdio before forking. The child inherits a copy of these
+    // buffers, and it flushes them below; anything still pending here would be
+    // replayed into the pipe and read back as magiskboot output. The old execv
+    // discarded the inherited buffers, so this had no equivalent before. A failure
+    // here leaves the data stuck in the buffer rather than in the pipe, so there is
+    // nothing to recover and nothing useful to report.
+    (void)fflush(nullptr);
     const pid_t pid = fork();
     if (pid < 0) {
         close(stdout_pipe[0]);
@@ -500,41 +868,78 @@ ExecResult exec_command_magiskboot(const std::string& magiskboot_path,
         if (!workdir.empty() && chdir(workdir.c_str()) != 0) {
             _exit(127);
         }
+        // Call magiskboot_main directly instead of re-exec'ing /proc/self/exe:
+        // it is already in this image, so an exec would only repeat dynamic
+        // linking, relocation processing and .init_array for no benefit. The
+        // fork stays, so magiskboot keeps its own cwd, its global state, and
+        // containment for the std::abort() paths in boot_crypto.
         std::vector<char*> c_args;
         c_args.reserve(args.size() + 1U);
-        for (const auto& arg : args)
-            c_args.push_back(const_cast<char*>(arg.c_str()));
+        for (auto& arg : args)
+            c_args.push_back(arg.data());
         c_args.push_back(nullptr);
-        execv(magiskboot_path.c_str(), c_args.data());
-        _exit(127);
+        int rc = run_magiskboot_main(static_cast<int>(args.size()), c_args.data());
+        // magiskboot writes its output with buffered stdio, and stdout here is a
+        // pipe, so it is fully buffered. execv used to end in exit(), which
+        // flushes; _exit does not. Without this, callers that parse stdout --
+        // "cpio ls -r", the unpack format probe -- silently see nothing. If the
+        // flush itself fails the output is gone, so do not report success and let
+        // the caller act on an empty parse.
+        if (fflush(nullptr) != 0 && rc == 0) {
+            rc = 1;
+        }
+        _exit(rc);
     }
     close(stdout_pipe[1]);
     close(stderr_pipe[1]);
     // Cap capture at 1MB per stream to prevent cache/memory explosion if magiskboot
     // enters an infinite loop writing output.
     constexpr size_t kMaxCapture = 1024ULL * 1024;
-    auto read_fd_into = [](int fd, std::string* out, bool forward_to_stdout) {
-        std::array<char, 1024> buf{};
-        ssize_t n;
-        while ((n = read(fd, buf.data(), buf.size())) > 0) {
-            if (out->size() < kMaxCapture) {
-                const size_t to_append =
-                    std::min(static_cast<size_t>(n), kMaxCapture - out->size());
-                out->append(buf.data(), to_append);
+    // Single-threaded drain of both pipes. Two std::threads per call cost a
+    // pthread create/join and a guard page + stack mapping each, for work that
+    // is pure I/O waiting.
+    std::array<pollfd, 2> fds{};
+    fds[0] = {stdout_pipe[0], POLLIN, 0};
+    fds[1] = {stderr_pipe[0], POLLIN, 0};
+    std::array<std::string*, 2> sinks{&result.stdout_str, &result.stderr_str};
+    constexpr std::array<bool, 2> kTee{false, true};  // stderr is mirrored live
+    int open_fds = 2;
+    std::array<char, 4096> buf{};
+    while (open_fds > 0) {
+        if (poll(fds.data(), fds.size(), -1) < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        for (size_t i = 0; i < fds.size(); ++i) {
+            if (fds[i].fd < 0 || (fds[i].revents & (POLLIN | POLLHUP | POLLERR)) == 0)
+                continue;
+            const ssize_t n = read(fds[i].fd, buf.data(), buf.size());
+            if (n > 0) {
+                std::string* out = sinks[i];
+                if (out->size() < kMaxCapture) {
+                    out->append(buf.data(),
+                                std::min(static_cast<size_t>(n), kMaxCapture - out->size()));
+                }
+                if (kTee[i]) {
+                    (void)fwrite(buf.data(), 1, static_cast<size_t>(n), stdout);
+                    (void)fflush(stdout);
+                }
+                continue;
             }
-            if (forward_to_stdout && n > 0) {
-                (void)fwrite(buf.data(), 1, static_cast<size_t>(n), stdout);
-                (void)fflush(stdout);
+            if (n == 0 || (n < 0 && errno != EINTR && errno != EAGAIN)) {
+                close(fds[i].fd);
+                fds[i].fd = -1;
+                --open_fds;
             }
         }
-        close(fd);
-    };
-    std::thread t_stdout(read_fd_into, stdout_pipe[0], &result.stdout_str, false);
-    std::thread t_stderr(read_fd_into, stderr_pipe[0], &result.stderr_str, true);
+    }
+    for (auto& pfd : fds) {
+        if (pfd.fd >= 0)
+            close(pfd.fd);
+    }
     int status;
     waitpid(pid, &status, 0);
-    t_stdout.join();
-    t_stderr.join();
     if (WIFEXITED(status)) {
         result.exit_code = WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
@@ -551,6 +956,25 @@ ExecResult exec_command_magiskboot(const std::string& magiskboot_path,
         result.stderr_str.push_back('\n');
     }
     return result;
+}
+
+int magiskboot_query(const std::vector<std::string>& sub_args) {
+    // Read-only magiskboot subcommands (cpio exists/test/ls) report through the
+    // exit status and print nothing on the success path, so they need neither a
+    // pipe nor a child: run them in this process. Callers must pass absolute
+    // paths -- there is no chdir here, by design.
+    std::vector<std::string> args;
+    args.reserve(1 + sub_args.size());
+    args.emplace_back("magiskboot");
+    for (const auto& a : sub_args)
+        args.push_back(a);
+
+    std::vector<char*> c_args;
+    c_args.reserve(args.size() + 1U);
+    for (auto& arg : args)
+        c_args.push_back(arg.data());
+    c_args.push_back(nullptr);
+    return run_magiskboot_main(static_cast<int>(args.size()), c_args.data());
 }
 
 int exec_command_async(const std::vector<std::string>& args) {
@@ -585,16 +1009,10 @@ bool copy_optional_file(const std::optional<std::string>& src_path, const char* 
         return true;
     }
 
-    std::ifstream src(*src_path, std::ios::binary);  // NOLINT(misc-const-correctness)
-    std::ofstream dst(dst_path, std::ios::binary);
-    if (!src || !dst) {
+    if (!copy_file_data(*src_path, dst_path)) {
         LOGE("Failed to copy %s from %s", dst_path, src_path->c_str());
         return false;
     }
-
-    dst << src.rdbuf();
-    src.close();
-    dst.close();
 
     chmod(dst_path, mode);
     (void)restorecon(std::filesystem::path(dst_path), false);
@@ -620,15 +1038,10 @@ int install(const std::optional<std::string>& magiskboot_path,
     self_path[static_cast<size_t>(len)] = '\0';
 
     // Copy binary
-    std::ifstream src(self_path.data(), std::ios::binary);
-    std::ofstream dst(DAEMON_PATH, std::ios::binary);
-    if (!src || !dst) {
+    if (!copy_file_data(self_path.data(), DAEMON_PATH)) {
         LOGE("Failed to copy ksud");
         return 1;
     }
-    dst << src.rdbuf();
-    src.close();
-    dst.close();
 
     chmod(DAEMON_PATH, 0755);
 
@@ -678,7 +1091,8 @@ int install(const std::optional<std::string>& magiskboot_path,
 
 int uninstall(const std::optional<std::string>& magiskboot_path) {
     // Uninstall modules
-    if (std::filesystem::exists(MODULE_DIR)) {
+    std::error_code fs_error;
+    if (std::filesystem::exists(MODULE_DIR, fs_error) && !fs_error) {
         printf("- Uninstall modules..\n");
         // Disable all modules
         std::error_code ec;
@@ -686,7 +1100,9 @@ int uninstall(const std::optional<std::string>& magiskboot_path) {
              it != std::filesystem::directory_iterator() && !ec; it.increment(ec)) {
             if (it->is_directory()) {
                 const std::string disable_file = it->path().string() + "/disable";
-                std::ofstream(disable_file).close();
+                const int marker = open(disable_file.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+                if (marker >= 0)
+                    close(marker);
             }
         }
         if (ec) {
@@ -695,9 +1111,18 @@ int uninstall(const std::optional<std::string>& magiskboot_path) {
     }
 
     printf("- Removing directories..\n");
-    std::filesystem::remove_all(WORKING_DIR);
-    std::filesystem::remove(DAEMON_PATH);
-    std::filesystem::remove_all(MODULE_DIR);
+    fs_error.clear();
+    std::filesystem::remove_all(WORKING_DIR, fs_error);
+    if (fs_error)
+        LOGW("Failed to remove %s: %s", WORKING_DIR, fs_error.message().c_str());
+    fs_error.clear();
+    std::filesystem::remove(DAEMON_PATH, fs_error);
+    if (fs_error)
+        LOGW("Failed to remove %s: %s", DAEMON_PATH, fs_error.message().c_str());
+    fs_error.clear();
+    std::filesystem::remove_all(MODULE_DIR, fs_error);
+    if (fs_error)
+        LOGW("Failed to remove %s: %s", MODULE_DIR, fs_error.message().c_str());
 
     printf("- Restore boot image..\n");
     std::vector<std::string> restore_args;
@@ -721,62 +1146,30 @@ int uninstall(const std::optional<std::string>& magiskboot_path) {
 
     printf("- Rebooting in 5 seconds..\n");
     sleep(5);
-    (void)exec_command({"reboot"});
+    request_reboot();
 
     return 0;
 }
 
-uint64_t get_zip_uncompressed_size(const std::string& zip_path) {
-#ifdef USE_LIBZIP
-    zip_t* za = zip_open(zip_path.c_str(), ZIP_RDONLY, nullptr);
-    if (!za) {
-        LOGE("Failed to open ZIP: %s", zip_path.c_str());
-        return 0;
-    }
-
-    uint64_t total = 0;
-    zip_int64_t num_entries = zip_get_num_entries(za, 0);
-
-    for (zip_int64_t i = 0; i < num_entries; i++) {
-        zip_stat_t stat;
-        if (zip_stat_index(za, i, 0, &stat) == 0) {
-            total += stat.size;
-        }
-    }
-
-    zip_close(za);
-    return total;
-#else
-    // Fallback: estimate based on file size * 2
-    std::ifstream ifs(zip_path, std::ios::binary | std::ios::ate);
-    if (!ifs) {
-        return 0;
-    }
-    return static_cast<uint64_t>(ifs.tellg()) * 2;
-#endif  // #ifdef USE_LIBZIP
-}
-
-bool parse_uint32(const std::string& s, uint32_t* out) {
-    if (s.empty())
+bool parse_uint32(std::string_view s, uint32_t* out) {
+    if (s.empty() || out == nullptr)
         return false;
-    char* end = nullptr;
-    errno = 0;
-    unsigned long const val = std::strtoul(s.c_str(), &end, 10);
-    if (end == s.c_str() || *end != '\0' || errno == ERANGE || val > UINT32_MAX)
+    uint32_t value = 0;
+    const auto [end, error] = std::from_chars(s.data(), s.data() + s.size(), value, 10);
+    if (error != std::errc{} || end != s.data() + s.size())
         return false;
-    *out = static_cast<uint32_t>(val);
+    *out = value;
     return true;
 }
 
-bool parse_uint64(const std::string& s, uint64_t* out) {
-    if (s.empty())
+bool parse_uint64(std::string_view s, uint64_t* out) {
+    if (s.empty() || out == nullptr)
         return false;
-    char* end = nullptr;
-    errno = 0;
-    unsigned long long const val = std::strtoull(s.c_str(), &end, 10);
-    if (end == s.c_str() || *end != '\0' || errno == ERANGE)
+    uint64_t value = 0;
+    const auto [end, error] = std::from_chars(s.data(), s.data() + s.size(), value, 10);
+    if (error != std::errc{} || end != s.data() + s.size())
         return false;
-    *out = static_cast<uint64_t>(val);
+    *out = value;
     return true;
 }
 }  // namespace ksud

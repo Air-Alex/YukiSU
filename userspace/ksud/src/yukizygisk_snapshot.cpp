@@ -22,9 +22,9 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -81,15 +81,7 @@ void remove_snapshot_dir(const fs::path& base) {
 }
 
 bool copy_regular_file(const fs::path& src, const fs::path& dst) {
-    std::ifstream const in(src, std::ios::binary);
-    if (!in)
-        return false;
-    std::ofstream out(dst, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return false;
-    out << in.rdbuf();
-    out.flush();
-    return static_cast<bool>(out);
+    return copy_file_data(src, dst);
 }
 
 bool stage_asset_or_file(const char* asset, const fs::path& fallback, const fs::path& dst) {
@@ -242,9 +234,9 @@ std::vector<std::pair<std::string, fs::path>> collect_active_module_roots() {
     for (const char* root : {MODULE_UPDATE_DIR, MODULE_DIR}) {
         if (!fs::is_directory(root, ec))
             continue;
-        for (const auto& entry : fs::directory_iterator(root, ec)) {
-            if (ec)
-                break;
+        for (auto it = fs::directory_iterator(root, ec); it != fs::directory_iterator() && !ec;
+             it.increment(ec)) {
+            const auto& entry = *it;
             if (!entry.is_directory(ec))
                 continue;
             const std::string id = entry.path().filename().string();
@@ -268,26 +260,26 @@ std::vector<NativeModule> scan_early_native_modules() {
     std::vector<NativeModule> out;
 
     for (const auto& [module_id, base] : collect_active_module_roots()) {
-        std::ifstream f(base / "zn_modules.txt");
-        if (!f)
+        const std::string base_path = base.string();
+        const auto manifest = read_file(base_path + "/zn_modules.txt");
+        if (!manifest)
             continue;
 
-        std::string line;
-        while (std::getline(f, line)) {
-            NativeModule m{};
-            if (!yukizygisk::native::parse_native_module_line(module_id, base.string(), line, &m))
-                continue;
-            if (m.has_companion)
-                continue;
-            if (m.lib_path.size() >= YZ_NATIVE_MODULE_PATH_MAX)
-                continue;
-            int const module_class = elf_class(m.lib_path);
+        for_each_line(*manifest, [&](std::string_view line) {
+            NativeModule module{};
+            if (!yukizygisk::native::parse_native_module_line(module_id, base_path,
+                                                              std::string(line), &module))
+                return true;
+            if (module.has_companion || module.lib_path.size() >= YZ_NATIVE_MODULE_PATH_MAX)
+                return true;
+            const int module_class = elf_class(module.lib_path);
             if (module_class != ELFCLASS32 && module_class != ELFCLASS64)
-                continue;
-            out.push_back(std::move(m));
-            if (out.size() >= YZ_NATIVE_TARGET_MAX)
-                return out;
-        }
+                return true;
+            out.push_back(std::move(module));
+            return out.size() < YZ_NATIVE_TARGET_MAX;
+        });
+        if (out.size() >= YZ_NATIVE_TARGET_MAX)
+            return out;
     }
 
     return out;
@@ -295,18 +287,24 @@ std::vector<NativeModule> scan_early_native_modules() {
 
 bool has_native_abi32_target() {
     for (const auto& [module_id, base] : collect_active_module_roots()) {
-        std::ifstream f(base / "zn_modules.txt");
-        if (!f)
+        const std::string base_path = base.string();
+        const auto manifest = read_file(base_path + "/zn_modules.txt");
+        if (!manifest)
             continue;
 
-        std::string line;
-        while (std::getline(f, line)) {
+        bool found = false;
+        for_each_line(*manifest, [&](std::string_view line) {
             NativeModule module{};
-            if (yukizygisk::native::parse_native_module_line(module_id, base.string(), line,
-                                                             &module) &&
-                elf_class(module.lib_path) == ELFCLASS32)
-                return true;
-        }
+            if (yukizygisk::native::parse_native_module_line(module_id, base_path,
+                                                             std::string(line), &module) &&
+                elf_class(module.lib_path) == ELFCLASS32) {
+                found = true;
+                return false;
+            }
+            return true;
+        });
+        if (found)
+            return true;
     }
     return false;
 }
@@ -349,14 +347,12 @@ bool stage_module_entry(const NativeModule& m, size_t idx, const fs::path& modul
 
 bool write_manifest(const fs::path& path, const yz_early_native_snapshot_header& header,
                     const std::vector<yz_early_native_entry>& entries) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return false;
-    out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    std::string blob;
+    blob.reserve(sizeof(header) + (entries.size() * sizeof(yz_early_native_entry)));
+    blob.append(reinterpret_cast<const char*>(&header), sizeof(header));
     for (const auto& entry : entries)
-        out.write(reinterpret_cast<const char*>(&entry), sizeof(entry));
-    out.flush();
-    return static_cast<bool>(out);
+        blob.append(reinterpret_cast<const char*>(&entry), sizeof(entry));
+    return write_file(path, blob);
 }
 
 bool yukizygisk_enabled_for_next_boot() {

@@ -35,7 +35,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <vector>
 
 namespace ksud {
@@ -794,10 +793,9 @@ int cmd_flash_new(const std::vector<std::string>& args) {
         printf("  Current slot: %s\n", current_slot.c_str());
         printf("  Other slot:   %s\n", other_slot.c_str());
 
-        // Try to get bootctl info if available
-        auto result = exec_command({"getprop", "ro.boot.slot_suffix"});
-        if (result.exit_code == 0) {
-            printf("  Property ro.boot.slot_suffix: %s\n", trim(result.stdout_str).c_str());
+        // __system_property_get is what getprop itself calls; no process needed.
+        if (const auto slot_suffix = getprop("ro.boot.slot_suffix")) {
+            printf("  Property ro.boot.slot_suffix: %s\n", slot_suffix->c_str());
         }
 
         return 0;

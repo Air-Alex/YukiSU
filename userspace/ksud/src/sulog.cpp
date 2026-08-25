@@ -20,11 +20,10 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -319,25 +318,26 @@ auto load_key_value_config(const std::filesystem::path& path)
         return config;
     }
 
-    std::istringstream input(*content);
-    std::string line;
-    while (std::getline(input, line)) {
+    for_each_line(*content, [&config](std::string_view line) {
         const size_t eq = line.find('=');
-        if (eq == std::string::npos) {
-            continue;
+        if (eq == std::string_view::npos) {
+            return;
         }
-        config[line.substr(0, eq)] = line.substr(eq + 1);
-    }
+        config[std::string(line.substr(0, eq))] = std::string(line.substr(eq + 1));
+    });
     return config;
 }
 
 bool save_key_value_config(const std::filesystem::path& path,
                            const std::map<std::string, std::string>& config) {
-    std::ostringstream output;
+    std::string output;
     for (const auto& [key, value] : config) {
-        output << key << "=" << value << "\n";
+        output += key;
+        output += '=';
+        output += value;
+        output += '\n';
     }
-    if (!write_file(path, output.str())) {
+    if (!write_file(path, output)) {
         LOGW("Failed to save sulog config %s", path.c_str());
         return false;
     }
@@ -348,8 +348,8 @@ bool ensure_sulog_config_dir_exists() {
     return ensure_dir_exists(MODULE_CONFIG_DIR) && ensure_dir_exists(sulog_config_dir().string());
 }
 
-bool parse_positive_u64(const std::string& raw, uint64_t* out_value) {
-    const std::string value = trim(raw);
+bool parse_positive_u64(std::string_view raw, uint64_t* out_value) {
+    const std::string_view value = trim_view(raw);
     if (value.empty()) {
         return false;
     }
@@ -462,7 +462,7 @@ auto daily_log_path(const std::string& day, uint32_t index) -> std::filesystem::
     return std::filesystem::path(LOG_DIR) / ("sulog-" + day + "-" + std::to_string(index) + ".log");
 }
 
-auto parse_daemon_start_boot_id(const std::string& line) -> std::string {
+auto parse_daemon_start_boot_id(std::string_view line) -> std::string {
     constexpr char prefix[] = "type=daemon_start boot_id=\"";
     const size_t start = line.find(prefix);
     if (start == std::string::npos) {
@@ -492,20 +492,18 @@ auto parse_daemon_start_boot_id(const std::string& line) -> std::string {
 }
 
 auto read_last_boot_id_for_log(const std::filesystem::path& path) -> std::string {
-    std::ifstream input(path);
-    if (!input.is_open()) {
+    const auto content = read_file(path.string());
+    if (!content) {
         return {};
     }
 
-    std::string line;
     std::string last_boot_id;
-    while (std::getline(input, line)) {
+    for_each_line(*content, [&last_boot_id](std::string_view line) {
         const std::string boot_id = parse_daemon_start_boot_id(line);
         if (!boot_id.empty()) {
             last_boot_id = boot_id;
         }
-    }
-
+    });
     return last_boot_id;
 }
 
@@ -513,12 +511,15 @@ void cleanup_expired_logs(
     uint64_t retention_days,
     const std::optional<std::filesystem::path>& preserved_path = std::nullopt) {
     const std::filesystem::path log_dir(LOG_DIR);
-    if (!std::filesystem::exists(log_dir)) {
+    std::error_code scan_error;
+    if (!std::filesystem::exists(log_dir, scan_error) || scan_error) {
         return;
     }
 
     const std::string cutoff = day_before(retention_days > 0 ? retention_days - 1 : 0);
-    for (const auto& entry : std::filesystem::directory_iterator(log_dir)) {
+    for (auto it = std::filesystem::directory_iterator(log_dir, scan_error);
+         it != std::filesystem::directory_iterator() && !scan_error; it.increment(scan_error)) {
+        const auto& entry = *it;
         std::string day;
         uint32_t index = 0;
         if (!parse_log_name(entry.path(), &day, &index)) {
@@ -535,6 +536,9 @@ void cleanup_expired_logs(
                      ec.message().c_str());
             }
         }
+    }
+    if (scan_error) {
+        LOGW("Failed to scan sulog directory: %s", scan_error.message().c_str());
     }
 }
 
@@ -580,7 +584,10 @@ auto next_log_path_for_day(const std::string& day) -> std::pair<std::filesystem:
     uint32_t highest_index = 0;
     bool found = false;
 
-    for (const auto& entry : std::filesystem::directory_iterator(log_dir)) {
+    std::error_code scan_error;
+    for (auto it = std::filesystem::directory_iterator(log_dir, scan_error);
+         it != std::filesystem::directory_iterator() && !scan_error; it.increment(scan_error)) {
+        const auto& entry = *it;
         std::string entry_day;
         uint32_t entry_index = 0;
         if (!parse_log_name(entry.path(), &entry_day, &entry_index)) {
@@ -590,6 +597,9 @@ auto next_log_path_for_day(const std::string& day) -> std::pair<std::filesystem:
             highest_index = std::max(highest_index, entry_index);
             found = true;
         }
+    }
+    if (scan_error) {
+        LOGW("Failed to scan sulog directory: %s", scan_error.message().c_str());
     }
 
     const uint32_t index = found ? highest_index + 1U : 0U;

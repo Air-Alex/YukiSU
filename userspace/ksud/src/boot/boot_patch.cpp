@@ -9,6 +9,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <unistd.h>
@@ -19,12 +20,11 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <optional>
-#include <regex>
+#include <string_view>
 #include <vector>
 
+#include <mbedtls/sha1.h>
 #include <mbedtls/sha256.h>
 
 namespace fs = std::filesystem;
@@ -89,23 +89,46 @@ uint64_t hash_superkey(const std::array<uint8_t, SUPERKEY_SALT_LEN>& salt, const
 }
 
 bool fill_random(uint8_t* buf, size_t len) {
-    std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
-    if (!urandom)
+    size_t filled = 0;
+    while (filled < len) {
+        const ssize_t count = getrandom(buf + filled, len - filled, 0);
+        if (count > 0) {
+            filled += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
         return false;
-    urandom.read(reinterpret_cast<char*>(buf), static_cast<std::streamsize>(len));
-    return static_cast<size_t>(urandom.gcount()) == len;
+    }
+    return true;
+}
+
+bool has_lz4_legacy_magic(const std::string& path) {
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return false;
+    std::array<unsigned char, 4> magic{};
+    size_t filled = 0;
+    while (filled < magic.size()) {
+        const ssize_t count = read(fd, magic.data() + filled, magic.size() - filled);
+        if (count > 0) {
+            filled += static_cast<size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        break;
+    }
+    close(fd);
+    return filled == magic.size() &&
+           memcmp(magic.data(), LZ4_LEGACY_MAGIC.data(), magic.size()) == 0;
 }
 
 std::optional<bool> lkm_supports_uts_boot_params(const std::string& lkm_path) {
-    std::ifstream file(lkm_path, std::ios::binary);
-    if (!file)
+    const auto content = read_file(lkm_path);
+    if (!content)
         return std::nullopt;
-
-    const std::string content((std::istreambuf_iterator<char>(file)),
-                              std::istreambuf_iterator<char>());
-    if (file.bad())
-        return std::nullopt;
-    return content.find("parmtype=uts_boot_global:bool") != std::string::npos;
+    return content->find("parmtype=uts_boot_global:bool") != std::string::npos;
 }
 
 // Inject superkey salt+hash and verification mode into LKM file.
@@ -121,7 +144,7 @@ bool inject_superkey_to_lkm(const std::string& lkm_path, const std::string& supe
     std::array<uint8_t, SUPERKEY_SALT_LEN> salt{};
     if (!superkey.empty()) {
         if (!fill_random(salt.data(), salt.size())) {
-            LOGE("Failed to read /dev/urandom for SuperKey salt");
+            LOGE("Failed to obtain SuperKey salt entropy");
             return false;
         }
     }
@@ -146,19 +169,12 @@ bool inject_superkey_to_lkm(const std::string& lkm_path, const std::string& supe
     }
     printf("- Verification mode: %llu (%s)\n", static_cast<unsigned long long>(flags), mode_str);
 
-    std::fstream file(lkm_path, std::ios::in | std::ios::out | std::ios::binary);
-    if (!file) {
+    std::vector<uint8_t> content;
+    if (!read_file_bytes(lkm_path, &content)) {
         LOGE("Failed to open LKM file: %s", lkm_path.c_str());
         return false;
     }
-
-    // Read entire file
-    file.seekg(0, std::ios::end);
-    const size_t size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> content(size);
-    file.read(reinterpret_cast<char*>(content.data()), size);
+    const size_t size = content.size();
 
     // Search for SUPERKEY_MAGIC in the binary
     std::array<uint8_t, 8> magic_bytes{};
@@ -180,11 +196,9 @@ bool inject_superkey_to_lkm(const std::string& lkm_path, const std::string& supe
     if (!found) {
         printf("- Warning: SUPERKEY_MAGIC not found in LKM, SuperKey may not work\n");
         printf("- Make sure the kernel module is compiled with SuperKey support\n");
-    } else {
-        // Write back the patched content
-        file.seekp(0, std::ios::beg);
-        file.write(reinterpret_cast<char*>(content.data()), size);
-        file.sync();
+    } else if (!write_file_bytes(lkm_path, content.data(), content.size())) {
+        LOGE("Failed to write patched LKM: %s", lkm_path.c_str());
+        return false;
     }
 
     return true;
@@ -210,28 +224,28 @@ bool do_cpio_cmd(const std::string& magiskboot, const std::string& workdir,
 // Check if boot image is patched by Magisk
 bool is_magisk_patched(const std::string& magiskboot, const std::string& workdir,
                        const std::string& cpio_path) {
-    auto result = exec_command_magiskboot(magiskboot, {"cpio", cpio_path, "test"}, workdir);
-    // According to magiskboot docs: 0 = stock, 1 = magisk, 2 = unsupported.
-    // 但这里额外做一层防御性检查，避免误报：
-    if (result.exit_code != 1) {
+    // Built-in magiskboot runs in-process for read-only queries, and cpio_path is
+    // absolute, so neither the tool path nor a cwd is needed here.
+    (void)magiskboot;
+    (void)workdir;
+    // magiskboot cpio test: 0 = stock, 1 = magisk, 2 = unsupported.
+    if (magiskboot_query({"cpio", cpio_path, "test"}) != 1) {
         return false;
     }
-
-    // 双重确认：检查典型的 Magisk 迹象（init.magisk.rc 或 overlay.d 等）
-    auto has_magisk_init =
-        exec_command_magiskboot(magiskboot, {"cpio", cpio_path, "exists init.magisk.rc"}, workdir);
-    auto has_overlay =
-        exec_command_magiskboot(magiskboot, {"cpio", cpio_path, "exists overlay.d"}, workdir);
-
-    return has_magisk_init.exit_code == 0 || has_overlay.exit_code == 0;
+    // Confirm with a Magisk-specific entry so an unrelated exit status of 1
+    // cannot be read as "Magisk-patched".
+    return magiskboot_query({"cpio", cpio_path, "exists init.magisk.rc"}) == 0 ||
+           magiskboot_query({"cpio", cpio_path, "exists overlay.d"}) == 0;
 }
 
 // Check if boot image is patched by KernelSU
 bool is_kernelsu_patched(const std::string& magiskboot, const std::string& workdir,
                          const std::string& cpio_path) {
-    auto result =
-        exec_command_magiskboot(magiskboot, {"cpio", cpio_path, "exists kernelsu.ko"}, workdir);
-    return result.exit_code == 0;
+    // Built-in magiskboot runs in-process for read-only queries, and cpio_path is
+    // absolute, so neither the tool path nor a cwd is needed here.
+    (void)magiskboot;
+    (void)workdir;
+    return magiskboot_query({"cpio", cpio_path, "exists kernelsu.ko"}) == 0;
 }
 
 // Flash boot image
@@ -241,17 +255,10 @@ bool flash_boot(const std::string& bootdevice, const std::string& new_boot) {
         return false;
     }
 
-    // Set device to read-write
-    auto result = exec_command({"blockdev", "--setrw", bootdevice});
-    if (result.exit_code != 0) {
-        // Some devices/partitions do not require or allow this ioctl; continue and let dd decide.
-        LOGW("blockdev --setrw failed, continue flashing: %s", bootdevice.c_str());
-        if (!result.stderr_str.empty()) {
-            LOGW("blockdev stderr: %s", result.stderr_str.c_str());
-        }
-        if (!result.stdout_str.empty()) {
-            LOGW("blockdev stdout: %s", result.stdout_str.c_str());
-        }
+    // Set device to read-write. Some devices/partitions do not require or allow
+    // this ioctl; continue either way and let the write itself decide.
+    if (!set_block_device_rw(bootdevice)) {
+        LOGW("Continuing to flash %s anyway", bootdevice.c_str());
     }
 
     if (!exec_dd(new_boot, bootdevice)) {
@@ -262,19 +269,61 @@ bool flash_boot(const std::string& bootdevice, const std::string& new_boot) {
     return true;
 }
 
-// Calculate SHA1 hash
+// SHA-1 of a file, streamed. mbedTLS is already linked for the SuperKey hash, so
+// this needed neither a `sha1sum` on PATH nor parsing "<hex>  <name>" back out of
+// a child's stdout -- and it no longer silently returns "" when the tool is
+// missing from a recovery PATH.
 std::string calculate_sha1(const std::string& file_path) {
-    // Use sha1sum command
-    auto result = exec_command({"sha1sum", file_path});
-    if (result.exit_code != 0) {
+    const int fd = open(file_path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        LOGE("sha1: cannot open %s: %s", file_path.c_str(), strerror(errno));
         return "";
     }
-    // Output format: "hash  filename"
-    const size_t space = result.stdout_str.find(' ');
-    if (space != std::string::npos) {
-        return result.stdout_str.substr(0, space);
+    mbedtls_sha1_context ctx;
+    mbedtls_sha1_init(&ctx);
+    if (mbedtls_sha1_starts(&ctx) != 0) {
+        mbedtls_sha1_free(&ctx);
+        close(fd);
+        return "";
     }
-    return trim(result.stdout_str);
+    std::array<unsigned char, 64UL * 1024> buffer{};
+    bool ok = true;
+    for (;;) {
+        const ssize_t count = read(fd, buffer.data(), buffer.size());
+        if (count > 0) {
+            if (mbedtls_sha1_update(&ctx, buffer.data(), static_cast<size_t>(count)) != 0) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
+        if (count == 0)
+            break;
+        if (errno == EINTR)
+            continue;
+        LOGE("sha1: read %s failed: %s", file_path.c_str(), strerror(errno));
+        ok = false;
+        break;
+    }
+    close(fd);
+
+    std::array<unsigned char, 20> digest{};
+    if (ok && mbedtls_sha1_finish(&ctx, digest.data()) != 0) {
+        ok = false;
+    }
+    mbedtls_sha1_free(&ctx);
+    if (!ok) {
+        return "";
+    }
+
+    // Lowercase hex, matching what sha1sum printed and what the backup format
+    // stores.
+    std::string hex;
+    hex.reserve(digest.size() * 2);
+    for (const unsigned char byte : digest) {
+        append_hex(&hex, byte, false, 2);
+    }
+    return hex;
 }
 
 // Backup stock boot image
@@ -293,15 +342,10 @@ bool do_backup(const std::string& magiskboot, const std::string& workdir,
     const std::string target = std::string(KSU_BACKUP_DIR) + filename;
 
     // Copy image to backup location
-    std::ifstream src(image, std::ios::binary);
-    std::ofstream dst(target, std::ios::binary);
-    if (!src || !dst) {
+    if (!copy_file_data(image, target)) {
         LOGE("Failed to backup boot image to %s", target.c_str());
         return false;
     }
-    dst << src.rdbuf();
-    src.close();
-    dst.close();
 
     // Write sha1 to workdir
     const std::string sha1_file = workdir + "/" + BACKUP_FILENAME;
@@ -320,28 +364,16 @@ bool do_backup(const std::string& magiskboot, const std::string& workdir,
 }
 
 std::string parse_kmi_from_kernel_file(const std::string& kernel_path) {
-    std::ifstream kernel(kernel_path, std::ios::binary);
-    if (!kernel) {
+    std::vector<uint8_t> data;
+    if (!read_file_bytes(kernel_path, &data)) {
         LOGE("Failed to read kernel from %s", kernel_path.c_str());
         return "";
     }
-
-    kernel.seekg(0, std::ios::end);
-    const auto length = kernel.tellg();
-    if (length <= 0) {
+    if (data.empty()) {
         LOGE("Kernel image is empty: %s", kernel_path.c_str());
         return "";
     }
-    kernel.seekg(0, std::ios::beg);
 
-    std::vector<unsigned char> data(static_cast<size_t>(length));
-    kernel.read(reinterpret_cast<char*>(data.data()), length);
-    if (!kernel) {
-        LOGE("Failed to read kernel image: %s", kernel_path.c_str());
-        return "";
-    }
-
-    static const std::regex kmi_pattern(R"((\d+\.\d+)\S*(android\d+))");
     for (size_t i = 0; i + 4 <= data.size(); ++i) {
         if (data[i] < '5' || data[i] > '9' || data[i + 1] != '.' || !std::isdigit(data[i + 2]) ||
             (data[i] == '5' && !std::isdigit(data[i + 3]))) {
@@ -357,11 +389,9 @@ std::string parse_kmi_from_kernel_file(const std::string& kernel_path) {
             continue;
         }
 
-        const std::string candidate(reinterpret_cast<const char*>(data.data() + i), end - i);
-        std::smatch match;
-        if (std::regex_search(candidate, match, kmi_pattern)) {
-            return match[2].str() + "-" + match[1].str();
-        }
+        const std::string_view candidate(reinterpret_cast<const char*>(data.data() + i), end - i);
+        if (const auto kmi = parse_kmi_string(candidate))
+            return *kmi;
     }
 
     return "";
@@ -407,8 +437,12 @@ void clean_backup(const std::string& current_sha1) {
 
         const std::string name = it->path().filename().string();
         if (name != backup_name && starts_with(name, KSU_BACKUP_FILE_PREFIX)) {
-            if (fs::remove(it->path())) {
+            std::error_code remove_error;
+            if (fs::remove(it->path(), remove_error)) {
                 printf("- removed %s\n", name.c_str());
+            } else if (remove_error) {
+                LOGW("Failed to remove backup %s: %s", name.c_str(),
+                     remove_error.message().c_str());
             }
         }
     }
@@ -574,15 +608,9 @@ DirectLkmImageStatus inspect_direct_lkm_image(const fs::path& image, const std::
     const std::vector<std::string> kernel_candidates = {check_workdir + "/kernel",
                                                         check_workdir + "/kernel.img"};
     for (const auto& candidate : kernel_candidates) {
-        std::ifstream kernel_in(candidate, std::ios::binary);
-        if (!kernel_in)
+        std::vector<std::uint8_t> kernel_bytes;
+        if (!read_file_bytes(candidate, &kernel_bytes))
             continue;
-        const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
-                                                     std::istreambuf_iterator<char>());
-        if (kernel_in.bad()) {
-            LOGW("Failed to read unpacked kernel for direct-LKM validation: %s", candidate.c_str());
-            return DirectLkmImageStatus::kUnverified;
-        }
 
         if (!boot::lkm_image::parse_arm64_image(kernel_bytes))
             continue;
@@ -634,11 +662,9 @@ DirectLkmRestoreStatus restore_direct_lkm_kernel(const std::string& workdir) {
     const std::vector<std::string> kernel_candidates = {workdir + "/kernel",
                                                         workdir + "/kernel.img"};
     for (const auto& candidate : kernel_candidates) {
-        std::ifstream kernel_in(candidate, std::ios::binary);
-        if (!kernel_in)
+        std::vector<std::uint8_t> kernel_bytes;
+        if (!read_file_bytes(candidate, &kernel_bytes))
             continue;
-        const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
-                                                     std::istreambuf_iterator<char>());
         if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
 
@@ -648,11 +674,7 @@ DirectLkmRestoreStatus restore_direct_lkm_kernel(const std::string& workdir) {
             return DirectLkmRestoreStatus::kFailed;
         }
 
-        std::ofstream kernel_out(candidate, std::ios::binary | std::ios::trunc);
-        if (!kernel_out ||
-            (!restored.value().empty() &&
-             !kernel_out.write(reinterpret_cast<const char*>(restored.value().data()),
-                               static_cast<std::streamsize>(restored.value().size())))) {
+        if (!write_file_bytes(candidate, restored.value().data(), restored.value().size())) {
             LOGE("Failed to write restored kernel: %s", candidate.c_str());
             return DirectLkmRestoreStatus::kFailed;
         }
@@ -703,11 +725,9 @@ DirectLkmRestoreStatus prepare_direct_lkm_boot_restore(const std::string& workdi
                                                         restore_workdir + "/kernel.img"};
     bool restored_kernel = false;
     for (const auto& candidate : kernel_candidates) {
-        std::ifstream kernel_in(candidate, std::ios::binary);
-        if (!kernel_in)
+        std::vector<std::uint8_t> kernel_bytes;
+        if (!read_file_bytes(candidate, &kernel_bytes))
             continue;
-        const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
-                                                     std::istreambuf_iterator<char>());
         if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
 
@@ -717,11 +737,7 @@ DirectLkmRestoreStatus prepare_direct_lkm_boot_restore(const std::string& workdi
             return DirectLkmRestoreStatus::kFailed;
         }
 
-        std::ofstream kernel_out(candidate, std::ios::binary | std::ios::trunc);
-        if (!kernel_out ||
-            (!restored.value().empty() &&
-             !kernel_out.write(reinterpret_cast<const char*>(restored.value().data()),
-                               static_cast<std::streamsize>(restored.value().size())))) {
+        if (!write_file_bytes(candidate, restored.value().data(), restored.value().size())) {
             LOGE("Failed to write restored kernel: %s", candidate.c_str());
             return DirectLkmRestoreStatus::kFailed;
         }
@@ -934,11 +950,9 @@ int boot_patch_impl(const std::vector<std::string>& args) {
                 const auto backup_status = validate_direct_lkm_backup(*backup, magiskboot, workdir);
                 if (backup_status == DirectLkmImageStatus::kNoCapsule) {
                     const fs::path patch_source = fs::path(workdir) / "boot-original.img";
-                    std::error_code copy_error;
-                    if (!fs::copy_file(*backup, patch_source, fs::copy_options::none, copy_error) ||
-                        copy_error) {
+                    if (!copy_file_data(*backup, patch_source, 0644, false)) {
                         LOGE("Failed to stage original boot backup %s: %s",
-                             backup->string().c_str(), copy_error.message().c_str());
+                             backup->string().c_str(), strerror(errno));
                         cleanup();
                         return 1;
                     }
@@ -962,14 +976,11 @@ int boot_patch_impl(const std::vector<std::string>& args) {
 
     if (!parsed.module.empty()) {
         // Use specified module
-        std::ifstream src(parsed.module, std::ios::binary);  // NOLINT(misc-const-correctness)
-        std::ofstream dst(kmod_file, std::ios::binary);
-        if (!src || !dst) {
+        if (!copy_file_data(parsed.module, kmod_file)) {
             LOGE("Failed to copy kernel module from %s", parsed.module.c_str());
             cleanup();
             return 1;
         }
-        dst << src.rdbuf();
     } else {
         // Try to extract LKM from embedded assets first
         const std::string kmi_lkm_name = kmi + "_kernelsu.ko";
@@ -989,10 +1000,7 @@ int boot_patch_impl(const std::vector<std::string>& args) {
             for (const auto& path : search_paths) {
                 if (access(path.c_str(), R_OK) == 0) {
                     printf("- Found LKM at %s\n", path.c_str());
-                    std::ifstream src(path, std::ios::binary);  // NOLINT(misc-const-correctness)
-                    std::ofstream dst(kmod_file, std::ios::binary);
-                    if (src && dst) {
-                        dst << src.rdbuf();
+                    if (copy_file_data(path, kmod_file)) {
                         found = true;
                         break;
                     }
@@ -1055,14 +1063,11 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     // Prepare init if specified
     const std::string init_file = workdir + "/init";
     if (!parsed.init.empty()) {
-        std::ifstream src(parsed.init, std::ios::binary);  // NOLINT(misc-const-correctness)
-        std::ofstream dst(init_file, std::ios::binary);
-        if (!src || !dst) {
+        if (!copy_file_data(parsed.init, init_file, 0755)) {
             LOGE("Failed to copy init from %s", parsed.init.c_str());
             cleanup();
             return 1;
         }
-        dst << src.rdbuf();
     } else {
         // Try to extract ksuinit from embedded assets first.
         if (copy_asset_to_file("ksuinit", init_file)) {
@@ -1070,11 +1075,8 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         } else {
             // Fallback: check standard location
             const std::string ksuinit_path = std::string(BINARY_DIR) + "ksuinit";
-            if (access(ksuinit_path.c_str(), R_OK) == 0) {
-                std::ifstream const src(ksuinit_path,
-                                        std::ios::binary);  // NOLINT(misc-const-correctness)
-                std::ofstream dst(init_file, std::ios::binary);
-                dst << src.rdbuf();
+            if (access(ksuinit_path.c_str(), R_OK) == 0 &&
+                copy_file_data(ksuinit_path, init_file, 0755)) {
                 printf("- Using ksuinit from %s\n", ksuinit_path.c_str());
             } else {
                 LOGE("ksuinit not found in embedded assets or %s", ksuinit_path.c_str());
@@ -1127,12 +1129,8 @@ int boot_patch_impl(const std::vector<std::string>& args) {
             cleanup();
             return 1;
         }
-        std::string const ramdisk_cpio = workdir + "/ramdisk.cpio";
-        std::ifstream ramdisk_in(ramdisk_cpio, std::ios::binary);
-        std::array<unsigned char, 4> magic_buf{};
-        if (ramdisk_in && ramdisk_in.read(reinterpret_cast<char*>(magic_buf.data()), 4) &&
-            ramdisk_in.gcount() == 4 && memcmp(magic_buf.data(), LZ4_LEGACY_MAGIC.data(), 4) == 0) {
-            ramdisk_in.close();
+        const std::string ramdisk_cpio = workdir + "/ramdisk.cpio";
+        if (has_lz4_legacy_magic(ramdisk_cpio)) {
             LOGE("Ramdisk is LZ4_LEGACY; on-device decompress crashed (SIGSEGV), so it was "
                  "skipped.");
             LOGE("Cannot continue without decompressed ramdisk. Patch the boot image on a PC "
@@ -1196,12 +1194,7 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     } else {
         // Unconditionally reject LZ4 ramdisk before any cpio (avoids cpio parsing LZ4 as cpio →
         // huge cache/hang).
-        std::ifstream ramdisk_check(ramdisk, std::ios::binary);
-        std::array<unsigned char, 4> magic_buf{};
-        if (ramdisk_check && ramdisk_check.read(reinterpret_cast<char*>(magic_buf.data()), 4) &&
-            ramdisk_check.gcount() == 4 &&
-            memcmp(magic_buf.data(), LZ4_LEGACY_MAGIC.data(), 4) == 0) {
-            ramdisk_check.close();
+        if (has_lz4_legacy_magic(ramdisk)) {
             LOGE("Ramdisk is LZ4 compressed; cannot patch. Use PC to patch this boot image.\n");
             cleanup();
             return 1;
@@ -1220,9 +1213,7 @@ int boot_patch_impl(const std::vector<std::string>& args) {
 
     if (!already_patched) {
         // Backup init if it exists
-        auto init_exists =
-            exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists init"}, workdir);
-        if (init_exists.exit_code == 0) {
+        if (magiskboot_query({"cpio", ramdisk, "exists init"}) == 0) {
             do_cpio_cmd(magiskboot, workdir, ramdisk, "mv init init.real");
         }
     }
@@ -1253,21 +1244,14 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     }
 
     if (!ksu_config.empty()) {
-        std::ofstream config_file(workdir + "/ksu_config", std::ios::binary | std::ios::trunc);
-        if (!config_file.is_open()) {
-            LOGE("Failed to create ksu_config");
-            cleanup();
-            return 1;
-        }
+        std::string config_text;
         for (size_t i = 0; i < ksu_config.size(); ++i) {
-            if (i != 0) {
-                config_file << ' ';
-            }
-            config_file << ksu_config[i];
+            if (i != 0)
+                config_text += ' ';
+            config_text += ksu_config[i];
         }
-        config_file.close();
-        if (config_file.fail()) {
-            LOGE("Failed to flush ksu_config");
+        if (!write_file(workdir + "/ksu_config", config_text)) {
+            LOGE("Failed to create ksu_config");
             cleanup();
             return 1;
         }
@@ -1279,66 +1263,58 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         do_cpio_cmd(magiskboot, workdir, ramdisk, "rm ksu_config");
     }
 
-    auto allow_shell_exists =
-        exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists ksu_allow_shell"}, workdir);
-    if (allow_shell_exists.exit_code == 0) {
+    if (magiskboot_query({"cpio", ramdisk, "exists ksu_allow_shell"}) == 0) {
         printf("- Removing legacy allow shell config\n");
         do_cpio_cmd(magiskboot, workdir, ramdisk, "rm ksu_allow_shell");
     }
 
     if (parsed.enable_adbd || !parsed.adb_debug_prop.empty()) {
         printf("- Adding adb debug props\n");
-        std::ofstream(workdir + "/force_debuggable").close();
+        if (!write_file(workdir + "/force_debuggable", "")) {
+            LOGE("Failed to create force_debuggable");
+            cleanup();
+            return 1;
+        }
         if (!do_cpio_cmd(magiskboot, workdir, ramdisk,
                          "add 0644 force_debuggable force_debuggable")) {
             cleanup();
             return 1;
         }
 
-        std::ofstream prop_file(workdir + "/adb_debug.prop");
-        if (!prop_file.is_open()) {
+        std::string adb_props;
+        if (parsed.enable_adbd) {
+            printf("- Enabling adbd debug props\n");
+            adb_props = "ro.debuggable=1\nro.force.debuggable=1\nro.adb.secure=0\n";
+        }
+        if (!parsed.adb_debug_prop.empty()) {
+            printf("- Appending custom adb props\n");
+            adb_props += parsed.adb_debug_prop;
+            if (parsed.adb_debug_prop.back() != '\n')
+                adb_props += '\n';
+        }
+        if (!write_file(workdir + "/adb_debug.prop", adb_props)) {
             LOGE("Failed to create adb_debug.prop");
             cleanup();
             return 1;
         }
-        if (parsed.enable_adbd) {
-            printf("- Enabling adbd debug props\n");
-            prop_file << "ro.debuggable=1\n";
-            prop_file << "ro.force.debuggable=1\n";
-            prop_file << "ro.adb.secure=0\n";
-        }
-        if (!parsed.adb_debug_prop.empty()) {
-            printf("- Appending custom adb props\n");
-            prop_file << parsed.adb_debug_prop;
-            if (parsed.adb_debug_prop.back() != '\n') {
-                prop_file << '\n';
-            }
-        }
-        prop_file.close();
         if (!do_cpio_cmd(magiskboot, workdir, ramdisk, "add 0644 adb_debug.prop adb_debug.prop")) {
             cleanup();
             return 1;
         }
     } else {
-        auto force_debuggable_exists = exec_command_magiskboot(
-            magiskboot, {"cpio", ramdisk, "exists force_debuggable"}, workdir);
-        if (force_debuggable_exists.exit_code == 0) {
+        if (magiskboot_query({"cpio", ramdisk, "exists force_debuggable"}) == 0) {
             printf("- Removing /force_debuggable\n");
             do_cpio_cmd(magiskboot, workdir, ramdisk, "rm force_debuggable");
         }
 
-        auto adb_debug_prop_exists = exec_command_magiskboot(
-            magiskboot, {"cpio", ramdisk, "exists adb_debug.prop"}, workdir);
-        if (adb_debug_prop_exists.exit_code == 0) {
+        if (magiskboot_query({"cpio", ramdisk, "exists adb_debug.prop"}) == 0) {
             printf("- Removing /adb_debug.prop\n");
             do_cpio_cmd(magiskboot, workdir, ramdisk, "rm adb_debug.prop");
         }
     }
 
     // Remove the legacy embedded module when repatching an image created by an older manager.
-    auto legacy_kasumi_exists =
-        exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists kasumi.ko"}, workdir);
-    if (legacy_kasumi_exists.exit_code == 0) {
+    if (magiskboot_query({"cpio", ramdisk, "exists kasumi.ko"}) == 0) {
         do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kasumi.ko");
     }
 
@@ -1380,7 +1356,8 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
-    if (!fs::exists(new_boot)) {
+    std::error_code output_error;
+    if (!fs::exists(new_boot, output_error) || output_error) {
         LOGE("magiskboot repack reported success but output not found: %s", new_boot.c_str());
         LOGE("Current magiskboot may be an incomplete build (unpack/repack stubs).");
         LOGE("Please use a full magiskboot implementation from upstream Magisk.");
@@ -1423,14 +1400,11 @@ int boot_patch_impl(const std::vector<std::string>& args) {
 
         const std::string output_image = output_dir + "/" + name;
 
-        std::ifstream src(new_boot, std::ios::binary);  // NOLINT(misc-const-correctness)
-        std::ofstream dst(output_image, std::ios::binary);
-        if (!src || !dst) {
+        if (!copy_file_data(new_boot, output_image)) {
             LOGE("Failed to write output file");
             cleanup();
             return 1;
         }
-        dst << src.rdbuf();
 
         printf("- Output file is written to\n");
         printf("- %s\n", output_image.c_str());
@@ -1518,7 +1492,6 @@ int boot_patch(const std::vector<std::string>& args) {
 
 int boot_restore(const std::vector<std::string>& args) {
     auto parsed = parse_boot_restore_args(args);
-
     // Create temp working directory
     std::array<char, 32> tmpdir_buf{};
     (void)strncpy(tmpdir_buf.data(), "/data/local/tmp/KernelSU_XXXXXX", tmpdir_buf.size() - 1);
@@ -1555,12 +1528,9 @@ int boot_restore(const std::vector<std::string>& args) {
             const auto backup_status = validate_direct_lkm_backup(backup_path, magiskboot, workdir);
             if (backup_status == DirectLkmImageStatus::kNoCapsule) {
                 const std::string output_image = "./" + make_restore_output_name(parsed.out_name);
-                std::error_code copy_error;
-                fs::copy_file(backup_path, output_image, fs::copy_options::overwrite_existing,
-                              copy_error);
-                if (copy_error) {
+                if (!copy_file_data(backup_path, output_image)) {
                     LOGE("Failed to restore boot backup %s: %s", backup_path.string().c_str(),
-                         copy_error.message().c_str());
+                         strerror(errno));
                     cleanup();
                     return 1;
                 }
@@ -1677,13 +1647,8 @@ int boot_restore(const std::vector<std::string>& args) {
         unpack_result = exec_command_magiskboot(magiskboot, unpack_args_restore, workdir);
     }
     if (unpack_result.exit_code == 0) {
-        constexpr unsigned char LZ4_LEG_MAGIC[] = {0x02, 0x21, 0x4c, 0x18};
-        std::string const rd_cpio = workdir + "/ramdisk.cpio";
-        std::ifstream rd_in(rd_cpio, std::ios::binary);
-        unsigned char mb[4];
-        if (rd_in && rd_in.read(reinterpret_cast<char*>(mb), 4) && rd_in.gcount() == 4 &&
-            memcmp(mb, LZ4_LEG_MAGIC, 4) == 0) {
-            rd_in.close();
+        const std::string rd_cpio = workdir + "/ramdisk.cpio";
+        if (has_lz4_legacy_magic(rd_cpio)) {
             LOGE("Ramdisk is LZ4_LEGACY; on-device decompress crashed (SIGSEGV), so it was "
                  "skipped.");
             LOGE("Restore or patch the boot image on a PC instead.");
@@ -1710,11 +1675,9 @@ int boot_restore(const std::vector<std::string>& args) {
     const std::vector<std::string> kernel_candidates = {workdir + "/kernel",
                                                         workdir + "/kernel.img"};
     for (const auto& candidate : kernel_candidates) {
-        std::ifstream kernel_in(candidate, std::ios::binary);
-        if (!kernel_in)
+        std::vector<std::uint8_t> kernel_bytes;
+        if (!read_file_bytes(candidate, &kernel_bytes))
             continue;
-        const std::vector<std::uint8_t> kernel_bytes((std::istreambuf_iterator<char>(kernel_in)),
-                                                     std::istreambuf_iterator<char>());
         if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
         auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
@@ -1723,18 +1686,8 @@ int boot_restore(const std::vector<std::string>& args) {
             cleanup();
             return 1;
         }
-        std::ofstream kernel_out(candidate, std::ios::binary | std::ios::trunc);
-        if (!kernel_out ||
-            (!restored.value().empty() &&
-             !kernel_out.write(reinterpret_cast<const char*>(restored.value().data()),
-                               static_cast<std::streamsize>(restored.value().size())))) {
+        if (!write_file_bytes(candidate, restored.value().data(), restored.value().size())) {
             LOGE("Failed to write restored kernel");
-            cleanup();
-            return 1;
-        }
-        kernel_out.close();
-        if (!kernel_out) {
-            LOGE("Failed to finalize restored kernel");
             cleanup();
             return 1;
         }
@@ -1786,9 +1739,7 @@ int boot_restore(const std::vector<std::string>& args) {
         }
 
         // Try to find backup
-        auto backup_exists = exec_command_magiskboot(
-            magiskboot, {"cpio", ramdisk, "exists " + std::string(BACKUP_FILENAME)}, workdir);
-        if (backup_exists.exit_code == 0) {
+        if (magiskboot_query({"cpio", ramdisk, "exists " + std::string(BACKUP_FILENAME)}) == 0) {
             // Extract backup sha1
             const std::string backup_file = workdir + "/" + BACKUP_FILENAME;
             exec_command_magiskboot(
@@ -1820,16 +1771,12 @@ int boot_restore(const std::vector<std::string>& args) {
             do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kernelsu.ko");
 
             // Remove the legacy embedded module if present.
-            auto legacy_kasumi_exists =
-                exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists kasumi.ko"}, workdir);
-            if (legacy_kasumi_exists.exit_code == 0) {
+            if (magiskboot_query({"cpio", ramdisk, "exists kasumi.ko"}) == 0) {
                 do_cpio_cmd(magiskboot, workdir, ramdisk, "rm kasumi.ko");
             }
 
             // Restore init if init.real exists
-            auto init_real_exists =
-                exec_command_magiskboot(magiskboot, {"cpio", ramdisk, "exists init.real"}, workdir);
-            if (init_real_exists.exit_code == 0) {
+            if (magiskboot_query({"cpio", ramdisk, "exists init.real"}) == 0) {
                 do_cpio_cmd(magiskboot, workdir, ramdisk, "mv init.real init");
             }
 
@@ -1863,14 +1810,11 @@ int boot_restore(const std::vector<std::string>& args) {
 
         const std::string output_image = "./" + name;
 
-        std::ifstream src(new_boot, std::ios::binary);  // NOLINT(misc-const-correctness)
-        std::ofstream dst(output_image, std::ios::binary);
-        if (!src || !dst) {
+        if (!copy_file_data(new_boot, output_image)) {
             LOGE("Failed to write output file");
             cleanup();
             return 1;
         }
-        dst << src.rdbuf();
 
         printf("- Output file is written to\n");
         printf("- %s\n", output_image.c_str());
@@ -1900,11 +1844,8 @@ namespace {
 // Old kernels without UTS View may use the effective release. New kernels must
 // use the immutable original identity and fail closed if it is unavailable.
 std::string read_kernel_release_from_sysfs() {
-    std::ifstream f("/proc/sys/kernel/osrelease");
-    std::string line;
-    if (std::getline(f, line))
-        return line;
-    return "";
+    const auto release = read_file("/proc/sys/kernel/osrelease");
+    return release ? std::string(trim_view(*release)) : std::string{};
 }
 
 std::string parse_kmi_from_release(const std::string& full_version) {

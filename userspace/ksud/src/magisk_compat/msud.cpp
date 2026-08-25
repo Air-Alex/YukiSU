@@ -33,9 +33,6 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iterator>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -135,27 +132,23 @@ void spawn_detached(const std::vector<std::string>& argv) {
 }
 
 std::string uid_to_package(uint32_t uid) {
-    std::ifstream in("/data/system/packages.list");
-    if (!in.is_open()) {
-        return {};
-    }
-    std::string line;
-    while (std::getline(in, line)) {
-        std::istringstream iss(line);
-        std::string pkg;
-        uint32_t puid = 0;
-        if ((iss >> pkg >> puid) && puid == uid) {
-            return pkg;
+    std::string package;
+    (void)for_each_file_line("/data/system/packages.list", [&](std::string_view line) {
+        std::string_view rest = line;
+        const std::string_view name = next_token(&rest);
+        uint32_t package_uid = 0;
+        if (!name.empty() && parse_uint32(next_token(&rest), &package_uid) && package_uid == uid) {
+            package.assign(name);
+            return false;
         }
-    }
-    return {};
+        return true;
+    });
+    return package;
 }
 
 std::string read_comm(pid_t pid) {
-    std::ifstream in("/proc/" + std::to_string(pid) + "/comm");
-    std::string c;
-    std::getline(in, c);
-    return c;
+    const auto content = read_file("/proc/" + std::to_string(pid) + "/comm");
+    return content ? std::string(trim_view(*content)) : std::string{};
 }
 
 int create_verdict_listener(std::string* out_name) {
@@ -634,18 +627,20 @@ void kill_msud() {
         if (pid <= 0 || pid == self) {
             continue;
         }
-        std::ifstream f("/proc/" + std::string(ent->d_name) + "/cmdline", std::ios::binary);
-        if (!f.is_open()) {
+        const auto cmdline = read_file("/proc/" + std::string(ent->d_name) + "/cmdline");
+        if (!cmdline) {
             continue;
         }
-        const std::string cmd((std::istreambuf_iterator<char>(f)),
-                              std::istreambuf_iterator<char>());
-        const size_t nul = cmd.find('\0');
+        const size_t nul = cmdline->find('\0');
         if (nul == std::string::npos) {
             continue;
         }
-        std::string arg1 = cmd.substr(nul + 1);
-        arg1 = arg1.substr(0, arg1.find('\0'));
+        const std::string_view tail(*cmdline);
+        const size_t arg1_begin = nul + 1;
+        const size_t arg1_end = tail.find('\0', arg1_begin);
+        const size_t arg1_size =
+            (arg1_end == std::string_view::npos) ? tail.size() - arg1_begin : arg1_end - arg1_begin;
+        const std::string_view arg1 = tail.substr(arg1_begin, arg1_size);
         if (arg1 == "msud") {
             kill(static_cast<pid_t>(pid), SIGTERM);
         }

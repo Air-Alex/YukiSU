@@ -1,5 +1,6 @@
 #include "lkm_image.hpp"
 
+#include "../utils.hpp"
 #include "boot_image_btf.hpp"
 #include "lkm_image_bootstrap_linker.hpp"
 
@@ -8,11 +9,9 @@
 #include <cctype>
 #include <charconv>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
-#include <regex>
 #include <set>
 #include <string>
 #include <string_view>
@@ -153,7 +152,7 @@ Result<RequiredSymbols> resolve_required_symbols(const SymbolMap& symbols) {
         *destination = std::move(value.value());
         return Result<void>::success();
     };
-    for (auto item :
+    for (const auto& item :
          {std::pair{"_text", &result.image_base}, std::pair{"_end", &result.image_end},
           std::pair{"_stext", &result.text_start}, std::pair{"_etext", &result.text_end},
           std::pair{"linux_banner", &result.linux_banner},
@@ -1311,9 +1310,9 @@ Result<BootstrapMatch> find_bootstrap_by_magic(const std::vector<std::uint8_t>& 
 
 // Walk a module's undefined symbols exactly the way collect_module_fixups does
 // and hand each symbol table entry to the visitor.
-Result<void> for_each_undefined_symbol(
-    const std::vector<std::uint8_t>& module,
-    const std::function<Result<void>(std::size_t, const std::string&)>& visit) {
+template <typename Visit>
+Result<void> for_each_undefined_symbol(const std::vector<std::uint8_t>& module,
+                                       const Visit& visit) {
     auto parsed_sections = parse_module_sections(module);
     if (!parsed_sections)
         return propagate<void>(parsed_sections.error());
@@ -2131,7 +2130,6 @@ Result<std::vector<std::uint8_t>> remove_capsule(const std::vector<std::uint8_t>
 }
 
 std::optional<std::string> detect_kmi(const std::vector<std::uint8_t>& image) {
-    static const std::regex pattern(R"((\d+\.\d+)\S*(android\d+))");
     if (image.size() < 4)
         return std::nullopt;
     for (std::size_t index = 0; index <= image.size() - 4; ++index) {
@@ -2145,11 +2143,10 @@ std::optional<std::string> detect_kmi(const std::vector<std::uint8_t>& image) {
             ++end;
         if (end == limit)
             continue;
-        const std::string candidate(reinterpret_cast<const char*>(image.data() + index),
-                                    end - index);
-        std::smatch match;
-        if (std::regex_search(candidate, match, pattern) && match.size() >= 3)
-            return match[2].str() + "-" + match[1].str();
+        const std::string_view candidate(reinterpret_cast<const char*>(image.data() + index),
+                                         end - index);
+        if (const auto kmi = parse_kmi_string(candidate))
+            return kmi;
     }
     return std::nullopt;
 }

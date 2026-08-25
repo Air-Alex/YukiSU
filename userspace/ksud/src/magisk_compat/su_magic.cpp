@@ -3,6 +3,7 @@
 #include "assets.hpp"
 #include "core/ksucalls.hpp"
 #include "log.hpp"
+#include "utils.hpp"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -15,8 +16,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 // Older bionic headers may not expose every propagation flag.
@@ -208,17 +207,18 @@ bool prepare_data_su() {
 }  // namespace
 
 bool su_magic_mounted() {
-    std::ifstream in("/proc/mounts");
-    std::string line;
-    while (std::getline(in, line)) {
-        std::istringstream iss(line);
-        std::string src;
-        std::string mnt;
-        if ((iss >> src >> mnt) && mnt == "/system/bin") {
-            return true;
+    const auto mounts = read_file("/proc/mounts");
+    if (!mounts)
+        return false;
+    bool mounted = false;
+    for_each_line(*mounts, [&mounted](std::string_view line) {
+        std::string_view rest = line;
+        (void)next_token(&rest);  // source device
+        if (next_token(&rest) == "/system/bin") {
+            mounted = true;
         }
-    }
-    return false;
+    });
+    return mounted;
 }
 
 void magic_umount_su() {

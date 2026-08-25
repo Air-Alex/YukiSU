@@ -11,10 +11,8 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <map>
 #include <set>
-#include <sstream>
 #include <vector>
 
 namespace ksud {
@@ -223,20 +221,18 @@ int feature_load_config() {
     }
 
     // Parse simple key=value format
-    std::istringstream iss(*content);
-    std::string line;
     std::map<uint32_t, uint64_t> loaded_features;
-    while (std::getline(iss, line)) {
-        line = trim(line);
+    for_each_line(*content, [&](std::string_view raw_line) {
+        const std::string_view line = trim_view(raw_line);
         if (line.empty() || line[0] == '#')
-            continue;
+            return;
 
         const size_t eq = line.find('=');
-        if (eq == std::string::npos)
-            continue;
+        if (eq == std::string_view::npos)
+            return;
 
-        const std::string key = trim(line.substr(0, eq));
-        const std::string val = trim(line.substr(eq + 1));
+        const std::string key(trim_view(line.substr(0, eq)));
+        const std::string val(trim_view(line.substr(eq + 1)));
 
         auto [feature_id, valid] = parse_feature_id(key);
         if (valid) {
@@ -249,7 +245,7 @@ int feature_load_config() {
                 LOGW("Invalid value for feature %s: %s", key.c_str(), val.c_str());
             }
         }
-    }
+    });
 
     if (save_binary_config(loaded_features) != 0) {
         LOGW("Failed to sync loaded feature config to binary cache");
@@ -261,18 +257,19 @@ int feature_load_config() {
 int feature_save_config() {
     const std::string config_path = std::string(KSURC_PATH);
     const auto current_features = get_current_feature_values();
-    std::ofstream ofs(config_path);
-    if (!ofs) {
-        LOGE("Failed to open config file for writing");
-        return 1;
-    }
-
-    ofs << "# KernelSU feature configuration\n";
+    std::string text = "# KernelSU feature configuration\n";
     for (const auto& [name, id] : get_feature_map()) {
         auto it = current_features.find(id);
         if (it != current_features.end()) {
-            ofs << name << "=" << it->second << "\n";
+            text += name;
+            text += '=';
+            text += std::to_string(it->second);
+            text += '\n';
         }
+    }
+    if (!write_file(config_path, text)) {
+        LOGE("Failed to open config file for writing");
+        return 1;
     }
 
     if (save_binary_config(current_features) != 0) {
@@ -287,41 +284,53 @@ int feature_save_config() {
 std::map<uint32_t, uint64_t> load_binary_config() {
     std::map<uint32_t, uint64_t> features;
 
-    std::ifstream ifs(get_feature_config_path(), std::ios::binary);
-    if (!ifs) {
+    const auto blob = read_file(get_feature_config_path());
+    if (!blob) {
         LOGI("Feature binary config not found, using defaults");
         return features;
     }
 
-    // Read magic
+    // Fixed-layout record file: magic, version, count, then count*(u32 id, u64
+    // value). Every field is bounds-checked against the blob, which the stream
+    // version only did loosely via ifs.good().
+    size_t offset = 0;
+    const auto take = [&blob, &offset](void* out, size_t size) {
+        if (offset + size > blob->size())
+            return false;
+        std::memcpy(out, blob->data() + offset, size);
+        offset += size;
+        return true;
+    };
+
     uint32_t magic = 0;
-    ifs.read(reinterpret_cast<char*>(&magic), sizeof(magic));
-    if (magic != FEATURE_MAGIC) {
+    if (!take(&magic, sizeof(magic)) || magic != FEATURE_MAGIC) {
         LOGW("Invalid feature config magic: expected 0x%08x, got 0x%08x", FEATURE_MAGIC, magic);
         return features;
     }
 
-    // Read version
     uint32_t version = 0;
-    ifs.read(reinterpret_cast<char*>(&version), sizeof(version));
+    if (!take(&version, sizeof(version))) {
+        LOGW("Feature config truncated before version");
+        return features;
+    }
     if (version != FEATURE_VERSION) {
         LOGW("Feature config version mismatch: expected %u, got %u", FEATURE_VERSION, version);
     }
 
-    // Read count
     uint32_t count = 0;
-    ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
+    if (!take(&count, sizeof(count))) {
+        LOGW("Feature config truncated before count");
+        return features;
+    }
 
-    // Read features
     for (uint32_t i = 0; i < count; i++) {
         uint32_t id = 0;
         uint64_t value = 0;
-        ifs.read(reinterpret_cast<char*>(&id), sizeof(id));
-        ifs.read(reinterpret_cast<char*>(&value), sizeof(value));
-
-        if (ifs.good()) {
-            features[id] = value;
+        if (!take(&id, sizeof(id)) || !take(&value, sizeof(value))) {
+            LOGW("Feature config truncated at entry %u of %u", i, count);
+            break;
         }
+        features[id] = value;
     }
 
     LOGI("Loaded %zu features from binary config", features.size());
@@ -331,31 +340,29 @@ std::map<uint32_t, uint64_t> load_binary_config() {
 int save_binary_config(const std::map<uint32_t, uint64_t>& features) {
     ensure_dir_exists(WORKING_DIR);
 
-    std::ofstream ofs(get_feature_config_path(), std::ios::binary | std::ios::trunc);
-    if (!ofs) {
+    std::string blob;
+    blob.reserve((3 * sizeof(uint32_t)) +
+                 (features.size() * (sizeof(uint32_t) + sizeof(uint64_t))));
+    const auto put = [&blob](const void* data, size_t size) {
+        blob.append(static_cast<const char*>(data), size);
+    };
+
+    const uint32_t magic = FEATURE_MAGIC;
+    put(&magic, sizeof(magic));
+    const uint32_t version = FEATURE_VERSION;
+    put(&version, sizeof(version));
+    const uint32_t count = static_cast<uint32_t>(features.size());
+    put(&count, sizeof(count));
+    for (const auto& [id, value] : features) {
+        put(&id, sizeof(id));
+        put(&value, sizeof(value));
+    }
+
+    if (!write_file(get_feature_config_path(), blob)) {
         LOGE("Failed to create feature binary config file");
         return -1;
     }
 
-    // Write magic
-    uint32_t magic = FEATURE_MAGIC;
-    ofs.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
-
-    // Write version
-    uint32_t version = FEATURE_VERSION;
-    ofs.write(reinterpret_cast<const char*>(&version), sizeof(version));
-
-    // Write count
-    uint32_t count = static_cast<uint32_t>(features.size());
-    ofs.write(reinterpret_cast<const char*>(&count), sizeof(count));
-
-    // Write features
-    for (const auto& [id, value] : features) {
-        ofs.write(reinterpret_cast<const char*>(&id), sizeof(id));
-        ofs.write(reinterpret_cast<const char*>(&value), sizeof(value));
-    }
-
-    ofs.flush();
     LOGI("Saved %zu features to binary config", features.size());
     return 0;
 }

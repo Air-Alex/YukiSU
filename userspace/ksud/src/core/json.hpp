@@ -1,16 +1,15 @@
-/* SPDX-License-Identifier: GPL-3.0 */
 /*
  * Minimal self-contained JSON (value / parse / dump). Header-only and suitable
  * for small ksud and zygiskd configuration files.
- *
- * Author: Anatdx
  */
 #pragma once
 
+#include <array>
 #include <cctype>
-#include <iomanip>
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -79,30 +78,33 @@ struct Value {
 };
 
 inline std::string escape_string(const std::string& s) {
-    std::ostringstream ss;
-    ss << '"';
+    std::string out;
+    out.reserve(s.size() + 2);
+    out += '"';
     for (char c : s) {
         if (c == '"')
-            ss << "\\\"";
+            out += "\\\"";
         else if (c == '\\')
-            ss << "\\\\";
+            out += "\\\\";
         else if (c == '\b')
-            ss << "\\b";
+            out += "\\b";
         else if (c == '\f')
-            ss << "\\f";
+            out += "\\f";
         else if (c == '\n')
-            ss << "\\n";
+            out += "\\n";
         else if (c == '\r')
-            ss << "\\r";
+            out += "\\r";
         else if (c == '\t')
-            ss << "\\t";
-        else if ((unsigned char)c < 0x20)
-            ss << "\\u" << std::setfill('0') << std::setw(4) << std::hex << (int)(unsigned char)c;
-        else
-            ss << c;
+            out += "\\t";
+        else if ((unsigned char)c < 0x20) {
+            std::array<char, 7> esc{};
+            (void)snprintf(esc.data(), esc.size(), "\\u%04x", (unsigned)(unsigned char)c);
+            out += esc.data();
+        } else
+            out += c;
     }
-    ss << '"';
-    return ss.str();
+    out += '"';
+    return out;
 }
 
 inline std::string dump(const Value& v, int indent = -1, int level = 0) {
@@ -123,39 +125,47 @@ inline std::string dump(const Value& v, int indent = -1, int level = 0) {
     case Type::Array: {
         if (v.a.empty())
             return "[]";
-        std::ostringstream ss;
-        ss << "[" << (indent >= 0 ? "\n" : "");
+        std::string out = "[";
+        if (indent >= 0)
+            out += '\n';
         for (size_t i = 0; i < v.a.size(); ++i) {
             if (indent >= 0)
-                ss << std::string((level + 1) * indent, ' ');
-            ss << dump(v.a[i], indent, level + 1);
-            if (i < v.a.size() - 1)
-                ss << "," << (indent >= 0 ? "\n" : " ");
+                out.append((size_t)((level + 1) * indent), ' ');
+            out += dump(v.a[i], indent, level + 1);
+            if (i + 1 < v.a.size())
+                out += (indent >= 0) ? ",\n" : ", ";
         }
-        if (indent >= 0)
-            ss << "\n" << std::string(level * indent, ' ');
-        ss << "]";
-        return ss.str();
+        if (indent >= 0) {
+            out += '\n';
+            out.append((size_t)(level * indent), ' ');
+        }
+        out += ']';
+        return out;
     }
     case Type::Object: {
         if (v.o.empty())
             return "{}";
-        std::ostringstream ss;
-        ss << "{" << (indent >= 0 ? "\n" : "");
+        std::string out = "{";
+        if (indent >= 0)
+            out += '\n';
         size_t i = 0;
         for (const auto& kv : v.o) {
             if (indent >= 0)
-                ss << std::string((level + 1) * indent, ' ');
-            ss << escape_string(kv.first) << ":" << (indent >= 0 ? " " : "");
-            ss << dump(kv.second, indent, level + 1);
-            if (i < v.o.size() - 1)
-                ss << "," << (indent >= 0 ? "\n" : " ");
-            i++;
+                out.append((size_t)((level + 1) * indent), ' ');
+            out += escape_string(kv.first);
+            out += ':';
+            if (indent >= 0)
+                out += ' ';
+            out += dump(kv.second, indent, level + 1);
+            if (++i < v.o.size())
+                out += (indent >= 0) ? ",\n" : ", ";
         }
-        if (indent >= 0)
-            ss << "\n" << std::string(level * indent, ' ');
-        ss << "}";
-        return ss.str();
+        if (indent >= 0) {
+            out += '\n';
+            out.append((size_t)(level * indent), ' ');
+        }
+        out += '}';
+        return out;
     }
     }
     return "";
@@ -227,11 +237,21 @@ class Parser {
     }
 
     Value parse_number() {
-        size_t start = pos;
+        const size_t start = pos;
         while (pos < str.size() &&
                (std::isdigit((unsigned char)str[pos]) || str[pos] == '-' || str[pos] == '.'))
             pos++;
-        return Value(std::stod(str.substr(start, pos - start)));
+        // strtod lives in libc, so it costs nothing here, while std::from_chars
+        // for double drags in libc++'s float conversion tables. The token is a
+        // substring of a std::string, so it is NUL-terminated at its own end
+        // only after the copy; keep the copy for that reason.
+        const std::string token = str.substr(start, pos - start);
+        char* end = nullptr;
+        errno = 0;
+        const double value = std::strtod(token.c_str(), &end);
+        if (end != token.c_str() + token.size() || errno == ERANGE)
+            return Value(0.0);
+        return Value(value);
     }
 
     Value parse_array() {

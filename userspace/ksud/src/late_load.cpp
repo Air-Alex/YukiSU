@@ -22,7 +22,6 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
-#include <fstream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,13 +44,15 @@ bool is_kernelsu_loaded() {
     // Release builds remove their sysfs kobject after initialization, so
     // /sys/module alone is not a reliable one-shot guard. /proc/modules keeps
     // the exact live module name without touching the KernelSU fd cache.
-    std::ifstream modules("/proc/modules");
-    std::string line;
-    while (std::getline(modules, line)) {
+    const auto modules = read_file("/proc/modules");
+    if (!modules)
+        return false;
+    bool loaded = false;
+    for_each_line(*modules, [&loaded](std::string_view line) {
         if (line.rfind("kernelsu ", 0) == 0)
-            return true;
-    }
-    return false;
+            loaded = true;
+    });
+    return loaded;
 }
 
 std::string get_kernelsu_load_params(bool allow_shell) {
