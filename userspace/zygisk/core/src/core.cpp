@@ -28,7 +28,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <deque>
 #include <vector>
 
 using zygisk::Option;
@@ -62,10 +61,13 @@ struct Module {
   CoreApiTable api{};  // per-module, filled by RegisterModuleImpl
 };
 
-std::deque<Module> g_modules; // deque: refs stay stable as modules register
-Module *g_cur = nullptr;      // module currently in onLoad/pre/post
-Module *g_loading = nullptr;  // module currently being registered
-int g_loading_id = -1;        // zygiskd index of the module being loaded
+// Reserved to the zygiskd module count before the first emplace_back, so
+// g_cur/g_loading stay valid for the whole load and the per-specialize walks
+// below get contiguous storage. Never push past that reserve.
+std::vector<Module> g_modules;
+Module *g_cur = nullptr;     // module currently in onLoad/pre/post
+Module *g_loading = nullptr; // module currently being registered
+int g_loading_id = -1;       // zygiskd index of the module being loaded
 
 // zygiskd-backed helpers.
 int zd_module_dir(int id);
@@ -427,6 +429,20 @@ void load_modules_impl(JNIEnv *env) {
   }
   close(sock);
   LOGI("zygiskd reports %u module(s)", count);
+
+  // Must precede every emplace_back below: g_loading/g_cur hold Module* into
+  // this storage, so a reallocation mid-load would dangle them. The loop below
+  // emplaces at most once per iteration and runs `count` times, so reserving
+  // `count` is sufficient -- but `count` arrives over a socket, and reserving
+  // an absurd value here would abort inside Zygote (this target is built
+  // -fno-exceptions) and take the boot with it. The deque this replaced grew
+  // only as modules actually arrived, so it had no equivalent exposure.
+  constexpr uint32_t kMaxModules = 1024;
+  if (count > kMaxModules) {
+    LOGE("zygiskd reported %u modules, clamping to %u", count, kMaxModules);
+    count = kMaxModules;
+  }
+  g_modules.reserve(count);
 
   // Arm the temporary module-load policy before receiving the first module
   // image. On policies without the memfd_file class, SCM_RIGHTS reception of

@@ -31,7 +31,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -135,6 +134,47 @@ std::vector<Module> scan_modules() {
   return mods;
 }
 
+// Bulk read; the stream version copied through streambuf a character at a time.
+bool read_text_file(const std::string &path, std::string *out) {
+  const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+  if (fd < 0)
+    return false;
+  out->clear();
+  char buffer[65536];
+  bool ok = true;
+  for (;;) {
+    const ssize_t count = read(fd, buffer, sizeof(buffer));
+    if (count > 0) {
+      out->append(buffer, static_cast<size_t>(count));
+      continue;
+    }
+    if (count == 0)
+      break;
+    if (errno == EINTR)
+      continue;
+    ok = false;
+    break;
+  }
+  close(fd);
+  if (!ok)
+    out->clear();
+  return ok;
+}
+
+// Same line set as std::getline: a trailing newline yields no empty final line.
+template <typename Fn>
+void for_each_manifest_line(const std::string &text, const Fn &fn) {
+  size_t begin = 0;
+  while (begin < text.size()) {
+    size_t end = text.find('\n', begin);
+    const bool last = (end == std::string::npos);
+    if (last)
+      end = text.size();
+    fn(text.substr(begin, end - begin));
+    begin = last ? text.size() : end + 1;
+  }
+}
+
 std::vector<NativeModule> scan_native_modules() {
   std::vector<NativeModule> mods;
   DIR *d = opendir(kModulesDir);
@@ -150,11 +190,10 @@ std::vector<NativeModule> scan_native_modules() {
         access((base + "/remove").c_str(), F_OK) == 0)
       continue;
 
-    std::ifstream f(base + "/zn_modules.txt");
-    if (!f.is_open())
+    std::string manifest;
+    if (!read_text_file(base + "/zn_modules.txt", &manifest))
       continue;
-    std::string line;
-    while (std::getline(f, line)) {
+    for_each_manifest_line(manifest, [&](const std::string &line) {
       NativeModule m{};
       if (yukizygisk::native::parse_native_module_line(module_id, base, line,
                                                        &m)) {
@@ -170,7 +209,7 @@ std::vector<NativeModule> scan_native_modules() {
         DLOGI("native module: ignored invalid line in %s: %s",
               module_id.c_str(), yukizygisk::native::trim_copy(line).c_str());
       }
-    }
+    });
   }
   closedir(d);
   return mods;

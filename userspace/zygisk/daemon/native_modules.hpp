@@ -6,8 +6,8 @@
 
 #include <cctype>
 #include <cstdint>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace yukizygisk::native {
@@ -32,6 +32,22 @@ inline std::string trim_copy(const std::string &s) {
   return s.substr(first, last - first);
 }
 
+// Pop the next whitespace-delimited token, advancing `rest`. Stands in for
+// `stream >> token` without instantiating a stringstream per manifest line.
+inline std::string_view next_token(std::string_view *rest) {
+  constexpr std::string_view kWhitespace = " \t\r\n\f\v";
+  const size_t begin = rest->find_first_not_of(kWhitespace);
+  if (begin == std::string_view::npos) {
+    *rest = {};
+    return {};
+  }
+  const size_t end = rest->find_first_of(kWhitespace, begin);
+  const std::string_view token = rest->substr(begin, end - begin);
+  *rest =
+      (end == std::string_view::npos) ? std::string_view{} : rest->substr(end);
+  return token;
+}
+
 inline void replace_all(std::string &s, const std::string &from,
                         const std::string &to) {
   if (from.empty())
@@ -53,10 +69,11 @@ inline bool parse_native_module_line(const std::string &module_id,
   if (text.empty() || text[0] == '#')
     return false;
 
-  std::istringstream iss(text);
-  std::string head;
-  if (!(iss >> head))
+  std::string_view rest(text);
+  const std::string_view head_view = next_token(&rest);
+  if (head_view.empty())
     return false;
+  const std::string head(head_view);
 
   NativeModule m{};
   m.module_id = module_id;
@@ -74,13 +91,13 @@ inline bool parse_native_module_line(const std::string &module_id,
   if (m.target.empty() || m.target.size() >= YZ_NATIVE_TARGET_VALUE_MAX)
     return false;
 
-  std::string token;
   std::string lib_rel;
-  while (iss >> token) {
+  for (std::string_view token = next_token(&rest); !token.empty();
+       token = next_token(&rest)) {
     if (token == "companion") {
       m.has_companion = true;
     } else if (lib_rel.empty()) {
-      lib_rel = token;
+      lib_rel.assign(token);
     }
   }
   if (lib_rel.empty())

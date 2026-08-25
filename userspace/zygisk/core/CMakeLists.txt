@@ -50,10 +50,17 @@ add_subdirectory(
 # also drops the liblog dependency.
 target_compile_definitions(lsplt_static PRIVATE LOG_DISABLED)
 
+get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+# Resolves libc++abi's __cxa_demangle reference locally so the real demangler and
+# its unwinder never link in. -fno-exceptions below does not cover this: libc++'s
+# prebuilt archive still reaches the demangler via operator new's bad_alloc path.
+set(CXX_SLIM_SOURCE ${REPO_ROOT}/userspace/common/cxx_slim.cpp)
+
 add_library(zygisk SHARED
     src/core.cpp
     src/hook.cpp
     src/runtime_log.cpp
+    ${CXX_SLIM_SOURCE}
     # the anonymous in-memory loader, compiled INTO the core so libzygisk carries
     # its own copy -- the separate libyukilinker first stage is then unloaded
     # right after handoff (zygisk_finalize_loader) instead of lingering.
@@ -111,6 +118,7 @@ add_library(yukizncore SHARED
     ${YUKILINKER_ARCH_SOURCES}
     src/self_unmap.S
     src/solist.cpp
+    ${CXX_SLIM_SOURCE}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz/xz_dec_lzma2.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz/xz_dec_stream.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz/xz_dec_bcj.c
@@ -151,7 +159,8 @@ yukisu_enable_clang_tidy(yukizncore CXX)
 add_library(yukilinker SHARED
     src/yukilinker.cpp
     src/runtime_log.cpp
-    ${YUKILINKER_ARCH_SOURCES})
+    ${YUKILINKER_ARCH_SOURCES}
+    ${CXX_SLIM_SOURCE})
 set_target_properties(yukilinker PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "yukilinker${YUKIZYGISK_ABI_SUFFIX}")
