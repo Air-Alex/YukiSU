@@ -54,7 +54,12 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-ANDROID_TARGET=aarch64-linux-android26
+# Android API floor. CMake overrides the versioned NDK wrapper's --target with one
+# it derives from CMAKE_SYSTEM_VERSION, so that variable -- not the wrapper path --
+# is what actually selects the API level. Enforced at compile time by
+# userspace/common/api_floor.hpp.
+ANDROID_API=31
+ANDROID_TARGET=aarch64-linux-android${ANDROID_API}
 
 detect_ndk_host() {
 	if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
@@ -123,6 +128,7 @@ build_android_cmake() {
 		-DCMAKE_SYSTEM_NAME=Android \
 		-DCMAKE_ANDROID_ARCH_ABI="$abi" \
 		-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+		-DCMAKE_SYSTEM_VERSION="$api" \
 		-DCMAKE_C_COMPILER="$TOOLCHAIN/bin/${target}-clang" \
 		-DCMAKE_CXX_COMPILER="$TOOLCHAIN/bin/${target}-clang++" \
 		-DCMAKE_AR="$TOOLCHAIN/bin/llvm-ar" \
@@ -182,6 +188,7 @@ cmake .. \
 	-DCMAKE_SYSTEM_NAME=Android \
 	-DCMAKE_ANDROID_ARCH_ABI="$ANDROID_ABI" \
 	-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+	-DCMAKE_SYSTEM_VERSION="$ANDROID_API" \
 	-DCMAKE_C_COMPILER="$CC" \
 	-DCMAKE_CXX_COMPILER="$CXX" \
 	-DCMAKE_BUILD_TYPE=Release
@@ -222,6 +229,7 @@ cmake .. \
 	-DCMAKE_SYSTEM_NAME=Android \
 	-DCMAKE_ANDROID_ARCH_ABI="$ANDROID_ABI" \
 	-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+	-DCMAKE_SYSTEM_VERSION="$ANDROID_API" \
 	-DCMAKE_C_COMPILER="$CC" \
 	-DCMAKE_CXX_COMPILER="$CXX" \
 	-DCMAKE_BUILD_TYPE=Release
@@ -233,10 +241,10 @@ echo "    su staged"
 echo ">>> Build YukiZygisk payload ..."
 ZCORE_DIR="$REPO_ROOT/userspace/zygisk/core"
 ZYGISKD_DIR="$REPO_ROOT/userspace/zygisk/daemon"
-build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build" arm64-v8a 26
-build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build" arm64-v8a 28
-build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build-armv7" armeabi-v7a 26
-build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build-armv7" armeabi-v7a 28
+build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build" arm64-v8a 31
+build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build" arm64-v8a 31
+build_android_cmake "$ZCORE_DIR" "$ZCORE_DIR/build-armv7" armeabi-v7a 31
+build_android_cmake "$ZYGISKD_DIR" "$ZYGISKD_DIR/build-armv7" armeabi-v7a 31
 cp "$ZCORE_DIR/build/libzygisk64.so" "$KSUD_ASSETS/"
 cp "$ZCORE_DIR/build/libyukilinker64.so" "$KSUD_ASSETS/"
 cp "$ZCORE_DIR/build/libyukizncore64.so" "$KSUD_ASSETS/"
@@ -256,6 +264,7 @@ cmake .. \
 	-DCMAKE_SYSTEM_NAME=Android \
 	-DCMAKE_ANDROID_ARCH_ABI="$ANDROID_ABI" \
 	-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+	-DCMAKE_SYSTEM_VERSION="$ANDROID_API" \
 	-DCMAKE_C_COMPILER="$CC" \
 	-DCMAKE_CXX_COMPILER="$CXX" \
 	-DCMAKE_BUILD_TYPE=Release

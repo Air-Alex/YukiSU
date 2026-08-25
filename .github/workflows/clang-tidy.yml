@@ -125,8 +125,9 @@ jobs:
             -DCMAKE_SYSTEM_NAME=Android \
             -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a \
             -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
-            -DCMAKE_C_COMPILER="$toolchain/bin/aarch64-linux-android26-clang" \
-            -DCMAKE_CXX_COMPILER="$toolchain/bin/aarch64-linux-android26-clang++" \
+            -DCMAKE_SYSTEM_VERSION=31 \
+            -DCMAKE_C_COMPILER="$toolchain/bin/aarch64-linux-android31-clang" \
+            -DCMAKE_CXX_COMPILER="$toolchain/bin/aarch64-linux-android31-clang++" \
             -DCMAKE_BUILD_TYPE=Release \
             -DYUKISU_ENABLE_CLANG_TIDY=ON \
             -DYUKISU_CLANG_TIDY_PROGRAM="$toolchain/bin/clang-tidy"

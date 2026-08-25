@@ -172,7 +172,7 @@ function Build-CMakeProject {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][string]$SourceDirectory,
-        [int]$AndroidApi = 26,
+        [int]$AndroidApi = 31,
         [string]$AndroidAbi = $script:AndroidAbi,
         [string]$BuildDirectoryName = 'build',
         [switch]$NeedsPython
@@ -404,7 +404,7 @@ try {
     Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libzygisk64.so') -Destination (Join-Path $assetsDirectory 'libzygisk64.so')
     Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukilinker64.so') -Destination (Join-Path $assetsDirectory 'libyukilinker64.so')
     Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libyukizncore64.so') -Destination (Join-Path $assetsDirectory 'libyukizncore64.so')
-    Build-CMakeProject -Name 'zygiskd64' -SourceDirectory $zygiskDaemonDirectory -AndroidApi 28
+    Build-CMakeProject -Name 'zygiskd64' -SourceDirectory $zygiskDaemonDirectory -AndroidApi 31
     Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build\zygiskd64') -Destination (Join-Path $assetsDirectory 'zygiskd64')
     Build-CMakeProject -Name 'YukiZygisk armv7 core' -SourceDirectory $zygiskDirectory `
         -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
@@ -412,7 +412,7 @@ try {
     Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukilinker32.so') -Destination (Join-Path $assetsDirectory 'libyukilinker32.so')
     Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build-armv7\libyukizncore32.so') -Destination (Join-Path $assetsDirectory 'libyukizncore32.so')
     Build-CMakeProject -Name 'zygiskd32' -SourceDirectory $zygiskDaemonDirectory `
-        -AndroidApi 28 -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
+        -AndroidApi 31 -AndroidAbi 'armeabi-v7a' -BuildDirectoryName 'build-armv7'
     Copy-RequiredFile -Source (Join-Path $zygiskDaemonDirectory 'build-armv7\zygiskd32') -Destination (Join-Path $assetsDirectory 'zygiskd32')
     Write-Host '    staged arm64/armv7 payloads + zygiskd64/zygiskd32'
 
@@ -429,7 +429,7 @@ try {
     $defsSource = Join-Path $ksudDirectory 'src\defs.cpp'
     $originalDefs = [IO.File]::ReadAllBytes($defsSource)
     try {
-        Build-CMakeProject -Name 'ksud' -SourceDirectory $ksudDirectory -AndroidApi 28 -NeedsPython
+        Build-CMakeProject -Name 'ksud' -SourceDirectory $ksudDirectory -AndroidApi 31 -NeedsPython
     }
     finally {
         [IO.File]::WriteAllBytes($defsSource, $originalDefs)

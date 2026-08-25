@@ -41,11 +41,11 @@ jobs:
           case "${{ inputs.target }}" in
             aarch64-linux-android|aarch64)
               echo "abi=arm64-v8a" >> "$GITHUB_OUTPUT"
-              echo "android_target=aarch64-linux-android26" >> "$GITHUB_OUTPUT"
-              echo "daemon_target=aarch64-linux-android28" >> "$GITHUB_OUTPUT"
+              echo "android_target=aarch64-linux-android31" >> "$GITHUB_OUTPUT"
+              echo "daemon_target=aarch64-linux-android31" >> "$GITHUB_OUTPUT"
               echo "abi32=armeabi-v7a" >> "$GITHUB_OUTPUT"
-              echo "android_target32=armv7a-linux-androideabi26" >> "$GITHUB_OUTPUT"
-              echo "daemon_target32=armv7a-linux-androideabi28" >> "$GITHUB_OUTPUT"
+              echo "android_target32=armv7a-linux-androideabi31" >> "$GITHUB_OUTPUT"
+              echo "daemon_target32=armv7a-linux-androideabi31" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "YukiZygisk workflow supports aarch64 only, got: ${{ inputs.target }}"
@@ -75,6 +75,7 @@ jobs:
               -DCMAKE_SYSTEM_NAME=Android \
               -DCMAKE_ANDROID_ARCH_ABI="$abi" \
               -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
+              -DCMAKE_SYSTEM_VERSION=31 \
               -DCMAKE_C_COMPILER="$CC" \
               -DCMAKE_CXX_COMPILER="$CXX" \
               -DCMAKE_BUILD_TYPE=Release \
