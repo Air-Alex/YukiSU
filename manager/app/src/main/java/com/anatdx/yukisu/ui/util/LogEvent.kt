@@ -6,7 +6,6 @@ import android.system.Os
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.screen.getManagerVersion
 import com.topjohnwu.superuser.Shell
-import com.topjohnwu.superuser.ShellUtils
 import java.io.File
 import java.io.FileWriter
 import java.io.PrintWriter
@@ -44,16 +43,17 @@ internal fun shouldCollectYukiZygiskReport(
 internal fun outerBugreportArtifactReference(name: String, collected: Boolean): String =
     if (collected) "outer bugreport/$name" else "unavailable"
 
-private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
-
 private fun hasNonEmptyRegularFile(shell: Shell, path: String): Boolean = shell.newJob()
-    .add("[ ! -L '$path' ] && [ -f '$path' ] && [ -s '$path' ]")
+    .add(
+        "file=${shellArg(path)}; " +
+            "[ ! -L \"\$file\" ] && [ -f \"\$file\" ] && [ -s \"\$file\" ]",
+    )
     .exec()
     .isSuccess
 
 private fun hasYukiZygiskGenerationEvidence(shell: Shell, path: String): Boolean = shell.newJob()
     .add(
-        "generation=${shellQuote(path)}; found=0; " +
+        "generation=${shellArg(path)}; found=0; " +
             "if [ ! -L \"\$generation\" ] && [ -d \"\$generation\" ]; then " +
             "for file in \"\$generation/evidence\" \"\$generation/early_linker.json\" " +
             "\"\$generation/linker64.json\" \"\$generation/linker32.json\" " +
@@ -86,10 +86,10 @@ private fun copyYukiZygiskDiagnostics(shell: Shell, reportDir: File): Boolean {
     val destination = File(reportDir, "diagnostics")
     return shell.newJob()
         .add(
-            "[ ! -L '$YUKIZYGISK_DIAGNOSTICS_DIR' ] && " +
-                "[ -d '$YUKIZYGISK_DIAGNOSTICS_DIR' ] && " +
-                "mkdir -p '${destination.absolutePath}' && " +
-                "cp -a '$YUKIZYGISK_DIAGNOSTICS_DIR/.' '${destination.absolutePath}/'",
+            "source=${shellArg(YUKIZYGISK_DIAGNOSTICS_DIR)}; " +
+                "destination=${shellArg(destination.absolutePath)}; " +
+                "[ ! -L \"\$source\" ] && [ -d \"\$source\" ] && " +
+                "mkdir -p \"\$destination\" && cp -a \"\$source/.\" \"\$destination/\"",
         )
         .exec()
         .isSuccess
@@ -98,14 +98,15 @@ private fun copyYukiZygiskDiagnostics(shell: Shell, reportDir: File): Boolean {
 private fun copyLegacyYukiZygiskLogs(shell: Shell, reportDir: File): Boolean {
     val destination = File(reportDir, "logs")
     val sources = yukiZygiskLegacyLogNames.joinToString(" ") { name ->
-        "'$YUKIZYGISK_LEGACY_LOG_DIR/$name'"
+        shellArg("$YUKIZYGISK_LEGACY_LOG_DIR/$name")
     }
     return shell.newJob()
         .add(
-            "mkdir -p '${destination.absolutePath}'; copied=0; " +
+            "destination=${shellArg(destination.absolutePath)}; " +
+                "mkdir -p \"\$destination\"; copied=0; " +
                 "for source in $sources; do " +
                 "if [ ! -L \"\$source\" ] && [ -f \"\$source\" ] && [ -s \"\$source\" ]; then " +
-                "cp -p \"\$source\" '${destination.absolutePath}'/ && copied=1; " +
+                "cp -p \"\$source\" \"\$destination\"/ && copied=1; " +
                 "fi; done; [ \"\$copied\" -eq 1 ]",
         )
         .exec()
@@ -128,9 +129,9 @@ private fun deduplicateCrashFiles(
     )
     val result = shell.newJob()
         .add(
-            "archive=${shellQuote(archiveFile.absolutePath)}; " +
-                "diagnostics=${shellQuote(diagnosticsDir.absolutePath)}; " +
-                "scratch=${shellQuote(scratchFile.absolutePath)}; removed=0; " +
+            "archive=${shellArg(archiveFile.absolutePath)}; " +
+                "diagnostics=${shellArg(diagnosticsDir.absolutePath)}; " +
+                "scratch=${shellArg(scratchFile.absolutePath)}; removed=0; " +
                 "for generation in current old; do " +
                 "directory=\"\$diagnostics/\$generation/$directoryName\"; " +
                 "[ ! -L \"\$directory\" ] && [ -d \"\$directory\" ] || continue; " +
@@ -155,12 +156,12 @@ private fun archiveYukiZygiskReport(shell: Shell, reportDir: File, bugreportDir:
     try {
         val result = shell.newJob()
             .add(
-                "tar czf ${shellQuote(temporaryArchive.absolutePath)} " +
-                    "-C ${shellQuote(reportDir.absolutePath)} . && " +
-                    "tar tzf ${shellQuote(temporaryArchive.absolutePath)} >/dev/null && " +
-                    "chmod 0644 ${shellQuote(temporaryArchive.absolutePath)} && " +
-                    "mv -f -- ${shellQuote(temporaryArchive.absolutePath)} " +
-                    shellQuote(archiveFile.absolutePath),
+                "tar czf ${shellArg(temporaryArchive.absolutePath)} " +
+                    "-C ${shellArg(reportDir.absolutePath)} . && " +
+                    "tar tzf ${shellArg(temporaryArchive.absolutePath)} >/dev/null && " +
+                    "chmod 0644 ${shellArg(temporaryArchive.absolutePath)} && " +
+                    "mv -f -- ${shellArg(temporaryArchive.absolutePath)} " +
+                    shellArg(archiveFile.absolutePath),
             )
             .exec()
         archiveReady = result.isSuccess && archiveFile.isFile && archiveFile.length() > 0L
@@ -169,7 +170,7 @@ private fun archiveYukiZygiskReport(shell: Shell, reportDir: File, bugreportDir:
         val cleanup = buildList {
             add(temporaryArchive)
             if (!archiveReady) add(archiveFile)
-        }.joinToString(" ") { shellQuote(it.absolutePath) }
+        }.joinToString(" ") { shellArg(it.absolutePath) }
         shell.newJob().add("rm -rf -- $cleanup").exec()
     }
 }
@@ -187,11 +188,11 @@ private fun populateYukiZygiskReport(
     val configFile = File(reportDir, "config.json")
 
     val statusCollected = shell.newJob()
-        .add("${ksudCmd("yzctl status --json")} > ${statusFile.absolutePath}")
+        .add("${ksudCmd("yzctl status --json")} > ${shellArg(statusFile.absolutePath)}")
         .exec()
         .isSuccess && statusFile.isFile && statusFile.length() > 0L
     val configCollected = shell.newJob()
-        .add("cp $YUKIZYGISK_CONFIG_PATH ${configFile.absolutePath}")
+        .add("cp $YUKIZYGISK_CONFIG_PATH ${shellArg(configFile.absolutePath)}")
         .exec()
         .isSuccess && configFile.isFile && configFile.length() > 0L
     val diagnosticsCollected = copyYukiZygiskDiagnostics(shell, reportDir)
@@ -274,7 +275,7 @@ private fun collectYukiZygiskReport(
         )
         archiveYukiZygiskReport(shell, reportDir, bugreportDir)
     } finally {
-        shell.newJob().add("rm -rf -- ${shellQuote(reportDir.absolutePath)}").exec()
+        shell.newJob().add("rm -rf -- ${shellArg(reportDir.absolutePath)}").exec()
     }
 }
 
@@ -305,34 +306,34 @@ private fun buildBugreportFile(context: Context, bugreportDir: File, shell: Shel
     val yukiZygiskEvidence = findYukiZygiskReportEvidence(shell)
 
     // busybox ps has very few features for embed devices
-    shell.newJob().add("toybox ps -T -A -w -o PID,TID,UID,COMM,CMDLINE,CMD,LABEL,STAT,WCHAN > ${processFile.absolutePath}").exec()
-    shell.newJob().add("dmesg -r > ${dmesgFile.absolutePath}").exec()
-    shell.newJob().add("logcat -b all -v uid -d > ${logcatFile.absolutePath}").exec()
+    shell.newJob().add("toybox ps -T -A -w -o PID,TID,UID,COMM,CMDLINE,CMD,LABEL,STAT,WCHAN > ${shellArg(processFile.absolutePath)}").exec()
+    shell.newJob().add("dmesg -r > ${shellArg(dmesgFile.absolutePath)}").exec()
+    shell.newJob().add("logcat -b all -v uid -d > ${shellArg(logcatFile.absolutePath)}").exec()
     val tombstonesCollected = shell.newJob()
-        .add("tar -czf ${tombstonesFile.absolutePath} -C /data/tombstones .")
+        .add("tar -czf ${shellArg(tombstonesFile.absolutePath)} -C /data/tombstones .")
         .exec()
         .isSuccess && tombstonesFile.isFile && tombstonesFile.length() > 0L
-    shell.newJob().add("tar -czf ${dropboxFile.absolutePath} -C /data/system/dropbox .").exec()
+    shell.newJob().add("tar -czf ${shellArg(dropboxFile.absolutePath)} -C /data/system/dropbox .").exec()
     val pstoreCollected = shell.newJob()
-        .add("tar -czf ${pstoreFile.absolutePath} -C /sys/fs/pstore .")
+        .add("tar -czf ${shellArg(pstoreFile.absolutePath)} -C /sys/fs/pstore .")
         .exec()
         .isSuccess && pstoreFile.isFile && pstoreFile.length() > 0L
-    shell.newJob().add("tar -czf ${diagFile.absolutePath} -C /data/vendor/diag . --exclude=./minidump.gz").exec()
-    shell.newJob().add("tar -czf ${oplusFile.absolutePath} -C /mnt/oplus/op2/media/log/boot_log/ .").exec()
-    shell.newJob().add("tar -czf ${bootlogFile.absolutePath} -C /data/adb/ksu/log .").exec()
+    shell.newJob().add("tar -czf ${shellArg(diagFile.absolutePath)} -C /data/vendor/diag . --exclude=./minidump.gz").exec()
+    shell.newJob().add("tar -czf ${shellArg(oplusFile.absolutePath)} -C /mnt/oplus/op2/media/log/boot_log/ .").exec()
+    shell.newJob().add("tar -czf ${shellArg(bootlogFile.absolutePath)} -C /data/adb/ksu/log .").exec()
 
-    shell.newJob().add("cat /proc/1/mountinfo > ${mountsFile.absolutePath}").exec()
-    shell.newJob().add("cat /proc/filesystems > ${fileSystemsFile.absolutePath}").exec()
-    shell.newJob().add("busybox tree /data/adb > ${adbFileTree.absolutePath}").exec()
-    shell.newJob().add("ls -alRZ /data/adb > ${adbFileDetails.absolutePath}").exec()
-    shell.newJob().add("du -sh /data/adb/ksu/* > ${ksuFileSize.absolutePath}").exec()
-    shell.newJob().add("cp /data/system/packages.list ${appListFile.absolutePath}").exec()
-    shell.newJob().add("getprop > ${propFile.absolutePath}").exec()
-    shell.newJob().add("cp /data/adb/ksu/.allowlist ${allowListFile.absolutePath}").exec()
-    shell.newJob().add("cp /proc/modules ${procModules.absolutePath}").exec()
-    shell.newJob().add("cp /proc/bootconfig ${bootConfig.absolutePath}").exec()
-    shell.newJob().add("cp /proc/config.gz ${kernelConfig.absolutePath}").exec()
-    shell.newJob().add("ORIG=\$(cat /proc/sys/kernel/kptr_restrict); echo 1 > /proc/sys/kernel/kptr_restrict; cat /proc/kallsyms > ${kallsyms.absolutePath}; echo \$ORIG > /proc/sys/kernel/kptr_restrict").exec()
+    shell.newJob().add("cat /proc/1/mountinfo > ${shellArg(mountsFile.absolutePath)}").exec()
+    shell.newJob().add("cat /proc/filesystems > ${shellArg(fileSystemsFile.absolutePath)}").exec()
+    shell.newJob().add("busybox tree /data/adb > ${shellArg(adbFileTree.absolutePath)}").exec()
+    shell.newJob().add("ls -alRZ /data/adb > ${shellArg(adbFileDetails.absolutePath)}").exec()
+    shell.newJob().add("du -sh /data/adb/ksu/* > ${shellArg(ksuFileSize.absolutePath)}").exec()
+    shell.newJob().add("cp /data/system/packages.list ${shellArg(appListFile.absolutePath)}").exec()
+    shell.newJob().add("getprop > ${shellArg(propFile.absolutePath)}").exec()
+    shell.newJob().add("cp /data/adb/ksu/.allowlist ${shellArg(allowListFile.absolutePath)}").exec()
+    shell.newJob().add("cp /proc/modules ${shellArg(procModules.absolutePath)}").exec()
+    shell.newJob().add("cp /proc/bootconfig ${shellArg(bootConfig.absolutePath)}").exec()
+    shell.newJob().add("cp /proc/config.gz ${shellArg(kernelConfig.absolutePath)}").exec()
+    shell.newJob().add("ORIG=\$(cat /proc/sys/kernel/kptr_restrict); echo 1 > /proc/sys/kernel/kptr_restrict; cat /proc/kallsyms > ${shellArg(kallsyms.absolutePath)}; echo \$ORIG > /proc/sys/kernel/kptr_restrict").exec()
 
     if (shouldCollectYukiZygiskReport(yukiZygiskEnabled, yukiZygiskEvidence)) {
         collectYukiZygiskReport(
@@ -345,7 +346,7 @@ private fun buildBugreportFile(context: Context, bugreportDir: File, shell: Shel
         )
     }
 
-    val selinux = ShellUtils.fastCmd(shell, "getenforce")
+    val selinux = getSELinuxLabel()
 
     val buildInfo = File(bugreportDir, "basic.txt")
     PrintWriter(FileWriter(buildInfo)).use { pw ->
@@ -393,11 +394,11 @@ private fun buildBugreportFile(context: Context, bugreportDir: File, shell: Shel
     val targetFile = File.createTempFile("YukiSU_bugreport_${current}_", ".tar.gz", context.cacheDir)
 
     val archive = shell.newJob()
-        .add("tar czf ${targetFile.absolutePath} -C ${bugreportDir.absolutePath} . && chmod 0644 ${targetFile.absolutePath}")
+        .add("tar czf ${shellArg(targetFile.absolutePath)} -C ${shellArg(bugreportDir.absolutePath)} . && chmod 0644 ${shellArg(targetFile.absolutePath)}")
         .exec()
     if (!archive.isSuccess || !targetFile.isFile || targetFile.length() == 0L) {
         shell.newJob()
-            .add("rm -rf -- ${bugreportDir.absolutePath} ${targetFile.absolutePath}")
+            .add("rm -rf -- ${shellArg(bugreportDir.absolutePath)} ${shellArg(targetFile.absolutePath)}")
             .exec()
         error("Failed to create bugreport archive")
     }
@@ -412,6 +413,6 @@ fun getBugreportFile(context: Context): File {
     return try {
         buildBugreportFile(context, bugreportDir, shell)
     } finally {
-        shell.newJob().add("rm -rf -- ${shellQuote(bugreportDir.absolutePath)}").exec()
+        shell.newJob().add("rm -rf -- ${shellArg(bugreportDir.absolutePath)}").exec()
     }
 }

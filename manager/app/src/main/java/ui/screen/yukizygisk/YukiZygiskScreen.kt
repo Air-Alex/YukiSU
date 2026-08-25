@@ -1,5 +1,6 @@
 package ui.screen.yukizygisk
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -79,12 +80,12 @@ import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getFeatureValue
 import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
-import com.anatdx.yukisu.ui.util.getRootShell
-import com.anatdx.yukisu.ui.util.withNewRootShell
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
-import com.topjohnwu.superuser.ShellUtils
+import com.topjohnwu.superuser.io.SuFile
+import com.topjohnwu.superuser.io.SuFileInputStream
+import com.topjohnwu.superuser.io.SuFileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -95,6 +96,7 @@ import ui.screen.moreSettings.component.SettingsCard
 import ui.screen.moreSettings.component.SettingsControlGroup
 import ui.screen.moreSettings.component.SwitchSettingItem
 
+private const val TAG = "YukiZygiskScreen"
 private const val YZCONFIG_DIR = "/data/adb/ksu/yukizygisk"
 private const val YZCONFIG_PATH = "$YZCONFIG_DIR/yzconfig.json"
 
@@ -105,7 +107,11 @@ data class YzConfig(
 )
 
 private suspend fun readYzConfig(): YzConfig = withContext(Dispatchers.IO) {
-    val raw = ShellUtils.fastCmd(getRootShell(), "cat $YZCONFIG_PATH 2>/dev/null")
+    val raw = runCatching {
+        val file = SuFile(YZCONFIG_PATH)
+        if (!file.isFile) return@runCatching null
+        SuFileInputStream.open(file).use { it.readBytes().toString(Charsets.UTF_8) }
+    }.getOrNull()
     if (raw.isNullOrBlank()) return@withContext YzConfig()
     try {
         val o = JSONObject(raw)
@@ -125,10 +131,12 @@ private suspend fun writeYzConfig(cfg: YzConfig) = withContext(Dispatchers.IO) {
         put("denylist_mode", cfg.denylistMode)
         put("dmesg_log", cfg.dmesgLog)
     }.toString()
-    withNewRootShell {
-        newJob().add("mkdir -p $YZCONFIG_DIR").exec()
-        newJob().add("echo '$json' > $YZCONFIG_PATH").exec()
-    }
+    // Written as a file rather than echoed into a root shell: this is JSON, and
+    // a shell would have to be trusted to keep its hands off every byte of it.
+    runCatching {
+        SuFile(YZCONFIG_DIR).mkdirs()
+        SuFileOutputStream.open(YZCONFIG_PATH).use { it.write(json.toByteArray()) }
+    }.onFailure { Log.e(TAG, "Failed to write $YZCONFIG_PATH", it) }
     execKsud("yzctl reload")
 }
 

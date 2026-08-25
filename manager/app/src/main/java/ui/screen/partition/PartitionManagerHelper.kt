@@ -3,6 +3,7 @@ package ui.screen.partition
 import android.content.Context
 import android.util.Log
 import com.anatdx.yukisu.ui.util.getRootShell
+import com.anatdx.yukisu.ui.util.shellArg
 import com.anatdx.yukisu.ui.util.ksudCmd
 import com.topjohnwu.superuser.CallbackList
 import kotlinx.coroutines.Dispatchers
@@ -11,9 +12,6 @@ import java.io.IOException
 
 object PartitionManagerHelper {
     private const val TAG = "PartitionManagerHelper"
-
-    private fun shellQuote(value: String): String =
-        "'${value.replace("'", "'\\''")}'"
 
     private fun runKsudLines(args: String): List<String> {
         val stdout = ArrayList<String>()
@@ -54,7 +52,7 @@ object PartitionManagerHelper {
     suspend fun getPartitionList(context: Context, slot: String?, scanAll: Boolean = false): List<PartitionInfo> = withContext(Dispatchers.IO) {
         val args = buildString {
             append("flash list")
-            if (slot != null) append(" --slot ${shellQuote(slot)}")
+            if (slot != null) append(" --slot ${shellArg(slot)}")
             if (scanAll) append(" --all")
         }
         parsePartitionList(runKsudLines(args))
@@ -70,8 +68,8 @@ object PartitionManagerHelper {
         slot: String?
     ): String = withContext(Dispatchers.IO) {
         val args = buildString {
-            append("flash info ${shellQuote(partition)}")
-            if (slot != null) append(" --slot ${shellQuote(slot)}")
+            append("flash info ${shellArg(partition)}")
+            if (slot != null) append(" --slot ${shellArg(slot)}")
         }
         runKsudLines(args)
             .firstOrNull { "Block device:" in it }
@@ -109,7 +107,7 @@ object PartitionManagerHelper {
         context: Context,
         zipPath: String,
     ): Ak3PackageInfo = withContext(Dispatchers.IO) {
-        val values = runKsudLines("flash ak3-info ${shellQuote(zipPath)}")
+        val values = runKsudLines("flash ak3-info ${shellArg(zipPath)}")
             .mapNotNull { line ->
                 val separator = line.indexOf('=')
                 if (separator <= 0) null else {
@@ -141,8 +139,8 @@ object PartitionManagerHelper {
         try {
             val shell = getRootShell()
             
-            val slotArg = if (slot != null) " --slot ${shellQuote(slot)}" else ""
-            val cmd = ksudCmd("flash backup ${shellQuote(partition)} ${shellQuote(outputPath)}$slotArg")
+            val slotArg = if (slot != null) " --slot ${shellArg(slot)}" else ""
+            val cmd = ksudCmd("flash backup ${shellArg(partition)} ${shellArg(outputPath)}$slotArg")
             
             Log.d(TAG, "Executing backup command: $cmd")
             
@@ -189,8 +187,8 @@ object PartitionManagerHelper {
         try {
             val shell = getRootShell()
             
-            val slotArg = if (slot != null) " --slot ${shellQuote(slot)}" else ""
-            val cmd = ksudCmd("flash image ${shellQuote(imagePath)} ${shellQuote(partition)}$slotArg")
+            val slotArg = if (slot != null) " --slot ${shellArg(slot)}" else ""
+            val cmd = ksudCmd("flash image ${shellArg(imagePath)} ${shellArg(partition)}$slotArg")
             
             Log.d(TAG, "Executing flash command: $cmd")
             
@@ -238,7 +236,7 @@ object PartitionManagerHelper {
         try {
             val shell = getRootShell()
             
-            val cmd = ksudCmd("flash map ${shellQuote(slot)}")
+            val cmd = ksudCmd("flash map ${shellArg(slot)}")
             
             Log.d(TAG, "Executing map command: $cmd")
             

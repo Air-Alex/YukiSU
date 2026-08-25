@@ -197,8 +197,8 @@ object KsuCli {
         if (!apkKsud.isFile) return false
         return SHELL.newJob()
             .add(
-                "cmp -s ${shellQuoteArgument(apkKsud.absolutePath)} " +
-                    shellQuoteArgument(KsuPaths.KSUD_BIN)
+                "cmp -s ${shellArg(apkKsud.absolutePath)} " +
+                    shellArg(KsuPaths.KSUD_BIN)
             )
             .exec()
             .isSuccess
@@ -291,7 +291,7 @@ object KsuCli {
     suspend fun deleteDynamicManager(signature: DynamicManagerSignature): Boolean =
         withContext(Dispatchers.IO) {
             val result = getRootShell().newJob()
-                .add(ksudCmd("dynamic del ${signature.size} ${signature.hash}"))
+                .add(ksudCmd("dynamic del ${shellArg(signature.size)} ${shellArg(signature.hash)}"))
                 .exec()
             Log.i(TAG, "dynamic del ${signature.size} ${signature.hash} result: ${result.isSuccess}")
             result.isSuccess
@@ -324,7 +324,7 @@ object KsuCli {
             "mkdir -p ${KsuPaths.KSU_BIN_DIR}",
             "mkdir -p ${KsuPaths.KSU_LOG_DIR}",
             // Copy new daemon binary (multi-call tools dispatch via argv0)
-            "cp -f ${ksudSo.absolutePath} ${KsuPaths.KSUD_BIN}",
+            "cp -f ${shellArg(ksudSo.absolutePath)} ${KsuPaths.KSUD_BIN}",
             "chmod 0755 ${KsuPaths.KSUD_BIN}",
             // Tool symlinks all point to the same multi-call binary.
             "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/ksud",
@@ -418,7 +418,7 @@ fun createRootShell(globalMnt: Boolean = false): Shell {
 
 /** Build a "ksud <args>" command string. Use this instead of pasting
  *  `${getKsuDaemonPath()}` next to a subcommand literal. */
-internal fun ksudCmd(args: String): String = "${getKsuDaemonPath()} $args"
+internal fun ksudCmd(args: String): String = "${shellArg(getKsuDaemonPath())} $args"
 
 fun execKsud(args: String, newShell: Boolean = false): Boolean {
     return if (newShell) {
@@ -464,7 +464,7 @@ internal fun getFeatureValueOrNull(feature: Int): Boolean? =
  *  brings up sulogd/msud and refreshes the YukiZygisk early snapshot. */
 suspend fun setFeatureValue(feature: String, enabled: Boolean): Boolean =
     withContext(Dispatchers.IO) {
-        execKsud("feature set $feature ${if (enabled) 1 else 0}", true) &&
+        execKsud("feature set ${shellArg(feature)} ${if (enabled) 1 else 0}", true) &&
             execKsud("feature save", true)
     }
 
@@ -954,7 +954,7 @@ suspend fun setUtsViewTemplate(global: Boolean, template: UtsTemplate): Boolean 
                     append(" --")
                     append(name)
                     append(' ')
-                    append(shellQuoteArgument(normalized.valueFor(bit)))
+                    append(shellArg(normalized.valueFor(bit)))
                 } else {
                     append(" --inherit ")
                     append(name)
@@ -1077,7 +1077,10 @@ fun install() {
         ksuApp.applicationInfo.nativeLibraryDir + File.separator + "libadbroot.so"
     // magiskboot is built into ksud (multi-call binary); pass ksud path so it can exec itself as magiskboot
     Log.i(TAG, "install: ksud=$ksudPath")
-    val result = execKsud("install --magiskboot $ksudPath --libadbroot $libadbrootPath", true)
+    val result = execKsud(
+        "install --magiskboot ${shellArg(ksudPath)} --libadbroot ${shellArg(libadbrootPath)}",
+        true,
+    )
     Log.w(TAG, "install result: $result, cost: ${SystemClock.elapsedRealtime() - start}ms")
 }
 
@@ -1102,9 +1105,9 @@ fun getSuperuserCount(): Int {
 
 fun toggleModule(id: String, enable: Boolean): Boolean {
     val cmd = if (enable) {
-        "module enable $id"
+        "module enable ${shellArg(id)}"
     } else {
-        "module disable $id"
+        "module disable ${shellArg(id)}"
     }
     val result = execKsud(cmd, true)
     Log.i(TAG, "$cmd result: $result")
@@ -1112,21 +1115,21 @@ fun toggleModule(id: String, enable: Boolean): Boolean {
 }
 
 fun uninstallModule(id: String): Boolean {
-    val cmd = "module uninstall $id"
+    val cmd = "module uninstall ${shellArg(id)}"
     val result = execKsud(cmd, true)
     Log.i(TAG, "uninstall module $id result: $result")
     return result
 }
 
 fun restoreModule(id: String): Boolean {
-    val cmd = "module restore $id"
+    val cmd = "module restore ${shellArg(id)}"
     val result = execKsud(cmd, true)
     Log.i(TAG, "restore module $id result: $result")
     return result
 }
 
 fun undoUninstallModule(id: String): Boolean {
-    val cmd = "module undo-uninstall $id"
+    val cmd = "module undo-uninstall ${shellArg(id)}"
     val result = execKsud(cmd, true)
     Log.i(TAG, "undo uninstall module $id result: $result")
     return result
@@ -1152,15 +1155,12 @@ private fun flashWithIO(
 
     // Set TMPDIR to app cache directory so ksud can create temp files without root
     val tmpDir = ksuApp.cacheDir.absolutePath
-    val cmdWithEnv = "TMPDIR=$tmpDir $cmd"
+    val cmdWithEnv = "TMPDIR=${shellArg(tmpDir)} $cmd"
 
     return withNewRootShell {
         newJob().add(cmdWithEnv).to(stdoutCallback, stderrCallback).exec()
     }
 }
-
-private fun shellQuoteArgument(value: String): String =
-    "'${value.replace("'", "'\\''")}'"
 
 fun flashAnyKernel3(
     zipPath: String,
@@ -1175,10 +1175,10 @@ fun flashAnyKernel3(
     try {
         val command = buildString {
             append("flash ak3 ")
-            append(shellQuoteArgument(zipPath))
+            append(shellArg(zipPath))
             targetSlot?.let {
                 append(" --slot ")
-                append(shellQuoteArgument(it))
+                append(shellArg(it))
             }
             if (useMkbootfs) {
                 append(" --use-mkbootfs")
@@ -1214,7 +1214,7 @@ fun flashModule(
         file.outputStream().use { output ->
             this?.copyTo(output)
         }
-        val cmd = "module install ${file.absolutePath}"
+        val cmd = "module install ${shellArg(file.absolutePath)}"
         val result = flashWithIO(ksudCmd(cmd), onStdout, onStderr)
         Log.i("KernelSU", "install module $uri result: $result")
 
@@ -1241,7 +1241,7 @@ fun runModuleAction(
     }
 
     val result = withNewRootShell(true) {
-        newJob().add(ksudCmd("module action $moduleId"))
+        newJob().add(ksudCmd("module action ${shellArg(moduleId)}"))
             .to(stdoutCallback, stderrCallback).exec()
     }
     Log.i("KernelSU", "Module runAction result: $result")
@@ -1254,7 +1254,7 @@ fun restoreBoot(
 ): Boolean {
     val ksudPath = getKsuDaemonPath()
     val result = flashWithIO(
-        ksudCmd("boot-restore -f --magiskboot $ksudPath"),
+        ksudCmd("boot-restore -f --magiskboot ${shellArg(ksudPath)}"),
         onStdout,
         onStderr
     )
@@ -1266,8 +1266,9 @@ fun uninstallPermanently(
     onFinish: (Boolean, Int) -> Unit, onStdout: (String) -> Unit, onStderr: (String) -> Unit
 ): Boolean {
     val ksudPath = getKsuDaemonPath()
-    val result =
-        flashWithIO(ksudCmd("uninstall --magiskboot $ksudPath"), onStdout, onStderr)
+    val result = flashWithIO(
+        ksudCmd("uninstall --magiskboot ${shellArg(ksudPath)}"), onStdout, onStderr
+    )
     onFinish(result.isSuccess, result.code)
     return result.isSuccess
 }
@@ -1318,13 +1319,13 @@ private fun patchBootImage(
     )
 
     val ksudPath = getKsuDaemonPath()
-    var cmd = "boot-patch --magiskboot $ksudPath"
+    var cmd = "boot-patch --magiskboot ${shellArg(ksudPath)}"
 
     cmd += if (bootFile == null) {
         // no boot.img, use -f to force install
         " -f"
     } else {
-        " -b ${bootFile.absolutePath}"
+        " -b ${shellArg(bootFile.absolutePath)}"
     }
 
     if (ota) {
@@ -1337,7 +1338,7 @@ private fun patchBootImage(
 
     // Add superkey if specified
     if (!superKey.isNullOrBlank()) {
-        cmd += " --superkey \"$superKey\""
+        cmd += " --superkey ${shellArg(superKey)}"
         // Add signature bypass flag if enabled
         if (signatureBypass) {
             cmd += " --signature-bypass"
@@ -1355,22 +1356,22 @@ private fun patchBootImage(
 
                 file
             }
-            cmd += " -m ${lkmFile.absolutePath}"
+            cmd += " -m ${shellArg(lkmFile.absolutePath)}"
         }
 
         LkmSelection.KmiNone -> {
             // do nothing
         }
     }
-    cmd += " --kmi $targetKmi"
+    cmd += " --kmi ${shellArg(targetKmi)}"
 
     // output dir
     val downloadsDir =
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    cmd += " -o $downloadsDir"
+    cmd += " -o ${shellArg(downloadsDir.absolutePath)}"
 
     partition?.let { part ->
-        cmd += " --partition $part"
+        cmd += " --partition ${shellArg(part)}"
     }
 
     if (allowShell) {
@@ -1383,7 +1384,7 @@ private fun patchBootImage(
 
     if (pendingUtsBoot != null) {
         val file = utsBootConfigFile()
-        cmd += " --uts-config ${shellQuoteArgument(file.absolutePath)}"
+        cmd += " --uts-config ${shellArg(file.absolutePath)}"
     }
 
     val result = flashWithIO(ksudCmd(cmd), onStdout, onStderr)
@@ -1456,12 +1457,12 @@ fun patchBootImageV2(
         val ksudPath = getKsuDaemonPath()
         val command = buildString {
             append("boot-patch-v2 --magiskboot ")
-            append(shellQuoteArgument(ksudPath))
+            append(shellArg(ksudPath))
             if (inputFile != null && outputFile != null) {
                 append(" --boot ")
-                append(shellQuoteArgument(inputFile.absolutePath))
+                append(shellArg(inputFile.absolutePath))
                 append(" --output ")
-                append(shellQuoteArgument(outputFile.absolutePath))
+                append(shellArg(outputFile.absolutePath))
             } else {
                 append(" --flash")
                 if (ota) {
@@ -1470,11 +1471,11 @@ fun patchBootImageV2(
             }
             lkmFile?.let { module ->
                 append(" --module ")
-                append(shellQuoteArgument(module.absolutePath))
+                append(shellArg(module.absolutePath))
             }
             if (!superKey.isNullOrBlank()) {
                 append(" --superkey ")
-                append(shellQuoteArgument(superKey))
+                append(shellArg(superKey))
                 if (signatureBypass) {
                     append(" --signature-bypass")
                 }
@@ -1677,7 +1678,7 @@ suspend fun getTargetKmi(ota: Boolean, bootUri: Uri?): String = withContext(Disp
                 input.use { source ->
                     targetFile.outputStream().use { output -> source.copyTo(output) }
                 }
-                "boot-info target-kmi --boot ${shellQuoteArgument(targetFile.absolutePath)}"
+                "boot-info target-kmi --boot ${shellArg(targetFile.absolutePath)}"
             }
             else -> "boot-info target-kmi"
         }
@@ -1740,14 +1741,14 @@ fun hasMagisk(): Boolean {
 
 fun isSepolicyValid(rules: String?): Boolean {
     if (rules == null) return true
-    return execKsud("sepolicy check '$rules'")
+    return execKsud("sepolicy check ${shellArg(rules)}")
 }
 
 fun getSepolicy(pkg: String): String =
-    ksudReadLines("profile get-sepolicy $pkg").joinToString("\n")
+    ksudReadLines("profile get-sepolicy ${shellArg(pkg)}").joinToString("\n")
 
 fun setSepolicy(pkg: String, rules: String): Boolean {
-    val ok = execKsud("profile set-sepolicy $pkg '$rules'")
+    val ok = execKsud("profile set-sepolicy ${shellArg(pkg)} ${shellArg(rules)}")
     Log.i(TAG, "set sepolicy $pkg result: $ok")
     return ok
 }
@@ -1756,19 +1757,17 @@ fun listAppProfileTemplates(): List<String> =
     ksudReadLines("profile list-templates")
 
 fun getAppProfileTemplate(id: String): String =
-    ksudReadLines("profile get-template '$id'").joinToString("\n")
+    ksudReadLines("profile get-template ${shellArg(id)}").joinToString("\n")
 
-fun setAppProfileTemplate(id: String, template: String): Boolean {
-    val escapedTemplate = template.replace("\"", "\\\"")
-    return execKsud("""profile set-template "$id" "$escapedTemplate"""")
-}
+fun setAppProfileTemplate(id: String, template: String): Boolean =
+    execKsud("profile set-template ${shellArg(id)} ${shellArg(template)}")
 
 fun deleteAppProfileTemplate(id: String): Boolean =
-    execKsud("profile delete-template '$id'")
+    execKsud("profile delete-template ${shellArg(id)}")
 
 fun forceStopApp(packageName: String) {
     val shell = getRootShell()
-    val result = shell.newJob().add("am force-stop $packageName").exec()
+    val result = shell.newJob().add("am force-stop ${shellArg(packageName)}").exec()
     Log.i(TAG, "force stop $packageName result: $result")
 }
 
@@ -1777,7 +1776,10 @@ fun launchApp(packageName: String) {
     val shell = getRootShell()
     val result =
         shell.newJob()
-            .add("cmd package resolve-activity --brief $packageName | tail -n 1 | xargs cmd activity start-activity -n")
+            .add(
+                "cmd package resolve-activity --brief ${shellArg(packageName)} " +
+                    "| tail -n 1 | xargs cmd activity start-activity -n"
+            )
             .exec()
     Log.i(TAG, "launch $packageName result: $result")
 }
@@ -1856,14 +1858,14 @@ suspend fun getZygiskImplement(): String = withContext(Dispatchers.IO) {
 fun addUmountPath(path: String, flags: Int): Boolean {
     val shell = getRootShell()
     val flagsArg = if (flags >= 0) "--flags $flags" else ""
-    val cmd = ksudCmd("umount add $path $flagsArg")
+    val cmd = ksudCmd("umount add ${shellArg(path)} $flagsArg")
     val result = ShellUtils.fastCmdResult(shell, cmd)
     Log.i(TAG, "add umount path $path result: $result")
     return result
 }
 fun removeUmountPath(path: String): Boolean {
     val shell = getRootShell()
-    val cmd = ksudCmd("umount remove $path")
+    val cmd = ksudCmd("umount remove ${shellArg(path)}")
     val result = ShellUtils.fastCmdResult(shell, cmd)
     Log.i(TAG, "remove umount path $path result: $result")
     return result
@@ -1950,64 +1952,64 @@ fun getPluginCount(): Int {
 fun togglePlugin(id: String, enable: Boolean): Boolean {
     val operation = if (enable) "enable" else "disable"
     return runPluginCommand(
-        "plugin $operation ${shellQuoteArgument(id)}",
+        "plugin $operation ${shellArg(id)}",
         newShell = true,
     ).isSuccess
 }
 
 fun uninstallPlugin(id: String): Boolean =
     runPluginCommand(
-        "plugin uninstall ${shellQuoteArgument(id)}",
+        "plugin uninstall ${shellArg(id)}",
         newShell = true,
     ).isSuccess
 
 fun runPluginCallback(id: String, function: String): PluginCommandResult =
     runPluginCommand(
-        "plugin run ${shellQuoteArgument(id)} ${shellQuoteArgument(function)}",
+        "plugin run ${shellArg(id)} ${shellArg(function)}",
         newShell = true,
     )
 
 fun runPluginAction(id: String): PluginCommandResult =
     runPluginCommand(
-        "plugin action ${shellQuoteArgument(id)}",
+        "plugin action ${shellArg(id)}",
         newShell = true,
     )
 
 fun getPluginLog(id: String): PluginCommandResult =
-    runPluginCommand("plugin log ${shellQuoteArgument(id)}")
+    runPluginCommand("plugin log ${shellArg(id)}")
 
 fun clearPluginLog(id: String): Boolean =
     runPluginCommand(
-        "plugin clear-log ${shellQuoteArgument(id)}",
+        "plugin clear-log ${shellArg(id)}",
         newShell = true,
     ).isSuccess
 
 fun getPluginConfig(id: String, key: String): PluginCommandResult =
     runPluginCommand(
-        "plugin config --id ${shellQuoteArgument(id)} get ${shellQuoteArgument(key)}",
+        "plugin config --id ${shellArg(id)} get ${shellArg(key)}",
     )
 
 fun savePluginConfig(id: String, key: String, value: String): Boolean =
     runPluginCommand(
-        "plugin config --id ${shellQuoteArgument(id)} set " +
-            "${shellQuoteArgument(key)} ${shellQuoteArgument(value)}",
+        "plugin config --id ${shellArg(id)} set " +
+            "${shellArg(key)} ${shellArg(value)}",
         newShell = true,
     ).isSuccess
 
 fun deletePluginConfig(id: String, key: String): Boolean =
     runPluginCommand(
-        "plugin config --id ${shellQuoteArgument(id)} delete ${shellQuoteArgument(key)}",
+        "plugin config --id ${shellArg(id)} delete ${shellArg(key)}",
         newShell = true,
     ).isSuccess
 
 fun listPluginConfig(id: String): PluginCommandResult =
-    runPluginCommand("plugin config --id ${shellQuoteArgument(id)} list")
+    runPluginCommand("plugin config --id ${shellArg(id)} list")
 
 fun installPluginZip(zipPath: String): PluginCommandResult {
     val zipFile = File(zipPath)
     return try {
         runPluginCommand(
-            "plugin install ${shellQuoteArgument(zipPath)}",
+            "plugin install ${shellArg(zipPath)}",
             newShell = true,
         )
     } finally {

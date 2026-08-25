@@ -1084,7 +1084,7 @@ private suspend fun loadLogsWithPagination(
                 return@withContext
             }
 
-            val quotedPath = shellQuote(source.path)
+            val quotedPath = shellArg(source.path)
 
             if (page == 0 && !forceRefresh && currentHash == lastHash && statPart != "0 0") {
                 withContext(Dispatchers.Main) {
@@ -1177,7 +1177,7 @@ private suspend fun clearLogs(path: String) {
         try {
             if (path.isBlank()) return@withContext
             val shell = getRootShell()
-            runCmd(shell, ": > ${shellQuote(path)}")
+            runCmd(shell, ": > ${shellArg(path)}")
         } catch (_: Exception) {
         }
     }
@@ -1188,7 +1188,7 @@ private suspend fun deleteLogs(path: String) {
         try {
             if (path.isBlank()) return@withContext
             val shell = getRootShell()
-            runCmd(shell, "rm -f ${shellQuote(path)}")
+            runCmd(shell, "rm -f ${shellArg(path)}")
         } catch (_: Exception) {
         }
     }

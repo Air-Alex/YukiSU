@@ -2,6 +2,7 @@ package com.anatdx.yukisu.ui.screen
 
 import android.os.SystemClock
 import com.anatdx.yukisu.BuildConfig
+import com.anatdx.yukisu.ui.util.shellArg
 import com.anatdx.yukisu.ui.util.runCmd
 import com.topjohnwu.superuser.Shell
 import java.time.Instant
@@ -127,7 +128,7 @@ fun buildSulogSourceSignature(
     }
     val stat = runCmd(
         shell,
-        "stat -c '%Y %s' ${shellQuote(source.path)} 2>/dev/null || echo '0 0'"
+        "stat -c '%Y %s' ${shellArg(source.path)} 2>/dev/null || echo '0 0'"
     ).trim()
     val fileListSignature = sources.joinToString(separator = ",") { it.name }
     return "${source.path}|$stat|$activePath|$fileListSignature"
@@ -137,7 +138,7 @@ fun readSulogSourceStat(shell: Shell, path: String): String {
     if (path.isBlank()) return "0 0"
     return runCmd(
         shell,
-        "stat -c '%Y %s' ${shellQuote(path)} 2>/dev/null || echo '0 0'"
+        "stat -c '%Y %s' ${shellArg(path)} 2>/dev/null || echo '0 0'"
     ).trim()
 }
 
@@ -153,7 +154,7 @@ fun buildVisibleSulogSourceSignature(
     }
     val tailContent = runCmd(
         shell,
-        "tail -n 256 ${shellQuote(source.path)} 2>/dev/null || echo ''"
+        "tail -n 256 ${shellArg(source.path)} 2>/dev/null || echo ''"
     )
     val marker = extractLatestVisibleSulogMarker(tailContent)
     return "${source.path}|$activePath|$fileListSignature|$marker"
@@ -204,10 +205,6 @@ fun parseSulogEntries(logContent: String, useCurrentClockFallback: Boolean): Lis
     }
 
     return entries
-}
-
-fun shellQuote(value: String): String {
-    return "'${value.replace("'", "'\"'\"'")}'"
 }
 
 private fun parseUpstreamSulogLine(
