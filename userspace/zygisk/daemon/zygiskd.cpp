@@ -72,6 +72,8 @@ constexpr int kSetDlopenRequest = KSU_IOCTL_YZ_SET_DLOPEN32;
 #endif // #if defined(__LP64__)
 
 constexpr char kModulesDir[] = "/data/adb/modules";
+constexpr int kZnApiVersion3 = 3;
+constexpr int kZnApiVersion4 = 4;
 
 struct Module {
   std::string name;
@@ -632,7 +634,8 @@ void *native_companion_thread(void *p) {
   auto *mod = h ? reinterpret_cast<ZygiskNextCompanionModule *>(
                       dlsym(h, "zn_companion_module"))
                 : nullptr;
-  bool valid = mod != nullptr && mod->target_api_version == 3;
+  bool valid = mod != nullptr && (mod->target_api_version == kZnApiVersion3 ||
+                                  mod->target_api_version == kZnApiVersion4);
   if (valid && mod->onCompanionLoaded != nullptr)
     mod->onCompanionLoaded();
 

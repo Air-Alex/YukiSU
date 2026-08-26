@@ -53,13 +53,15 @@ namespace {
 #define LOGE(...) ZLOGE(__VA_ARGS__)
 #define LOGI(...) ZLOGI(__VA_ARGS__)
 
-constexpr int kApiVersion1 = 3;
+constexpr int kApiVersion3 = 3;
+constexpr int kApiVersion4 = 4;
 constexpr int kSuccess = 0;
 constexpr int kFailed = 1;
 constexpr uint32_t kHandleMagic = 0x595a4e31u;
 constexpr size_t kMaxGnuDebugDataSize = size_t{32} * 1024 * 1024;
 
 struct ZnSymbolResolver;
+struct ZygiskNextRuntime;
 
 struct ZygiskNextAPI {
   int (*pltHook)(void *base_addr, const char *symbol, void *hook_handler,
@@ -76,6 +78,7 @@ struct ZygiskNextAPI {
                                           size_t size, void *data),
                          void *data);
   int (*connectCompanion)(void *handle);
+  const ZygiskNextRuntime *(*getRuntime)();
 };
 
 struct ZygiskNextModule {
@@ -731,6 +734,8 @@ int api_connect_companion(void *handle) {
   return fd;
 }
 
+const ZygiskNextRuntime *api_get_runtime() { return nullptr; }
+
 const ZygiskNextAPI g_api = {
     .pltHook = api_plt_hook,
     .inlineHook = api_inline_hook,
@@ -741,6 +746,7 @@ const ZygiskNextAPI g_api = {
     .symbolLookup = api_symbol_lookup,
     .forEachSymbols = api_for_each_symbols,
     .connectCompanion = api_connect_companion,
+    .getRuntime = api_get_runtime,
 };
 
 bool request_native_module_count(uint32_t *count, bool quiet) {
@@ -838,7 +844,8 @@ bool load_native_module_from_fd(const zygiskd::NativeModuleInfo &info,
       dlclose(so);
     return false;
   }
-  if (mod->target_api_version != kApiVersion1 ||
+  if ((mod->target_api_version != kApiVersion3 &&
+       mod->target_api_version != kApiVersion4) ||
       mod->onModuleLoaded == nullptr) {
     LOGE("native core: unsupported module id=%s idx=%u api=%d entry=%p",
          module_id.c_str(), idx, mod->target_api_version, mod->onModuleLoaded);
