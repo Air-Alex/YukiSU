@@ -359,6 +359,8 @@
     <string name="settings_disable_su_summary">禁止任何应用通过 su 命令获取 root 权限（已运行的 root 进程不受影响）。</string>
     <string name="settings_disable_kernel_umount">关闭内核 umount</string>
     <string name="settings_disable_kernel_umount_summary">关闭 KernelSU 控制的内核级 umount 行为。</string>
+    <string name="settings_webview_zygote_umount">为 WebView 卸载模块</string>
+    <string name="settings_webview_zygote_umount_summary">从 WebView zygote 卸载模块以防止挂载信息泄露。这可能导致修改 WebView 资源的模块失效；重启后生效。</string>
     <string name="settings_enable_enhanced_security">使用严格安全策略</string>
     <string name="settings_enable_enhanced_security_summary">阻止非 KernelSU 域的提权及未授权 app UID 降低行为</string>
     <string name="settings_selinux_hide">启用 SELinux 隐藏</string>

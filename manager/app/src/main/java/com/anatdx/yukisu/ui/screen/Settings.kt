@@ -317,6 +317,43 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
+                        var webViewZygoteUmountEnabled by rememberSaveable {
+                            mutableStateOf(
+                                getFeatureValue(Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT)
+                            )
+                        }
+                        val webViewZygoteUmountStatus by produceState(initialValue = "") {
+                            value = getFeatureStatus(Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT)
+                        }
+                        val webViewZygoteUmountSummary = when (webViewZygoteUmountStatus) {
+                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
+                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
+                            else -> stringResource(id = R.string.settings_webview_zygote_umount_summary)
+                        }
+                        SwitchItem(
+                            icon = Icons.Filled.Language,
+                            title = stringResource(id = R.string.settings_webview_zygote_umount),
+                            summary = webViewZygoteUmountSummary,
+                            checked = webViewZygoteUmountEnabled,
+                            enabled = webViewZygoteUmountStatus == "supported",
+                            onCheckedChange = { enabled ->
+                                scope.launch {
+                                    val ok = setFeatureValue("webview_zygote_umount", enabled)
+                                    webViewZygoteUmountEnabled = if (ok) {
+                                        enabled
+                                    } else {
+                                        getFeatureValue(Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT)
+                                    }
+                                    snackBarHost.showSnackbar(
+                                        resources.getString(
+                                            if (ok) R.string.setting_change_saved_reboot
+                                            else R.string.setting_change_failed
+                                        )
+                                    )
+                                }
+                            }
+                        )
+
                         var suLogEnabled by remember {
                             mutableStateOf(Natives.isSuLogEnabled())
                         }

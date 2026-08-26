@@ -363,6 +363,8 @@
     <string name="settings_disable_su_summary">Disable the ability of any app to gain root privileges via the ⁠su command (existing root processes won\'t be affected)</string>
     <string name="settings_disable_kernel_umount">Disable kernel umount</string>
     <string name="settings_disable_kernel_umount_summary">Disable kernel-level umount behavior controlled by KernelSU</string>
+    <string name="settings_webview_zygote_umount" tools:ignore="MissingTranslation">Unmount modules for WebView</string>
+    <string name="settings_webview_zygote_umount_summary" tools:ignore="MissingTranslation">Unmount modules from the WebView zygote to prevent mount information leaks. This may break modules that modify WebView resources; reboot to apply.</string>
     <string name="settings_enable_enhanced_security">Use strict security policy</string>
     <string name="settings_enable_enhanced_security_summary">Block privilege elevation outside the KernelSU domain and unauthorized app UID downgrades</string>
     <string name="settings_selinux_hide">Enable SELinux hide</string>

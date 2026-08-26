@@ -17,6 +17,7 @@
 
 #include "policy/allowlist.h"
 #include "policy/feature.h"
+#include "feature/kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
 #include "runtime/ksud_boot.h"
 #include "runtime/ksud.h"
@@ -370,6 +371,8 @@ bool ksu_uid_should_umount(uid_t uid)
 		// we should not umount on manager (any signature slot)
 		return false;
 	}
+	if (unlikely(uid == WEBVIEW_ZYGOTE_UID))
+		return ksu_is_webview_zygote_umount_enabled();
 #ifdef CONFIG_KSU_DISABLE_POLICY
 	return !__ksu_is_allow_uid(uid);
 #endif // #ifdef CONFIG_KSU_DISABLE_POLICY

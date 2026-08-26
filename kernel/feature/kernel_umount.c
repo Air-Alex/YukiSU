@@ -1,4 +1,5 @@
 #include <linux/cred.h>
+#include <linux/compiler.h>
 #include <linux/dcache.h>
 #include <linux/fs.h>
 #include <linux/kdev_t.h>
@@ -30,17 +31,18 @@
 #include "selinux/selinux.h"
 
 static bool ksu_kernel_umount_enabled = true;
+static bool ksu_webview_zygote_umount_enabled;
 
 static int kernel_umount_feature_get(u64 *value)
 {
-	*value = ksu_kernel_umount_enabled ? 1 : 0;
+	*value = READ_ONCE(ksu_kernel_umount_enabled) ? 1 : 0;
 	return 0;
 }
 
 static int kernel_umount_feature_set(u64 value)
 {
 	bool enable = value != 0;
-	ksu_kernel_umount_enabled = enable;
+	WRITE_ONCE(ksu_kernel_umount_enabled, enable);
 	pr_info("kernel_umount: set to %d\n", enable);
 	return 0;
 }
@@ -50,6 +52,33 @@ static const struct ksu_feature_handler kernel_umount_handler = {
     .name = "kernel_umount",
     .get_handler = kernel_umount_feature_get,
     .set_handler = kernel_umount_feature_set,
+};
+
+bool ksu_is_webview_zygote_umount_enabled(void)
+{
+	return READ_ONCE(ksu_webview_zygote_umount_enabled);
+}
+
+static int webview_zygote_umount_feature_get(u64 *value)
+{
+	*value = ksu_is_webview_zygote_umount_enabled() ? 1 : 0;
+	return 0;
+}
+
+static int webview_zygote_umount_feature_set(u64 value)
+{
+	bool enable = value != 0;
+
+	WRITE_ONCE(ksu_webview_zygote_umount_enabled, enable);
+	pr_info("webview_zygote_umount: set to %d\n", enable);
+	return 0;
+}
+
+static const struct ksu_feature_handler webview_zygote_umount_handler = {
+    .feature_id = KSU_FEATURE_WEBVIEW_ZYGOTE_UMOUNT,
+    .name = "webview_zygote_umount",
+    .get_handler = webview_zygote_umount_feature_get,
+    .set_handler = webview_zygote_umount_feature_set,
 };
 
 extern int path_umount(struct path *path, int flags);
@@ -497,7 +526,7 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
 		return 0;
 	}
 
-	if (!ksu_kernel_umount_enabled) {
+	if (!READ_ONCE(ksu_kernel_umount_enabled)) {
 		return 0;
 	}
 
@@ -505,15 +534,15 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
 		return 0;
 	}
 
-	// There are 5 scenarios:
+	// There are 6 scenarios:
 	// 1. Normal app: zygote -> appuid
 	// 2. Isolated process forked from zygote: zygote -> isolated_process
 	// 3. App zygote forked from zygote: zygote -> appuid
-	// 4. Isolated process froked from app zygote: appuid ->
-	// isolated_process (already handled by 3)
-	// 5. Isolated process froked from webview zygote (no need to handle,
-	// app cannot run custom code)
-	if (!is_appuid(new_uid) && !is_isolated_process(new_uid)) {
+	// 4. WebView zygote forked from zygote: zygote -> webview_zygote
+	// 5. Isolated process forked from app zygote (already handled by 3)
+	// 6. Isolated process forked from WebView zygote (already handled by 4)
+	if (!is_appuid(new_uid) && new_uid != WEBVIEW_ZYGOTE_UID &&
+	    !is_isolated_process(new_uid)) {
 		return 0;
 	}
 
@@ -575,9 +604,14 @@ void ksu_kernel_umount_init(void)
 	if (ksu_register_feature_handler(&kernel_umount_handler)) {
 		pr_err("Failed to register kernel_umount feature handler\n");
 	}
+	if (ksu_register_feature_handler(&webview_zygote_umount_handler)) {
+		pr_err("Failed to register webview_zygote_umount feature "
+		       "handler\n");
+	}
 }
 
 void ksu_kernel_umount_exit(void)
 {
+	ksu_unregister_feature_handler(KSU_FEATURE_WEBVIEW_ZYGOTE_UMOUNT);
 	ksu_unregister_feature_handler(KSU_FEATURE_KERNEL_UMOUNT);
 }
