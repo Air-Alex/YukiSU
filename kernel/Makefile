@@ -1,20 +1,31 @@
 KDIR := $(KDIR)
 MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+ODIR := $(MDIR)
+KMI := $(notdir $(patsubst %/,%,$(KDIR)))
+
+ifeq ($(KMI),android17-6.18)
+KBUILD_ARGS := M=$(MDIR) MO=$(ODIR)
+else
+KBUILD_ARGS := M=$(MDIR)
+endif
 
 ifneq ($(KDIR),)
 $(info -- KDIR: $(KDIR))
 $(info -- MDIR: $(MDIR))
+$(info -- OUTPUT DIR: $(ODIR))
+$(info -- KMI: $(KMI))
+$(info -- KBUILD_ARGS: $(KBUILD_ARGS))
 endif
 
 .PHONY: all compdb clean format check-format
 
 all: check_symbol
-	make -C $(KDIR) M=$(MDIR) modules
-	./check_symbol kernelsu.ko $(KDIR)/vmlinux
+	$(MAKE) -C $(KDIR) $(KBUILD_ARGS) modules
+	./check_symbol $(ODIR)/kernelsu.ko $(KDIR)/vmlinux
 compdb:
 	python3 $(MDIR)/.vscode/generate_compdb.py -O $(KDIR) $(MDIR)
 clean:
-	make -C $(KDIR) M=$(MDIR) clean
+	$(MAKE) -C $(KDIR) $(KBUILD_ARGS) clean
 	rm check_symbol
 check_symbol: tools/check_symbol.c
 	$(CC) tools/check_symbol.c -o check_symbol
