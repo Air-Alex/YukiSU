@@ -35,6 +35,10 @@ class KsuService : RootService() {
     internal inner class Stub : IKsuInterface.Stub() {
         override fun getPackageCount(): Int = allPackages.size
 
+        override fun refreshPackages(): Int = synchronized(cacheLock) {
+            loadAllPackages().also { _all = it }.size
+        }
+
         override fun getPackages(start: Int, maxCount: Int): List<PackageInfo> {
             val list = allPackages
             val end = (start + maxCount).coerceAtMost(list.size)

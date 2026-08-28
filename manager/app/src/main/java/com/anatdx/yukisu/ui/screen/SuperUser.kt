@@ -352,7 +352,7 @@ private fun SuperUserContent(
 ) {
     YukiPullToRefreshBox(
         modifier = Modifier.padding(innerPadding),
-        onRefresh = { scope.launch { viewModel.fetchAppList() } },
+        onRefresh = { scope.launch { viewModel.fetchAppList(forceRefresh = true) } },
         isRefreshing = viewModel.isRefreshing
     ) {
         LazyColumn(
@@ -437,7 +437,7 @@ private fun SuperUserBottomSheet(
                 titleRes = R.string.refresh,
                 onClick = {
                     scope.launch {
-                        viewModel.fetchAppList()
+                        viewModel.fetchAppList(forceRefresh = true)
                         bottomSheetState.hide()
                         onDismiss()
                     }

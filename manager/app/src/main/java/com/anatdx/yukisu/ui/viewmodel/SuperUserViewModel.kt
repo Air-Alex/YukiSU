@@ -24,7 +24,6 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 import com.anatdx.yukisu.IKsuInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,6 +82,64 @@ class SuperUserViewModel : ViewModel() {
         private const val KEEP_ALIVE_TIME = 60L
         private const val BATCH_SIZE = 20
         private const val PER_USER_RANGE = 100000
+        private val fetchAppListMutex = Mutex()
+        private val ksuServiceLock = Any()
+        // Keep one process-wide binding so ordinary reads reuse the service package snapshot.
+        private var ksuServiceBinder: IBinder? = null
+        private var ksuServiceConnection: ServiceConnection? = null
+
+        private fun clearKsuServiceConnection(connection: ServiceConnection) {
+            synchronized(ksuServiceLock) {
+                if (ksuServiceConnection === connection) {
+                    ksuServiceBinder = null
+                    ksuServiceConnection = null
+                }
+            }
+        }
+
+        private class KsuServiceConnection(
+            private var continuation: CancellableContinuation<IBinder?>?
+        ) : ServiceConnection {
+            override fun onServiceDisconnected(name: ComponentName?) {
+                clearKsuServiceConnection(this)
+                resume(null)
+            }
+
+            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                if (binder == null) {
+                    clearKsuServiceConnection(this)
+                } else {
+                    synchronized(ksuServiceLock) {
+                        if (ksuServiceConnection === this) {
+                            ksuServiceBinder = binder
+                        }
+                    }
+                }
+                resume(binder)
+            }
+
+            override fun onNullBinding(name: ComponentName?) {
+                clearKsuServiceConnection(this)
+                resume(null)
+            }
+
+            override fun onBindingDied(name: ComponentName?) {
+                clearKsuServiceConnection(this)
+                resume(null)
+            }
+
+            fun fail() {
+                clearKsuServiceConnection(this)
+                resume(null)
+            }
+
+            private fun resume(binder: IBinder?) {
+                val pending = synchronized(this) {
+                    continuation.also { continuation = null }
+                } ?: return
+                pending.resume(binder)
+            }
+        }
     }
 
     @Immutable
@@ -320,20 +377,31 @@ class SuperUserViewModel : ViewModel() {
         }
     }
 
-    private var serviceConnection: ServiceConnection? = null
-
-    private suspend fun connectKsuService(onDisconnect: () -> Unit = {}): IBinder? =
-        suspendCoroutine { continuation ->
-            val connection = object : ServiceConnection {
-                override fun onServiceDisconnected(name: ComponentName?) {
-                    onDisconnect()
-                    serviceConnection = null
-                }
-                override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                    continuation.resume(binder)
-                }
+    private suspend fun connectKsuService(): IBinder? = withContext(Dispatchers.Main.immediate) {
+        var staleConnection: ServiceConnection? = null
+        val cachedBinder = synchronized(ksuServiceLock) {
+            ksuServiceBinder?.takeIf { it.isBinderAlive } ?: run {
+                ksuServiceBinder = null
+                staleConnection = ksuServiceConnection
+                ksuServiceConnection = null
+                null
             }
-            serviceConnection = connection
+        }
+        if (cachedBinder != null) return@withContext cachedBinder
+
+        staleConnection?.let { connection ->
+            try {
+                com.topjohnwu.superuser.ipc.RootService.unbind(connection)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unbind stale KsuService connection", e)
+            }
+        }
+
+        suspendCancellableCoroutine<IBinder?> { continuation ->
+            val connection = KsuServiceConnection(continuation)
+            synchronized(ksuServiceLock) {
+                ksuServiceConnection = connection
+            }
             val intent = Intent(ksuApp, KsuService::class.java)
             try {
                 val task = com.topjohnwu.superuser.ipc.RootService.bindOrTask(
@@ -341,33 +409,36 @@ class SuperUserViewModel : ViewModel() {
                 )
                 task?.let { Shell.getShell().execTask(it) }
             } catch (e: Exception) {
+                connection.fail()
                 Log.e(TAG, "Failed to bind KsuService", e)
-                continuation.resume(null)
-            }
-        }
-
-    private fun stopKsuService() {
-        serviceConnection?.let {
-            try {
-                val intent = Intent(ksuApp, KsuService::class.java)
-                com.topjohnwu.superuser.ipc.RootService.stop(intent)
-                serviceConnection = null
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to stop KsuService", e)
             }
         }
     }
 
-    suspend fun fetchAppList() {
+    suspend fun fetchAppList(forceRefresh: Boolean = false) {
         isRefreshing = true
         loadingProgress = 0f
 
-        val binder = connectKsuService() ?: run { isRefreshing = false; return }
+        try {
+            fetchAppListMutex.withLock {
+                fetchAppListFromService(forceRefresh)
+            }
+        } finally {
+            isRefreshing = false
+        }
+    }
+
+    private suspend fun fetchAppListFromService(forceRefresh: Boolean) {
+        val binder = connectKsuService() ?: return
 
         withContext(Dispatchers.IO) {
             val pm = ksuApp.packageManager
             val allPackages = IKsuInterface.Stub.asInterface(binder)
-            val total = allPackages.packageCount
+            val total = if (forceRefresh) {
+                allPackages.refreshPackages()
+            } else {
+                allPackages.packageCount
+            }
             val pageSize = 100
             val result = mutableListOf<AppInfo>()
 
@@ -389,8 +460,6 @@ class SuperUserViewModel : ViewModel() {
                 loadingProgress = start.toFloat() / total
             }
 
-            stopKsuService()
-
             synchronized(appsLock) {
                 _isAppListLoaded.value = true
             }
@@ -406,7 +475,6 @@ class SuperUserViewModel : ViewModel() {
             }
             loadingProgress = 1f
         }
-        isRefreshing = false
     }
 
     val appGroupList by derivedStateOf {
@@ -476,7 +544,6 @@ class SuperUserViewModel : ViewModel() {
     }
     override fun onCleared() {
         try {
-            stopKsuService()
             appProcessingThreadPool.close()
             configChangeListeners.clear()
         } catch (e: Exception) {
