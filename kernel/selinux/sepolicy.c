@@ -973,6 +973,8 @@ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
 		goto out_free_data;
 	}
 
+	// https://android.googlesource.com/kernel/common/+/35a7845718734ae638b85b420534cb859498dab6%5E%21
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
 #ifdef POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE
 	if (len >= 24) {
 		__le32 *config_ptr = data + 20;
@@ -987,6 +989,7 @@ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
 		*config_ptr = cpu_to_le32(config);
 	}
 #endif // #ifdef POLICYDB_CONFIG_ANDROID_NETLINK_ROU...
+#endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
 
 	new_pol = kmemdup(old_pol, sizeof(*old_pol), GFP_KERNEL);
 	if (!new_pol) {
