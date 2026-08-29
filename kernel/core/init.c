@@ -45,6 +45,7 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 #include "policy/allowlist.h"
 #include "policy/feature.h"
 #include "feature/adb_root.h"
+#include "feature/hide_bootloader.h"
 #include "feature/selinux_hide.h"
 #include "extension/uts_view.h"
 #ifdef CONFIG_KSU_YUKIZYGISK
@@ -174,6 +175,7 @@ int __init kernelsu_init(void)
 		pr_warn("uts_view: unavailable: %d\n", ret);
 	}
 	ksu_feature_init();
+	ksu_hide_bootloader_init();
 	ksu_lsm_hook_init();
 	ksu_adb_root_init();
 	ksu_selinux_hide_init();
@@ -265,6 +267,7 @@ void kernelsu_exit(void)
 
 	yukisu_custom_config_exit();
 	ksu_selinux_hide_exit();
+	ksu_hide_bootloader_exit();
 #ifdef CONFIG_KSU_YUKIZYGISK
 	ksu_yukizygisk_exit();
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK

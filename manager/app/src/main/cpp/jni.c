@@ -454,6 +454,14 @@ NativeBridge(setDefaultNoNewPrivsEnabled, jboolean, jboolean enabled) {
   return set_default_no_new_privs_enabled(enabled);
 }
 
+NativeBridgeNP(isHideBootloaderEnabled, jboolean) {
+  return is_hide_bootloader_enabled();
+}
+
+NativeBridge(setHideBootloaderEnabled, jboolean, jboolean enabled) {
+  return set_hide_bootloader_enabled(enabled);
+}
+
 NativeBridge(getFeature, jlong, jint id) {
   return (jlong)query_feature((uint32_t)id);
 }

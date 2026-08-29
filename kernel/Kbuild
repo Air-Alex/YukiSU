@@ -33,6 +33,7 @@ kernelsu-objs += supercall/supercall.o
 kernelsu-objs += policy/feature.o
 kernelsu-objs += feature/adb_root.o
 kernelsu-objs += feature/selinux_hide.o
+kernelsu-objs += feature/hide_bootloader.o
 kernelsu-objs += extension/uts_view.o
 ifeq ($(CONFIG_KSU_YUKIZYGISK),y)
 include $(src)/feature/yukizygisk/Kbuild

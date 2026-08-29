@@ -37,7 +37,6 @@ import com.anatdx.yukisu.ui.util.*
 import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getRootShell
 import com.anatdx.yukisu.ui.util.isSELinuxEnforcing
-import com.anatdx.yukisu.ui.util.ksudReadString
 import com.topjohnwu.superuser.ShellUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -91,7 +90,7 @@ class MoreSettingsHandlers(
         CardConfig.save(context)
 
         state.selinuxEnabled = isSELinuxEnforcing()
-        state.hideBlEnabled = ksudReadString("feature hide-bl").contains("enabled")
+        state.hideBlEnabled = Natives.isHideBootloaderEnabled()
         state.enhancedSecurityEnabled = Natives.isEnhancedSecurityEnabled()
         state.magiskCompatEnabled = Natives.isMagiskCompatEnabled()
     }
@@ -337,12 +336,18 @@ class MoreSettingsHandlers(
     }
 
     fun handleHideBlChange(enabled: Boolean) {
-        val ok = execKsud(if (enabled) "feature hide-bl enable" else "feature hide-bl disable")
+        val previous = Natives.isHideBootloaderEnabled()
+        val changed = Natives.setHideBootloaderEnabled(enabled)
+        val ok = changed && execKsud("feature save", true)
         if (ok) {
-            state.hideBlEnabled = enabled
+            state.hideBlEnabled = Natives.isHideBootloaderEnabled()
             val msg = if (enabled) R.string.hide_bl_enabled_toast else R.string.hide_bl_disabled_toast
             Toast.makeText(context, context.getString(msg), Toast.LENGTH_SHORT).show()
         } else {
+            if (changed) {
+                Natives.setHideBootloaderEnabled(previous)
+            }
+            state.hideBlEnabled = Natives.isHideBootloaderEnabled()
             Toast.makeText(context, context.getString(R.string.hide_bl_change_failed), Toast.LENGTH_SHORT).show()
         }
     }

@@ -84,6 +84,10 @@ bool is_selinux_hide_enabled();
 bool set_default_no_new_privs_enabled(bool enabled);
 bool is_default_no_new_privs_enabled();
 
+// Bootloader property hiding
+bool set_hide_bootloader_enabled(bool enabled);
+bool is_hide_bootloader_enabled();
+
 // Generic feature read for the features that have no dedicated accessor above.
 // Returns the feature's value, or -1 when the ioctl fails or the kernel reports
 // the feature unsupported -- the caller cannot tell those apart, and neither

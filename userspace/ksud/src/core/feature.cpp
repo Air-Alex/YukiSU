@@ -8,6 +8,8 @@
 #include "../yukizygisk_snapshot.hpp"
 #include "ksucalls.hpp"
 
+#include <unistd.h>
+#include <cerrno>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
@@ -25,6 +27,7 @@ const std::string& get_feature_config_path() {
 }
 constexpr uint32_t FEATURE_MAGIC = 0x7f4b5355;
 constexpr uint32_t FEATURE_VERSION = 1;
+constexpr const char* LEGACY_HIDE_BOOTLOADER_CONFIG = "/data/adb/ksu/.hide_bootloader";
 
 const std::map<std::string, uint32_t>& get_feature_map() {
     static const std::map<std::string, uint32_t> map = {
@@ -38,6 +41,7 @@ const std::map<std::string, uint32_t>& get_feature_map() {
         {"sulog", KSU_FEATURE_SULOG},
         {"magisk_compat", KSU_FEATURE_MAGISK_COMPAT},
         {"yukizygisk", KSU_FEATURE_YUKIZYGISK},
+        {"hide_bootloader", KSU_FEATURE_HIDE_BOOTLOADER},
     };
     return map;
 }
@@ -69,6 +73,9 @@ const std::map<uint32_t, const char*>& get_feature_descriptions() {
         {KSU_FEATURE_YUKIZYGISK,
          "YukiZygisk - kernel captures zygote and injects Zygisk modules; the daemon is brought "
          "up at post-fs-data when enabled (off by default)"},
+        {KSU_FEATURE_HIDE_BOOTLOADER,
+         "Hide Bootloader - rewrites bootloader and verified-boot properties after Android boot "
+         "completes (off by default)"},
     };
     return desc;
 }
@@ -119,6 +126,32 @@ std::map<uint32_t, uint64_t> get_current_feature_values() {
         }
     }
     return features;
+}
+
+int save_feature_config_files(const std::map<uint32_t, uint64_t>& features) {
+    const std::string config_path = std::string(KSURC_PATH);
+    std::string text = "# KernelSU feature configuration\n";
+    for (const auto& [name, id] : get_feature_map()) {
+        auto it = features.find(id);
+        if (it == features.end())
+            continue;
+        text += name;
+        text += '=';
+        text += std::to_string(it->second);
+        text += '\n';
+    }
+    if (!write_file(config_path, text)) {
+        LOGE("Failed to open config file for writing");
+        return 1;
+    }
+
+    if (save_binary_config(features) != 0) {
+        LOGE("Failed to save feature binary config");
+        return 1;
+    }
+
+    LOGI("Saved feature config to %s", config_path.c_str());
+    return 0;
 }
 
 }  // namespace
@@ -259,30 +292,7 @@ int feature_load_config() {
 }
 
 int feature_save_config() {
-    const std::string config_path = std::string(KSURC_PATH);
-    const auto current_features = get_current_feature_values();
-    std::string text = "# KernelSU feature configuration\n";
-    for (const auto& [name, id] : get_feature_map()) {
-        auto it = current_features.find(id);
-        if (it != current_features.end()) {
-            text += name;
-            text += '=';
-            text += std::to_string(it->second);
-            text += '\n';
-        }
-    }
-    if (!write_file(config_path, text)) {
-        LOGE("Failed to open config file for writing");
-        return 1;
-    }
-
-    if (save_binary_config(current_features) != 0) {
-        LOGE("Failed to save feature binary config");
-        return 1;
-    }
-
-    LOGI("Saved feature config to %s", config_path.c_str());
-    return 0;
+    return save_feature_config_files(get_current_feature_values());
 }
 
 std::map<uint32_t, uint64_t> load_binary_config() {
@@ -399,6 +409,26 @@ int init_features() {
 
     auto features = load_binary_config();
 
+    // Versions before KSU_FEATURE_HIDE_BOOTLOADER used a standalone marker.
+    // Import it only when the running kernel supports the formal feature, then
+    // remove it after both feature config formats have been saved successfully.
+    const bool has_legacy_hide_bootloader = access(LEGACY_HIDE_BOOTLOADER_CONFIG, F_OK) == 0;
+    bool consume_legacy_hide_bootloader = false;
+    if (has_legacy_hide_bootloader) {
+        const auto [_, supported] = get_feature(KSU_FEATURE_HIDE_BOOTLOADER);
+        if (supported) {
+            consume_legacy_hide_bootloader = true;
+            if (features.find(KSU_FEATURE_HIDE_BOOTLOADER) == features.end()) {
+                features[KSU_FEATURE_HIDE_BOOTLOADER] = 1;
+                LOGI("Migrating legacy hide-bootloader marker to feature %u",
+                     KSU_FEATURE_HIDE_BOOTLOADER);
+            }
+        } else {
+            LOGW("Keeping legacy hide-bootloader marker: feature %u is unsupported",
+                 KSU_FEATURE_HIDE_BOOTLOADER);
+        }
+    }
+
     // Get managed features from active modules and skip them during init
     auto managed_features_map = get_managed_features();
     if (!managed_features_map.empty()) {
@@ -435,8 +465,22 @@ int init_features() {
 
     apply_config(features);
 
-    // Save the configuration (excluding managed features)
-    save_binary_config(features);
+    // Save the configuration (excluding managed features). A legacy migration
+    // updates the human-readable config too, so a later `feature load` cannot
+    // silently drop the migrated value.
+    const int save_result = consume_legacy_hide_bootloader ? save_feature_config_files(features)
+                                                           : save_binary_config(features);
+    if (save_result != 0) {
+        LOGW("Failed to save initialized feature configuration");
+        return 1;
+    }
+    if (consume_legacy_hide_bootloader) {
+        if (unlink(LEGACY_HIDE_BOOTLOADER_CONFIG) != 0 && errno != ENOENT) {
+            LOGW("Failed to remove legacy hide-bootloader marker: %s", strerror(errno));
+        } else {
+            LOGI("Removed legacy hide-bootloader marker");
+        }
+    }
     LOGI("Saved feature configuration to file");
 
     return 0;

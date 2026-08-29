@@ -17,6 +17,7 @@ enum ksu_feature_id {
   // YukiSU extensions number from 100 up; 0-99 reserved for upstream KSU.
   KSU_FEATURE_DEFAULT_NO_NEW_PRIVS = 102,
   KSU_FEATURE_YUKIZYGISK = 103,
+  KSU_FEATURE_HIDE_BOOTLOADER = 104,
 
   KSU_FEATURE_MAX
 };

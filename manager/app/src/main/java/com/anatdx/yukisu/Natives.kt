@@ -178,6 +178,10 @@ object Natives {
     external fun isDefaultNoNewPrivsEnabled(): Boolean
     external fun setDefaultNoNewPrivsEnabled(enabled: Boolean): Boolean
 
+    /** Runtime bootloader-property hiding. Persisted via ksud's feature config. */
+    external fun isHideBootloaderEnabled(): Boolean
+    external fun setHideBootloaderEnabled(enabled: Boolean): Boolean
+
     external fun getHookType(): String
 
     /**
@@ -194,6 +198,7 @@ object Natives {
     const val FEATURE_MAGISK_COMPAT = 101
     const val FEATURE_DEFAULT_NO_NEW_PRIVS = 102
     const val FEATURE_YUKIZYGISK = 103
+    const val FEATURE_HIDE_BOOTLOADER = 104
 
     /**
      * Reads a feature's value straight from the kernel, or -1 when the kernel

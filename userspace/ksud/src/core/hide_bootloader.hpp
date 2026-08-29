@@ -10,14 +10,4 @@ namespace ksud {
  */
 void hide_bootloader_status();
 
-/**
- * Check if bootloader hiding is enabled
- */
-bool is_bl_hiding_enabled();
-
-/**
- * Enable/disable bootloader hiding
- */
-void set_bl_hiding_enabled(bool enabled);
-
 }  // namespace ksud

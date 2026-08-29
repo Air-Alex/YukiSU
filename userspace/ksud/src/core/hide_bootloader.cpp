@@ -1,26 +1,26 @@
 #include "hide_bootloader.hpp"
-#include "../defs.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
+#include "ksucalls.hpp"
 
-#include <sys/wait.h>
+extern "C" {
+#include "uapi/feature.h"
+}
+
 #include <unistd.h>
 #include <array>
-#include <cstdlib>
+#include <cerrno>
 #include <cstring>
 #include <string>
 
 namespace ksud {
-
-// Config file path (used by is_bl_hiding_enabled/set_bl_hiding_enabled)
-constexpr const char* BL_HIDE_CONFIG = "/data/adb/ksu/.hide_bootloader";
 
 // Property definitions: {name, expected_value}
 struct PropDef {
     const char* name;
     const char* expected;
 };
-static const std::array<PropDef, 24> PROPS_TO_HIDE = {{
+static constexpr PropDef PROPS_TO_HIDE[] = {
     // Generic bootloader/verified boot status
     {"ro.boot.vbmeta.device_state", "locked"},
     {"ro.boot.verifiedbootstate", "green"},
@@ -47,19 +47,16 @@ static const std::array<PropDef, 24> PROPS_TO_HIDE = {{
     {"ro.boot.realmebootstate", "green"},
     {"ro.boot.realme.lockstate", "1"},
 
-    // Samsung specific
-    {"ro.boot.warranty_bit", "0"},
-    {"ro.vendor.boot.warranty_bit", "0"},
-
     // OnePlus specific
     {"ro.boot.oem_unlock_support", "0"},
-}};
+};
 
 namespace {
 
-#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
+#if !defined(RESETPROP_ALONE_AVAILABLE) || !RESETPROP_ALONE_AVAILABLE
+#error "Hide bootloader requires resetpropAlone to be linked into ksud"
+#endif  // #if !defined(RESETPROP_ALONE_AVAILABLE)...
 extern "C" int resetprop_main(int argc, char** argv);
-#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
 
 /** Get property value in-process (no popen). */
 std::string get_prop(const char* name) {
@@ -69,11 +66,10 @@ std::string get_prop(const char* name) {
 
 /**
  * Set property using resetprop.
- * When RESETPROP_ALONE_AVAILABLE, calls resetprop_main in-process (no fork).
+ * Calls the resetprop entry point linked into ksud; no command is executed.
  * Uses -n to skip init trigger (like Shamiko).
  */
 bool reset_prop(const char* name, const char* value) {
-#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
     std::array<char*, 5> argv_c = {
         const_cast<char*>("resetprop"),
         const_cast<char*>("-n"),
@@ -82,111 +78,67 @@ bool reset_prop(const char* name, const char* value) {
         nullptr,
     };
     return resetprop_main(4, argv_c.data()) == 0;
-#else
-    const pid_t pid = fork();
-    if (pid < 0) {
-        LOGW("hide_bl: fork failed: %s", strerror(errno));
-        return false;
-    }
-    if (pid == 0) {
-        execl(RESETPROP_PATH, "resetprop", "-n", name, value, nullptr);
-        _exit(127);
-    }
-    int status;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
 }
 
 /**
  * Check and reset prop if value doesn't match expected
  */
-void check_reset_prop(const char* name, const char* expected) {
+bool check_reset_prop(const char* name, const char* expected) {
     const std::string value = get_prop(name);
 
     // Skip if empty (property doesn't exist) or already matches
     if (value.empty() || value == expected) {
-        return;
+        return true;
     }
 
     LOGI("hide_bl: resetting %s from '%s' to '%s'", name, value.c_str(), expected);
-    reset_prop(name, expected);
-}
-
-/**
- * Check if prop contains substring and reset if so
- */
-void contains_reset_prop(const char* name, const char* contains, const char* newval) {
-    const std::string value = get_prop(name);
-
-    if (value.find(contains) != std::string::npos) {
-        LOGI("hide_bl: resetting %s (contains '%s') to '%s'", name, contains, newval);
-        reset_prop(name, newval);
+    if (!reset_prop(name, expected)) {
+        LOGW("hide_bl: failed to reset %s", name);
+        return false;
     }
+    return true;
 }
-
-}  // namespace
-
-bool is_bl_hiding_enabled() {
-    return access(BL_HIDE_CONFIG, F_OK) == 0;
-}
-
-void set_bl_hiding_enabled(bool enabled) {
-    if (enabled) {
-        // Create config file
-        (void)write_file(BL_HIDE_CONFIG, "1\n");
-        LOGI("hide_bl: enabled");
-    } else {
-        // Remove config file
-        unlink(BL_HIDE_CONFIG);
-        LOGI("hide_bl: disabled");
-    }
-}
-
-namespace {
 
 /**
  * Do bootloader hiding in the current process.
  * Runs when service stage runs; uses built-in resetprop (no extra process).
  */
-void do_hide_bootloader() {
-    LOGI("hide_bl: waiting for sys.boot_completed=0");
-#if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
-    {
-        std::array<char*, 5> argv_w = {
-            const_cast<char*>("resetprop"),
-            const_cast<char*>("-w"),
-            const_cast<char*>("sys.boot_completed"),
-            const_cast<char*>("0"),
-            nullptr,
-        };
-        (void)resetprop_main(4, argv_w.data());
+bool do_hide_bootloader() {
+    LOGI("hide_bl: waiting for sys.boot_completed to change from 0");
+    std::array<char*, 5> argv_w = {
+        const_cast<char*>("resetprop"),
+        const_cast<char*>("-w"),
+        const_cast<char*>("sys.boot_completed"),
+        const_cast<char*>("0"),
+        nullptr,
+    };
+    if (resetprop_main(4, argv_w.data()) != 0) {
+        LOGW("hide_bl: failed while waiting for Android boot completion");
+        return false;
     }
-#else
-    const pid_t wait_pid = fork();
-    if (wait_pid == 0) {
-        execl(RESETPROP_PATH, "resetprop", "-w", "sys.boot_completed", "0", nullptr);
-        _exit(127);
-    }
-    if (wait_pid > 0) {
-        int status;
-        waitpid(wait_pid, &status, 0);
-    }
-#endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
 
     LOGI("hide_bl: starting bootloader status hiding...");
+    bool success = true;
     for (const auto& prop : PROPS_TO_HIDE) {
-        if (prop.expected != nullptr) {
-            check_reset_prop(prop.name, prop.expected);
-        }
+        if (!check_reset_prop(prop.name, prop.expected))
+            success = false;
     }
-    LOGI("hide_bl: bootloader status hiding completed");
+    if (success)
+        LOGI("hide_bl: bootloader status hiding completed");
+    else
+        LOGW("hide_bl: bootloader status hiding completed with errors");
+    return success;
 }
 
 }  // namespace
 
 void hide_bootloader_status() {
-    if (!is_bl_hiding_enabled()) {
+    const auto [value, supported] = get_feature(KSU_FEATURE_HIDE_BOOTLOADER);
+    if (!supported) {
+        LOGW("hide_bl: feature %u is unsupported, skipping", KSU_FEATURE_HIDE_BOOTLOADER);
+        return;
+    }
+    if (value == 0) {
         LOGI("hide_bl: disabled, skipping");
         return;
     }
@@ -198,8 +150,7 @@ void hide_bootloader_status() {
         return;
     }
     if (pid == 0) {
-        do_hide_bootloader();
-        _exit(0);
+        _exit(do_hide_bootloader() ? 0 : 1);
     }
     LOGI("hide_bl: started (pid %d), not blocking service stage", pid);
 }

@@ -420,6 +420,9 @@ private fun AdvancedSettings(
     val magiskCompatStatus by produceState(initialValue = "") {
         value = getFeatureStatus(Natives.FEATURE_MAGISK_COMPAT)
     }
+    val hideBootloaderStatus by produceState(initialValue = "") {
+        value = getFeatureStatus(Natives.FEATURE_HIDE_BOOTLOADER)
+    }
 
     SettingsCard(title = stringResource(R.string.advanced_settings)) {
 
@@ -437,10 +440,17 @@ private fun AdvancedSettings(
         SwitchSettingItem(
             icon = Icons.Filled.Lock,
             title = stringResource(R.string.hide_bl_title),
-            summary = if (state.hideBlEnabled)
-                stringResource(R.string.hide_bl_enabled) else
-                stringResource(R.string.hide_bl_disabled),
+            summary = when (hideBootloaderStatus) {
+                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
+                "managed" -> stringResource(R.string.feature_status_managed_summary)
+                else -> if (state.hideBlEnabled) {
+                    stringResource(R.string.hide_bl_enabled)
+                } else {
+                    stringResource(R.string.hide_bl_disabled)
+                }
+            },
             checked = state.hideBlEnabled,
+            enabled = hideBootloaderStatus == "supported",
             onChange = handlers::handleHideBlChange
         )
 
