@@ -515,7 +515,7 @@ static const struct ksu_feature_handler selinux_hide_handler = {
     .set_handler = selinux_hide_feature_set,
 };
 
-void ksu_selinux_hide_handle_second_stage()
+void ksu_selinux_hide_handle_second_stage(void)
 {
 	initialize_fake_status();
 	if (fake_status) {
@@ -525,7 +525,7 @@ void ksu_selinux_hide_handle_second_stage()
 	}
 }
 
-void ksu_selinux_hide_handle_post_fs_data()
+void ksu_selinux_hide_handle_post_fs_data(void)
 {
 	static_branch_disable(&fake_status_initialize_key);
 	if (!fake_status)
@@ -565,7 +565,7 @@ static void hook_selinux_status_open(void)
 	}
 }
 
-void __init ksu_selinux_hide_init()
+void __init ksu_selinux_hide_init(void)
 {
 	if (ksu_register_feature_handler(&selinux_hide_handler)) {
 		pr_err("Failed to register selinux_hide feature handler\n");
@@ -578,7 +578,7 @@ void __init ksu_selinux_hide_init()
 	hook_selinux_status_open();
 }
 
-void ksu_selinux_hide_exit()
+void ksu_selinux_hide_exit(void)
 {
 	mutex_lock(&selinux_hide_mutex);
 	if (ksu_selinux_hide_running) {
@@ -596,7 +596,7 @@ void ksu_selinux_hide_exit()
 	mutex_unlock(&selinux_state.status_lock);
 }
 
-void ksu_selinux_hide_drop_backup_if_unused()
+void ksu_selinux_hide_drop_backup_if_unused(void)
 {
 	mutex_lock(&selinux_hide_mutex);
 	if (!ksu_selinux_hide_running && backup_sepolicy) {

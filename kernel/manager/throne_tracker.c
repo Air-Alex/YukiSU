@@ -321,9 +321,9 @@ struct my_dir_context {
 #define FILLDIR_ACTOR_CONTINUE 0
 #define FILLDIR_ACTOR_STOP -EINVAL
 #endif // #if LINUX_VERSION_CODE >= KERNEL_VERSIO...
-FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name,
-			     int namelen, loff_t off, u64 ino,
-			     unsigned int d_type)
+static FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name,
+				    int namelen, loff_t off, u64 ino,
+				    unsigned int d_type)
 {
 	struct my_dir_context *my_ctx =
 	    container_of(ctx, struct my_dir_context, ctx);
@@ -427,7 +427,8 @@ FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name,
 	return FILLDIR_ACTOR_CONTINUE;
 }
 
-void search_manager(const char *path, int depth, struct list_head *uid_data)
+static void search_manager(const char *path, int depth,
+			   struct list_head *uid_data)
 {
 	int i, stop = 0;
 	unsigned long data_app_magic = 0;

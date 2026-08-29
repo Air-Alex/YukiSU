@@ -20,6 +20,8 @@
 unsigned long __stack_chk_guard __ro_after_init
     __attribute__((visibility("hidden")));
 
+void ksu_setup_stack_chk_guard(void);
+
 __attribute__((no_stack_protector)) void ksu_setup_stack_chk_guard(void)
 {
 	unsigned long canary;
@@ -30,7 +32,7 @@ __attribute__((no_stack_protector)) void ksu_setup_stack_chk_guard(void)
 	__stack_chk_guard = canary;
 }
 
-__attribute__((naked)) int __init kernelsu_init_early(void)
+static __attribute__((naked)) int __init kernelsu_init_early(void)
 {
 	asm("mov x19, x30;\n"
 	    "bl ksu_setup_stack_chk_guard;\n"
@@ -41,6 +43,8 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 #else
 #define NEED_OWN_STACKPROTECTOR 0
 #endif // #if defined(CONFIG_STACKPROTECTOR) && !...
+
+int kernelsu_init(void);
 
 #include "policy/allowlist.h"
 #include "policy/feature.h"
@@ -86,11 +90,11 @@ module_param(allow_shell, bool, 0);
 bool ksu_no_custom_rc = false;
 module_param_named(norc, ksu_no_custom_rc, bool, 0);
 
-void yukisu_custom_config_init(void)
+static void yukisu_custom_config_init(void)
 {
 }
 
-void yukisu_custom_config_exit(void)
+static void yukisu_custom_config_exit(void)
 {
 #if __SULOG_GATE
 	ksu_sulog_exit();
@@ -243,8 +247,7 @@ int __init kernelsu_init(void)
 	return 0;
 }
 
-extern void ksu_observer_exit(void);
-void kernelsu_exit(void)
+static void kernelsu_exit(void)
 {
 	// Phase 1: Stop hooks first to prevent new callbacks
 	ksu_hook_exit();

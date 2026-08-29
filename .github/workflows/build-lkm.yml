@@ -22,6 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Keep this list in sync with scripts/build.* and ksud.yml.
         kmi:
           - android12-5.10
           - android13-5.10

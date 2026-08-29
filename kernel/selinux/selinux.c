@@ -163,8 +163,8 @@ void cache_sid(void)
  * Fast path: compare task's SID directly against cached value.
  * Falls back to string comparison if cache is not initialized.
  */
-bool is_sid_match(const struct cred *cred, u32 cached_sid,
-		  const char *fallback_context)
+static bool is_sid_match(const struct cred *cred, u32 cached_sid,
+			 const char *fallback_context)
 {
 	struct lsm_context ctx;
 	bool result;

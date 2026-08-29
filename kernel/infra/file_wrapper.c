@@ -240,7 +240,7 @@ static ssize_t ksu_wrapper_splice_read(struct file *fp, loff_t *off,
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-void ksu_wrapper_splice_eof(struct file *fp)
+static void ksu_wrapper_splice_eof(struct file *fp)
 {
 	struct ksu_file_wrapper *data = fp->private_data;
 	struct file *orig = data->orig;

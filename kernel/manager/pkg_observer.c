@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "klog.h" // IWYU pragma: keep
 #include "ksu.h"
+#include "manager/manager_observer.h"
 #include "manager/throne_tracker.h"
 #include <linux/fs.h>
 #include <linux/module.h>

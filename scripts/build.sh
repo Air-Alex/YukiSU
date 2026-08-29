@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# YukiSU local build: DDK LKM -> ksuinit -> ksud -> Manager App
+# YukiSU local build: DDK LKMs -> ksuinit -> ksud -> Manager App
 # Signing env: YUKISU_KEYSTORE, YUKISU_KEYSTORE_PASSWORD, YUKISU_KEY_ALIAS, YUKISU_KEY_PASSWORD
 # Usage: ./scripts/build.sh [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--skip-lkm] [-i] [-h]
+# Without --kmi, all supported LKM targets are built and embedded in ksud.
 # --clean deletes Native CMake build directories before building.
 
 set -euo pipefail
@@ -9,7 +10,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="$REPO_ROOT/out"
-KMI="android16-6.12"
+# Keep this list in sync with build-lkm.yml and ksud.yml.
+SUPPORTED_KMIS=(
+	android12-5.10
+	android13-5.10
+	android13-5.15
+	android14-5.15
+	android14-6.1
+	android15-6.6
+	android16-6.12
+	android17-6.18
+)
+KMI_TARGETS=("${SUPPORTED_KMIS[@]}")
 ANDROID_ABI="arm64-v8a"
 CLEAN_BUILD=false
 SKIP_LKM=false
@@ -20,7 +32,7 @@ ENABLE_YUKIZYGISK=true
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-k | --kmi)
-		KMI="$2"
+		KMI_TARGETS=("$2")
 		shift 2
 		;;
 	--clean)
@@ -52,6 +64,13 @@ while [[ $# -gt 0 ]]; do
 		exit 1
 		;;
 	esac
+done
+
+for kmi in "${KMI_TARGETS[@]}"; do
+	if [[ ! "$kmi" =~ ^[A-Za-z0-9._-]+$ ]]; then
+		echo "Invalid KMI/DDK target: $kmi"
+		exit 1
+	fi
 done
 
 # Android API floor. CMake overrides the versioned NDK wrapper's --target with one
@@ -142,7 +161,7 @@ TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_HOST"
 MAKE_JOBS=$(detect_jobs)
 
 echo "=== YukiSU local build ==="
-echo "KMI: $KMI | ABI: $ANDROID_ABI | NDK: $ANDROID_NDK_HOME"
+echo "KMIs: ${KMI_TARGETS[*]} | ABI: $ANDROID_ABI | NDK: $ANDROID_NDK_HOME"
 if [[ "$CLEAN_BUILD" == "true" ]]; then
 	echo "Native cache: clean rebuild"
 else
@@ -160,17 +179,21 @@ fi
 echo ""
 
 if [[ "$SKIP_LKM" != "true" ]]; then
-	echo ">>> [1/5] Build KernelSU LKM (DDK) ..."
+	echo ">>> [1/5] Build KernelSU LKMs (DDK) ..."
 	mkdir -p "$OUT_DIR"
-	docker run --rm -v "$REPO_ROOT:/src" -w /src \
-		"ghcr.io/ylarod/ddk-min:${KMI}-${DDK_RELEASE}" \
-		bash -c "cd kernel && test -f include/uapi/supercall.h && \
-	             CONFIG_KSU=m CONFIG_KSU_SUPERKEY=y ${KSU_YUKIZYGISK_MAKE} CC=clang make -j${MAKE_JOBS} && \
-	             mkdir -p /src/out && cp kernelsu.ko /src/out/${KMI}_kernelsu.ko && \
-	             (llvm-strip -d /src/out/${KMI}_kernelsu.ko 2>/dev/null || true)"
-	echo "    LKM: $OUT_DIR/${KMI}_kernelsu.ko"
+	for kmi in "${KMI_TARGETS[@]}"; do
+		echo "    Building LKM: $kmi"
+		docker run --platform linux/amd64 --rm -v "$REPO_ROOT:/src" -w /src \
+			"ghcr.io/ylarod/ddk-min:${kmi}-${DDK_RELEASE}" \
+			bash -c "cd kernel && test -f include/uapi/supercall.h && \
+		             make clean && \
+		             CONFIG_KSU=m CONFIG_KSU_SUPERKEY=y ${KSU_YUKIZYGISK_MAKE} CC=clang make -j${MAKE_JOBS} && \
+		             mkdir -p /src/out && cp kernelsu.ko /src/out/${kmi}_kernelsu.ko && \
+		             (llvm-strip -d /src/out/${kmi}_kernelsu.ko 2>/dev/null || true)"
+		echo "    LKM: $OUT_DIR/${kmi}_kernelsu.ko"
+	done
 else
-	echo ">>> [1/5] Skip LKM"
+	echo ">>> [1/5] Skip LKM builds; reuse outputs"
 fi
 
 echo ">>> [2/5] Build ksuinit ..."
@@ -209,11 +232,15 @@ rm -f -- "$KSUD_ASSETS/ksuinit" "$KSUD_ASSETS/su" \
 	"$KSUD_ASSETS/libzygisk.so" "$KSUD_ASSETS/libyukilinker.so" \
 	"$KSUD_ASSETS/libyukizncore.so"
 
-if [[ -f "$OUT_DIR/${KMI}_kernelsu.ko" ]]; then
-	cp "$OUT_DIR/${KMI}_kernelsu.ko" "$KSUD_ASSETS/"
-else
-	echo "    warning: ${KMI}_kernelsu.ko not found"
-fi
+for kmi in "${KMI_TARGETS[@]}"; do
+	lkm="$OUT_DIR/${kmi}_kernelsu.ko"
+	if [[ ! -f "$lkm" ]]; then
+		echo "Required LKM not found: $lkm"
+		exit 1
+	fi
+	cp "$lkm" "$KSUD_ASSETS/"
+done
+echo "    staged LKMs: ${KMI_TARGETS[*]}"
 
 cp "$KSUINIT_DIR/build/ksuinit" "$KSUD_ASSETS/"
 

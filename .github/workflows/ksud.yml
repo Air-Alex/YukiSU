@@ -43,7 +43,28 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p ./userspace/ksud/assets
-        cp android*-lkm/*_kernelsu.ko ./userspace/ksud/assets/ 2>/dev/null || true
+        rm -f ./userspace/ksud/assets/*_kernelsu.ko
+        # Keep this list in sync with build-lkm.yml and scripts/build.*.
+        required_kmis=(
+          android12-5.10
+          android13-5.10
+          android13-5.15
+          android14-5.15
+          android14-6.1
+          android15-6.6
+          android16-6.12
+          android17-6.18
+        )
+        for kmi in "${required_kmis[@]}"; do
+          lkm="${kmi}-lkm/${kmi}_kernelsu.ko"
+          if [ ! -f "$lkm" ]; then
+            echo "::error::Required LKM artifact missing: $lkm"
+            exit 1
+          fi
+          cp "$lkm" ./userspace/ksud/assets/
+        done
+        echo "Embedded LKM assets:"
+        ls -lh ./userspace/ksud/assets/*_kernelsu.ko
     
     - name: Prepare ksuinit
       if: ${{ inputs.pack_ksuinit }}

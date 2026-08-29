@@ -50,6 +50,7 @@ jobs:
           echo "YukiZygisk kernel hooks: disabled"
         fi
 
+        make clean
         make "${make_args[@]}"
         
         echo "=== Build completed ==="

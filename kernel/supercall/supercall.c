@@ -131,8 +131,8 @@ static void ksu_superkey_auth_tw_func(struct callback_head *cb)
 
 // downstream: make sure to pass arg as reference, this can allow us to extend
 // things.
-int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
-			  void __user **arg)
+static int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
+				 void __user **arg)
 {
 	struct ksu_install_fd_tw *tw;
 
@@ -474,7 +474,7 @@ static long anon_ksu_compat_ioctl(struct file *filp, unsigned int cmd,
 {
 	return ksu_supercall_handle_ioctl(cmd, compat_ptr(arg));
 }
-#endif
+#endif // #ifdef CONFIG_COMPAT
 
 // File release handler
 static int anon_ksu_release(struct inode *inode, struct file *filp)
@@ -489,7 +489,7 @@ static const struct file_operations anon_ksu_fops = {
     .unlocked_ioctl = anon_ksu_ioctl,
 #ifdef CONFIG_COMPAT
     .compat_ioctl = anon_ksu_compat_ioctl,
-#endif
+#endif // #ifdef CONFIG_COMPAT
     .release = anon_ksu_release,
 };
 

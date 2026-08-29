@@ -1,6 +1,7 @@
-# Native Windows build: DDK LKM -> ksuinit -> su -> YukiZygisk -> ksud -> Manager App
+# Native Windows build: DDK LKMs -> ksuinit -> su -> YukiZygisk -> ksud -> Manager App
 # Signing env: YUKISU_KEYSTORE, YUKISU_KEYSTORE_PASSWORD, YUKISU_KEY_ALIAS, YUKISU_KEY_PASSWORD
 # Usage: .\scripts\build.bat [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--skip-lkm] [-i] [-h]
+# Without --kmi, all supported LKM targets are built and embedded in ksud.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -13,9 +14,9 @@ Usage:
   .\scripts\build.bat [options]
 
 Options:
-  -k, --kmi KMI                 DDK target/KMI (default: android16-6.12)
+  -k, --kmi KMI                 Build only one KMI (default: all supported KMIs)
   --clean                       Delete Native CMake build directories first
-  --skip-lkm                    Reuse an existing out\<KMI>_kernelsu.ko if present
+  --skip-lkm                    Reuse existing out\<KMI>_kernelsu.ko files
   --yukizygisk                  Enable YukiZygisk kernel support (default)
   --yukizygisk-off              Disable YukiZygisk kernel hooks
   -i, --install                 Install the resulting APK with adb
@@ -26,7 +27,7 @@ Environment overrides:
   ANDROID_NDK_HOME
   JAVA_HOME
   PYTHON
-  YUKISU_DDK_IMAGE             Full DDK image override (default: ghcr.io/ylarod/ddk:<KMI>)
+  YUKISU_DDK_IMAGE             DDK image override; use {KMI} for multi-KMI builds
 '@ | Write-Host
 }
 
@@ -222,7 +223,19 @@ function Copy-RequiredFile {
 
 try {
     $script:RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-    $kmi = 'android16-6.12'
+    # Keep this list in sync with build-lkm.yml and ksud.yml.
+    $supportedKmis = @(
+        'android12-5.10',
+        'android13-5.10',
+        'android13-5.15',
+        'android14-5.15',
+        'android14-6.1',
+        'android15-6.6',
+        'android16-6.12',
+        'android17-6.18'
+    )
+    $kmiTargets = @($supportedKmis)
+    $ddkRelease = '20260828'
     $script:AndroidAbi = 'arm64-v8a'
     $script:CleanBuild = $false
     $skipLkm = $false
@@ -235,7 +248,7 @@ try {
             { $_ -in @('-k', '--kmi') } {
                 if ($index + 1 -ge $args.Count) { throw "$argument requires a value" }
                 $index++
-                $kmi = [string]$args[$index]
+                $kmiTargets = @([string]$args[$index])
                 break
             }
             '--clean' { $script:CleanBuild = $true; break }
@@ -248,8 +261,10 @@ try {
         }
     }
 
-    if ($kmi -notmatch '^[A-Za-z0-9._-]+$') {
-        throw "Invalid KMI/DDK target: $kmi"
+    foreach ($kmi in $kmiTargets) {
+        if ($kmi -notmatch '^[A-Za-z0-9._-]+$') {
+            throw "Invalid KMI/DDK target: $kmi"
+        }
     }
 
     $sdkRoot = Resolve-AndroidSdk
@@ -302,7 +317,7 @@ try {
     $env:PATH = "$pythonDirectory;$cmakeBin;$ndkBin;$platformTools;$env:PATH"
 
     Write-Host '=== YukiSU native Windows build ===' -ForegroundColor Green
-    Write-Host "KMI:       $kmi"
+    Write-Host "KMIs:      $($kmiTargets -join ', ')"
     Write-Host "ABI:       $script:AndroidAbi"
     Write-Host "SDK:       $sdkRoot"
     Write-Host "NDK:       $ndkRoot"
@@ -322,10 +337,12 @@ try {
 
     $outDirectory = Join-Path $script:RepoRoot 'out'
     New-Item -ItemType Directory -Path $outDirectory -Force | Out-Null
-    $lkmOutput = Join-Path $outDirectory "${kmi}_kernelsu.ko"
+    $lkmOutputs = @($kmiTargets | ForEach-Object {
+        Join-Path $outDirectory "$($_)_kernelsu.ko"
+    })
 
     if (-not $skipLkm) {
-        Write-Host '>>> [1/5] Build KernelSU LKM (DDK) ...' -ForegroundColor Cyan
+        Write-Host '>>> [1/5] Build KernelSU LKMs (DDK) ...' -ForegroundColor Cyan
         $dockerCommand = Get-Command docker.exe -ErrorAction SilentlyContinue
         if ($dockerCommand) {
             $dockerExe = $dockerCommand.Source
@@ -340,37 +357,53 @@ try {
             }
         }
 
-        $ddkImage = if ($env:YUKISU_DDK_IMAGE) { $env:YUKISU_DDK_IMAGE } else { "ghcr.io/ylarod/ddk:$kmi" }
-        $dockerArguments = @(
-            'run',
-            '--platform', 'linux/amd64',
-            '--rm',
-            '-v', "${script:RepoRoot}:/build",
-            '-w', '/build',
-            $ddkImage,
-            'make',
-            '-f', 'scripts/ddk.mk',
-            'KCFLAGS=-I/build',
-            'CONFIG_KSU=m',
-            'CONFIG_KSU_SUPERKEY=y'
-        )
-        if ($enableYukiZygisk) {
-            $dockerArguments += 'CONFIG_KSU_YUKIZYGISK=y'
-        }
-        $dockerArguments += @('CC=clang', "-j$script:BuildJobs")
         $kernelDirectory = Join-Path $script:RepoRoot 'kernel'
-        Invoke-Native -FilePath $dockerExe -ArgumentList $dockerArguments -WorkingDirectory $script:RepoRoot
-        Copy-RequiredFile -Source (Join-Path $kernelDirectory 'kernelsu.ko') -Destination $lkmOutput
-
         $llvmStrip = Join-Path $ndkBin 'llvm-strip.exe'
-        if (Test-Path -LiteralPath $llvmStrip) {
-            try { Invoke-Native -FilePath $llvmStrip -ArgumentList @('-d', $lkmOutput) }
-            catch { Write-Warning "Could not strip the LKM: $($_.Exception.Message)" }
+
+        foreach ($kmi in $kmiTargets) {
+            Write-Host "    Building LKM: $kmi"
+            if ($env:YUKISU_DDK_IMAGE) {
+                if ($kmiTargets.Count -gt 1 -and -not $env:YUKISU_DDK_IMAGE.Contains('{KMI}')) {
+                    throw 'YUKISU_DDK_IMAGE must contain {KMI} for a multi-KMI build.'
+                }
+                $ddkImage = $env:YUKISU_DDK_IMAGE.Replace('{KMI}', $kmi).Replace('{DDK_RELEASE}', $ddkRelease)
+            }
+            else {
+                $ddkImage = "ghcr.io/ylarod/ddk-min:${kmi}-${ddkRelease}"
+            }
+
+            $makeArguments = @(
+                'KCFLAGS=-I/build',
+                'CONFIG_KSU=m',
+                'CONFIG_KSU_SUPERKEY=y'
+            )
+            if ($enableYukiZygisk) {
+                $makeArguments += 'CONFIG_KSU_YUKIZYGISK=y'
+            }
+            $makeArguments += @('CC=clang', "-j$script:BuildJobs")
+            $makeCommand = 'make -f scripts/ddk.mk clean && make -f scripts/ddk.mk ' + ($makeArguments -join ' ')
+            $dockerArguments = @(
+                'run',
+                '--platform', 'linux/amd64',
+                '--rm',
+                '-v', "${script:RepoRoot}:/build",
+                '-w', '/build',
+                $ddkImage,
+                'bash', '-lc', $makeCommand
+            )
+            Invoke-Native -FilePath $dockerExe -ArgumentList $dockerArguments -WorkingDirectory $script:RepoRoot
+
+            $lkmOutput = Join-Path $outDirectory "${kmi}_kernelsu.ko"
+            Copy-RequiredFile -Source (Join-Path $kernelDirectory 'kernelsu.ko') -Destination $lkmOutput
+            if (Test-Path -LiteralPath $llvmStrip) {
+                try { Invoke-Native -FilePath $llvmStrip -ArgumentList @('-d', $lkmOutput) }
+                catch { Write-Warning "Could not strip the LKM: $($_.Exception.Message)" }
+            }
+            Write-Host "    LKM: $lkmOutput"
         }
-        Write-Host "    LKM: $lkmOutput"
     }
     else {
-        Write-Host '>>> [1/5] Skip LKM' -ForegroundColor Cyan
+        Write-Host '>>> [1/5] Skip LKM builds; reuse outputs' -ForegroundColor Cyan
     }
 
     $ksuinitDirectory = Join-Path $script:RepoRoot 'userspace\ksuinit'
@@ -417,12 +450,13 @@ try {
     Write-Host '    staged arm64/armv7 payloads + zygiskd64/zygiskd32'
 
     Write-Host '>>> [3/5] Build ksud ...' -ForegroundColor Cyan
-    if (Test-Path -LiteralPath $lkmOutput) {
+    foreach ($lkmOutput in $lkmOutputs) {
+        if (-not (Test-Path -LiteralPath $lkmOutput -PathType Leaf)) {
+            throw "Required LKM was not produced: $lkmOutput"
+        }
         Copy-Item -LiteralPath $lkmOutput -Destination (Join-Path $assetsDirectory (Split-Path -Leaf $lkmOutput)) -Force
     }
-    else {
-        Write-Warning "$lkmOutput was not found; ksud will be built without an embedded LKM."
-    }
+    Write-Host "    staged LKMs: $($kmiTargets -join ', ')"
     # generate_version.py intentionally rewrites src/defs.cpp at configure
     # time. Preserve the developer's exact pre-build contents so a local build
     # does not leave the tracked source tree dirty.

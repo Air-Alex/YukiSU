@@ -93,6 +93,7 @@ jobs:
     with:
       target: aarch64-linux-android
       os: ubuntu-latest
+      pack_lkm: true
       pack_yukizygisk: true
 
   build-manager:

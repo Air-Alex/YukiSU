@@ -26,7 +26,7 @@ compdb:
 	python3 $(MDIR)/.vscode/generate_compdb.py -O $(KDIR) $(MDIR)
 clean:
 	$(MAKE) -C $(KDIR) $(KBUILD_ARGS) clean
-	rm check_symbol
+	rm -f check_symbol
 check_symbol: tools/check_symbol.c
 	$(CC) tools/check_symbol.c -o check_symbol
 format:

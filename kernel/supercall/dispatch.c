@@ -105,7 +105,7 @@ static int do_get_info(void __user *arg)
 static int do_get_load_mode(void __user *arg)
 {
 	struct ksu_get_load_mode_cmd cmd = {.mode = KSU_LOAD_MODE_RAMDISK,
-						    .flags = 0};
+					    .flags = 0};
 
 	if (ksu_late_loaded)
 		cmd.mode = KSU_LOAD_MODE_LATE;
