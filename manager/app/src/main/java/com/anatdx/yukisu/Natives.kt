@@ -99,6 +99,14 @@ object Natives {
     val isManager: Boolean
         external get
 
+    const val KSUD_INTEGRITY_UNAVAILABLE = 0
+    const val KSUD_INTEGRITY_MATCH = 1
+    const val KSUD_INTEGRITY_MISMATCH = 2
+
+    external fun verifyKsudDaemon(sourcePath: String): Int
+    external fun installKsudDaemon(sourcePath: String): Boolean
+    external fun ensureKsudToolLinks(): Boolean
+
     external fun uidShouldUmount(uid: Int): Boolean
     external fun getDynamicManagers(): IntArray
 

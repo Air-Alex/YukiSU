@@ -32,6 +32,7 @@ link_libraries(cxx::cxx)
 add_library(kernelsu
         SHARED
         jni.c
+        ksud_integrity.c
         ksu.c
 )
 

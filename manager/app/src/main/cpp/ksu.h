@@ -34,6 +34,7 @@
 uint32_t get_version();
 uint32_t get_uapi_version();
 uint32_t get_manager_uapi_version();
+int ksu_grant_root(void);
 
 bool uid_should_umount(int uid);
 uint32_t get_dynamic_managers(struct ksu_dynamic_manager_app *apps,
@@ -52,7 +53,7 @@ bool set_app_profile(const struct app_profile *profile);
 
 int get_app_profile(struct app_profile *profile);
 
-void get_hook_type(char *hook_type);
+void get_hook_type(char *buff);
 
 // Su compat
 bool set_su_enabled(bool enabled);

@@ -40,7 +40,11 @@ static inline int scan_driver_fd() {
       continue;
     }
 
-    snprintf(path, sizeof(path), "/proc/self/fd/%s", de->d_name);
+    int path_length =
+        snprintf(path, sizeof(path), "/proc/self/fd/%s", de->d_name);
+    if (path_length < 0 || (size_t)path_length >= sizeof(path)) {
+      continue;
+    }
     ssize_t n = readlink(path, target, sizeof(target) - 1);
     if (n < 0) {
       continue;
@@ -88,6 +92,8 @@ static int ksuctl(unsigned long op, void *arg) {
   }
   return ioctl(fd, op, arg);
 }
+
+int ksu_grant_root(void) { return ksuctl(KSU_IOCTL_GRANT_ROOT, NULL); }
 
 static struct ksu_get_info_cmd g_version = {0};
 
@@ -423,7 +429,7 @@ bool authenticate_superkey(const char *superkey) {
   struct ksu_superkey_prctl_cmd prctl_cmd = {};
   strncpy(prctl_cmd.superkey, superkey, sizeof(prctl_cmd.superkey) - 1);
   prctl_cmd.superkey[sizeof(prctl_cmd.superkey) - 1] = '\0';
-  prctl_cmd.timestamp = (uint64_t)time(NULL);
+  prctl_cmd.timestamp = (uint64_t)time(nullptr);
   prctl_cmd.result = -1; // Initialize with error
   prctl_cmd.fd = -1;
 

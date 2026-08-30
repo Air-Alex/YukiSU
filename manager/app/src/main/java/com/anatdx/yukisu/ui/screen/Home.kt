@@ -1,11 +1,15 @@
 package com.anatdx.yukisu.ui.screen
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import android.system.Os
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
@@ -47,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ramcosta.composedestinations.annotation.Destination
@@ -57,6 +62,8 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.KernelVersion
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.integrity.KsudIntegrity
+import com.anatdx.yukisu.integrity.KsudIntegrityStatus
 import com.anatdx.yukisu.magica.MagicaHelper
 import com.anatdx.yukisu.superkey.SuperKeyHelper
 import com.anatdx.yukisu.ui.component.KsuIsValid
@@ -99,6 +106,16 @@ fun HomeScreen(navigator: DestinationsNavigator) {
     val viewModel = viewModel<HomeViewModel>()
     val coroutineScope = rememberCoroutineScope()
     val loadingDialog = rememberLoadingDialog()
+    val ksudIntegrityStatus by KsudIntegrity.status.collectAsState()
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            coroutineScope.launch {
+                KsudIntegrity.refresh(context, notifyOnMismatch = false)
+            }
+        }
+    }
 
     LaunchedEffect(key1 = navigator) {
         viewModel.loadUserSettings(context)
@@ -156,6 +173,33 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                 val superKeyDialog = rememberSuperKeyDialog()
                 var superKeyAuthSuccess by remember { mutableStateOf(false) }
                 val snackbarHostState = remember { SnackbarHostState() }
+
+                LaunchedEffect(viewModel.isCoreDataLoaded, superKeyAuthSuccess) {
+                    if (viewModel.isCoreDataLoaded) {
+                        KsudIntegrity.refresh(context, notifyOnMismatch = false)
+                    }
+                }
+
+                LaunchedEffect(viewModel.isCoreDataLoaded, viewModel.systemStatus.ksuVersion) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        viewModel.isCoreDataLoaded &&
+                        viewModel.systemStatus.ksuVersion != null &&
+                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+                        if (!preferences.getBoolean(
+                                KsudIntegrity.NOTIFICATION_PERMISSION_REQUESTED,
+                                false,
+                            )
+                        ) {
+                            preferences.edit {
+                                putBoolean(KsudIntegrity.NOTIFICATION_PERMISSION_REQUESTED, true)
+                            }
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                }
                 
                 // 检查内核是否配置了 SuperKey / 签名（异步，避免阻塞主线程）
                 val isSuperKeyConfigured by produceState(initialValue = false) {
@@ -277,6 +321,10 @@ fun HomeScreen(navigator: DestinationsNavigator) {
 
                     CiUpdateCard()
 
+                    if (ksudIntegrityStatus == KsudIntegrityStatus.MISMATCH) {
+                        WarningCard(stringResource(R.string.ksud_integrity_warning))
+                    }
+
                     // 警告信息
                     if (viewModel.systemStatus.requireNewKernel) {
                         WarningCard(
@@ -328,6 +376,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         isHideZygiskImplement = viewModel.isHideZygiskImplement,
                         isHideMetaModuleImplement = viewModel.isHideMetaModuleImplement,
                         isHideSeccompStatus = viewModel.isHideSeccompStatus,
+                        ksudIntegrityStatus = ksudIntegrityStatus,
                         onYukiZygiskClick = { navigator.navigate(YukiZygiskScreenDestination) },
                     )
 
@@ -1085,6 +1134,7 @@ private fun InfoCard(
     isHideZygiskImplement: Boolean,
     isHideMetaModuleImplement: Boolean,
     isHideSeccompStatus: Boolean = false,
+    ksudIntegrityStatus: KsudIntegrityStatus = KsudIntegrityStatus.UNKNOWN,
     onYukiZygiskClick: () -> Unit = {},
 ) {
     var showKsudDialog by remember { mutableStateOf(false) }
@@ -1094,7 +1144,7 @@ private fun InfoCard(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(ksudIntegrityStatus) {
         val (apk, installed) = withContext(Dispatchers.IO) {
             KsuCli.getKsudVersionsForUi()
         }
@@ -1105,7 +1155,8 @@ private fun InfoCard(
     val ksudUnknown = stringResource(id = R.string.home_ksud_daemon_unknown)
     val apkVer = ksudApkVersion
     val installedVer = ksudInstalledVersion
-    val hasMismatch = apkVer != null && installedVer != null && apkVer != installedVer
+    val hasMismatch = ksudIntegrityStatus == KsudIntegrityStatus.MISMATCH ||
+        (apkVer != null && installedVer != null && apkVer != installedVer)
     val ksudContent = when {
         apkVer == null && installedVer == null -> ksudUnknown
         installedVer == null -> apkVer ?: ksudUnknown
@@ -1388,6 +1439,7 @@ private fun KsudVersionDialog(
                     syncing = true
                     scope.launch {
                         KsuCli.updateKsudDaemonForUi()
+                        KsudIntegrity.refresh(context, notifyOnMismatch = false)
                         val (apk, installed) = KsuCli.getKsudVersionsForUi()
                         apkVersion = apk
                         installedVersion = installed

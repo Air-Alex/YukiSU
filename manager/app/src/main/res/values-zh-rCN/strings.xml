@@ -801,6 +801,10 @@
     <string name="home_ksud_daemon_unknown">未知</string>
     <string name="home_ksud_daemon_sync">同步 ksud 守护进程</string>
     <string name="home_ksud_daemon_syncing">正在同步…</string>
+    <string name="ksud_integrity_warning">已安装的 ksud 与当前管理器不一致，可能已被其他 Root 管理器或进程替换。请打开 ksud daemon 详情恢复内置版本。</string>
+    <string name="ksud_integrity_notification_title">ksud 已被替换</string>
+    <string name="ksud_integrity_notification_channel">ksud 安全警报</string>
+    <string name="ksud_integrity_notification_channel_summary">当 /data/adb/ksud 与当前管理器不一致时发出警告。</string>
     <string name="setting_change_saved_reboot">设置成功，重启生效</string>
     <string name="setting_change_failed">设置失败</string>
     <string name="settings_auto_update_ksud">自动更新 ksud</string>

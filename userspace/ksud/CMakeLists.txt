@@ -398,6 +398,7 @@ set(KSUD_OUR_SOURCES
     src/su.cpp
     src/su_args.cpp
     src/init_event.cpp
+    src/integrity_monitor.cpp
     src/yukizygisk_diagnostics.cpp
     src/yukizygisk_snapshot.cpp
     src/yzctl.cpp

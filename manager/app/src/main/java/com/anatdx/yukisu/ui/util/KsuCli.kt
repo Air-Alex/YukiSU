@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import com.anatdx.yukisu.BuildConfig
+import com.anatdx.yukisu.integrity.KsudIntegrity
+import com.anatdx.yukisu.integrity.KsudIntegrityStatus
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.core.tasks.ExtractImage
 import com.anatdx.yukisu.core.tasks.ProbeResult
@@ -62,15 +64,8 @@ object KsuCli {
     var GLOBAL_MNT_SHELL: Shell = createRootShell(true)
         private set
     
-    /**
-     * Recreate shell instances after SuperKey authentication.
-     * This is necessary because the initial shells were created before
-     * the app had root permission.
-     * 
-     * Also checks and installs ksud if needed (SuperKey mode: manager authenticates first,
-     * then we can install ksud with proper permissions).
-     */
-    fun refreshShells() {
+    /** Recreate shell instances and optionally reconcile the installed ksud. */
+    fun refreshShells(checkKsud: Boolean = true) {
         Log.d(TAG, "refreshShells: starting, old SHELL.isRoot=${SHELL.isRoot}")
         try {
             SHELL.close()
@@ -93,7 +88,7 @@ object KsuCli {
         Log.d(TAG, "Shells refreshed, SHELL.isRoot=${SHELL.isRoot}, GLOBAL_MNT_SHELL.isRoot=${GLOBAL_MNT_SHELL.isRoot}")
         
         // After authentication, check if ksud needs to be installed/updated
-        if (isManagerNow && SHELL.isRoot) {
+        if (checkKsud && isManagerNow) {
             checkAndInstallKsud()
         }
     }
@@ -105,8 +100,13 @@ object KsuCli {
     private fun checkAndInstallKsud() {
         try {
             val apkKsudVersion = getApkKsudVersion()
-            val installedKsudVersion = getInstalledKsudVersion()
-            val binaryMatches = installedKsudVersion != null && isInstalledKsudBinaryCurrent()
+            val integrityStatus = getKsudIntegrityStatus()
+            if (integrityStatus == KsudIntegrityStatus.UNAVAILABLE) {
+                Log.w(TAG, "checkAndInstallKsud: JNI manager root is unavailable")
+                return
+            }
+            val binaryMatches = integrityStatus == KsudIntegrityStatus.MATCH
+            val installedKsudVersion = if (binaryMatches) apkKsudVersion else null
             
             Log.i(
                 TAG,
@@ -123,21 +123,15 @@ object KsuCli {
                     "Installing/updating ksud daemon: apk=$apkKsudVersion, " +
                         "installed=$installedKsudVersion, binaryMatches=$binaryMatches"
                 )
-                installOrUpdateKsudDaemon()
-            } else {
-                if (apkKsudVersion != installedKsudVersion) {
-                    Log.w(
-                        TAG,
-                        "ksud version metadata differs but the installed binary is byte-identical: " +
-                            "apk=$apkKsudVersion, installed=$installedKsudVersion"
-                    )
+                if (installOrUpdateKsudDaemon() && SHELL.isRoot) {
+                    refreshYukiZygiskSnapshotForNextBoot()
                 }
+            } else {
                 Log.d(TAG, "ksud is up-to-date: $installedKsudVersion")
-                // The binary matching does not mean /data/adb/ksu/bin does. An
-                // older manager's `ksud install --magiskboot` left a full copy
-                // where a symlink belongs, and nothing else here would fix it.
-                getRootShell().takeIf { it.isRoot }?.let(::installKsudToolLinks)
-                refreshYukiZygiskSnapshotForNextBoot()
+                Natives.ensureKsudToolLinks()
+                if (SHELL.isRoot) {
+                    refreshYukiZygiskSnapshotForNextBoot()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "checkAndInstallKsud failed, falling back to install", e)
@@ -180,33 +174,12 @@ object KsuCli {
         return if (suffix.isNotEmpty()) "v$semver-$suffix" else "v$semver"
     }
 
-    /**
-     * Get installed ksud version from /data/adb/ksud.
-     */
-    private fun getInstalledKsudVersion(): String? {
-        return try {
-            val result = ShellUtils.fastCmd(SHELL, "${KsuPaths.KSUD_BIN} version 2>/dev/null")
-            if (result.isBlank()) return null
-            val match = Regex("""version\s+([^\s]+)""").find(result)
-            match?.groupValues?.get(1)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to get installed ksud version", e)
-            null
-        }
+    fun getKsudIntegrityStatus(): KsudIntegrityStatus {
+        return KsudIntegrity.verifyBundledDaemon(ksuApp)
     }
 
-    private fun isInstalledKsudBinaryCurrent(): Boolean {
-        if (!SHELL.isRoot) return false
-        val apkKsud = File(ksuApp.applicationInfo.nativeLibraryDir, "libksud.so")
-        if (!apkKsud.isFile) return false
-        return SHELL.newJob()
-            .add(
-                "cmp -s ${shellArg(apkKsud.absolutePath)} " +
-                    shellArg(KsuPaths.KSUD_BIN)
-            )
-            .exec()
-            .isSuccess
-    }
+    private fun isInstalledKsudBinaryCurrent(): Boolean =
+        getKsudIntegrityStatus() == KsudIntegrityStatus.MATCH
 
     /**
      * Public helper for UI: get ksud versions (APK-bundled and installed daemon),
@@ -214,7 +187,7 @@ object KsuCli {
      */
     suspend fun getKsudVersionsForUi(): Pair<String?, String?> = withContext(Dispatchers.IO) {
         val apk = getApkKsudVersion()
-        val installed = getInstalledKsudVersion()
+        val installed = if (isInstalledKsudBinaryCurrent()) apk else null
         formatKsudVersionForDisplay(apk) to formatKsudVersionForDisplay(installed)
     }
 
@@ -222,18 +195,20 @@ object KsuCli {
      * Public helper for UI: sync ksud daemon binary from APK into /data/adb/ksud.
      */
     suspend fun updateKsudDaemonForUi(): Boolean = withContext(Dispatchers.IO) {
-        installOrUpdateKsudDaemon()
-        true
+        val updated = installOrUpdateKsudDaemon()
+        if (updated) {
+            refreshShells(checkKsud = false)
+            if (SHELL.isRoot) {
+                refreshYukiZygiskSnapshotForNextBoot()
+            }
+        }
+        updated
     }
 
-    /**
-     * Cold-start auto-sync entry point: only runs the version-aware install
-     * path when we actually have a root shell. Cheap to call from
-     * MainActivity's first LaunchedEffect.
-     */
+    /** Cold-start auto-sync through the JNI manager-root channel. */
     suspend fun autoSyncKsudIfNeeded(): Unit = withContext(Dispatchers.IO) {
-        if (!SHELL.isRoot) {
-            Log.d(TAG, "autoSyncKsudIfNeeded: no root shell, skip")
+        if (!runCatching { Natives.isManager }.getOrDefault(false)) {
+            Log.d(TAG, "autoSyncKsudIfNeeded: not manager, skip")
             return@withContext
         }
         checkAndInstallKsud()
@@ -301,69 +276,30 @@ object KsuCli {
             result.isSuccess
         }
 
-    /** Applet names that resolve to the same multi-call ksud via argv[0]. */
-    private val KSUD_APPLETS =
-        arrayOf("ksud", "magiskboot", "bootctl", "resetprop", "yzctl")
-
-    /**
-     * Point /data/adb/ksu/bin at the daemon and fix its contexts.
-     *
-     * Kept separate from installOrUpdateKsudDaemon() because it has to run even
-     * when the installed ELF already matches: `ksud install` used to drop a full
-     * copy of the binary on top of the magiskboot link, and an install that is
-     * already up to date would otherwise never replace it.
-     */
-    private fun installKsudToolLinks(shell: Shell) {
-        val cmds = KSUD_APPLETS.map { applet ->
-            "ln -sf ${KsuPaths.KSUD_BIN} ${KsuPaths.KSU_BIN_DIR}/$applet"
-        } + listOf(
-            // Fix SELinux contexts (ignore errors on non-SEAndroid systems)
-            "restorecon ${KsuPaths.KSUD_BIN} || true",
-            "restorecon -R ${KsuPaths.KSU_ROOT} || true",
-        )
-        val result = shell.newJob().add(*cmds.toTypedArray()).exec()
-        Log.i(TAG, "installKsudToolLinks: isSuccess=${result.isSuccess}")
-    }
-
     /**
      * Install or update the ksud daemon binary itself, without touching boot image.
      *
-     * This mirrors APatch's "安装/升级系统补丁(apd)" flow:
-     * we copy the manager-bundled ksud ELF (`libksud.so`) into:
-     *   - `/data/adb/ksud` (daemon binary used by kernel/su wrapper)
-     *   - `/data/adb/ksu/bin/ksud` (symlink for convenience/tools)
+     * Atomically install the manager-bundled ksud ELF at `/data/adb/ksud`,
+     * then keep the convenience applets under `/data/adb/ksu/bin` as symlinks.
      */
-    private fun installOrUpdateKsudDaemon() {
-        val shell = getRootShell()
-        if (!shell.isRoot) {
-            Log.w(TAG, "installOrUpdateKsudDaemon: shell is not root, skip")
-            return
-        }
-
+    private fun installOrUpdateKsudDaemon(): Boolean {
         val nativeDir = ksuApp.applicationInfo.nativeLibraryDir
         val ksudSo = File(nativeDir, "libksud.so")
         if (!ksudSo.exists()) {
             Log.e(TAG, "installOrUpdateKsudDaemon: libksud.so not found in $nativeDir")
-            return
+            return false
         }
 
-        val cmds = arrayOf(
-            // Ensure directories
-            "mkdir -p ${KsuPaths.KSU_BIN_DIR}",
-            "mkdir -p ${KsuPaths.KSU_LOG_DIR}",
-            // Copy new daemon binary (multi-call tools dispatch via argv0)
-            "cp -f ${shellArg(ksudSo.absolutePath)} ${KsuPaths.KSUD_BIN}",
-            "chmod 0755 ${KsuPaths.KSUD_BIN}",
-        )
-
         Log.i(TAG, "installOrUpdateKsudDaemon: syncing ${ksudSo.absolutePath} -> /data/adb/ksud")
-        val result = shell.newJob().add(*cmds).exec()
-        Log.i(TAG, "installOrUpdateKsudDaemon: result code=${result.code}, isSuccess=${result.isSuccess}")
+        val result = runCatching { Natives.installKsudDaemon(ksudSo.absolutePath) }
+            .onFailure { Log.e(TAG, "installOrUpdateKsudDaemon: JNI install failed", it) }
+            .getOrDefault(false)
+        Log.i(TAG, "installOrUpdateKsudDaemon: isSuccess=$result")
 
-        installKsudToolLinks(shell)
-        // Precompute YukiZygisk's early native snapshot before reboot. If the
-        // feature is off, ksud clears the snapshot and returns success.
-        refreshYukiZygiskSnapshotForNextBoot()
+        if (result) {
+            KsudIntegrity.markBundledDaemonInstalled(ksuApp)
+        }
+        return result
     }
 
     private fun refreshYukiZygiskSnapshotForNextBoot() {
@@ -373,7 +309,7 @@ object KsuCli {
             return
         }
         val result = shell.newJob()
-            .add("${KsuPaths.KSUD_BIN} yzctl refresh-snapshot || true")
+            .add("${ksudCmd("yzctl refresh-snapshot")} || true")
             .exec()
         Log.i(
             TAG,
@@ -1097,9 +1033,8 @@ fun install() {
     val libadbrootPath =
         ksuApp.applicationInfo.nativeLibraryDir + File.separator + "libadbroot.so"
     // No --magiskboot: it would copy this whole ELF over
-    // /data/adb/ksu/bin/magiskboot, replacing the symlink installKsudToolLinks()
-    // puts there. Both dispatch correctly, but the symlink is the one we keep in
-    // sync, so let it own that path.
+    // /data/adb/ksu/bin/magiskboot, replacing the native repair path's symlink.
+    // Both dispatch correctly, but the symlink is the one we keep in sync.
     Log.i(TAG, "install: ksud=$ksudPath")
     val result = execKsud("install --libadbroot ${shellArg(libadbrootPath)}", true)
     Log.w(TAG, "install result: $result, cost: ${SystemClock.elapsedRealtime() - start}ms")

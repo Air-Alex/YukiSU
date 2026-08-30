@@ -7,6 +7,7 @@
 #include "core/uts_view.hpp"
 #include "defs.hpp"
 #include "dynamic_manager.hpp"
+#include "integrity_monitor.hpp"
 #include "log.hpp"
 #include "magisk_compat/msud.hpp"
 #include "magisk_compat/su_mount.hpp"
@@ -414,6 +415,10 @@ int on_post_data_fs() {
     // Report to kernel first
     report_post_fs_data();
     load_and_apply_dynamic_managers();
+
+    if (!start_ksud_integrity_monitor()) {
+        LOGW("Failed to start ksud integrity monitor");
+    }
 
     umask(0);
 

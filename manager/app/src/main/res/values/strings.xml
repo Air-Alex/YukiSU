@@ -804,6 +804,10 @@
     <string name="home_ksud_daemon_unknown">Unknown</string>
     <string name="home_ksud_daemon_sync">Sync ksud daemon</string>
     <string name="home_ksud_daemon_syncing">Syncing…</string>
+    <string name="ksud_integrity_warning" tools:ignore="MissingTranslation">The installed ksud does not match this manager. Another root manager or process may have replaced it. Open ksud daemon details to restore the bundled version.</string>
+    <string name="ksud_integrity_notification_title" tools:ignore="MissingTranslation">ksud was replaced</string>
+    <string name="ksud_integrity_notification_channel" tools:ignore="MissingTranslation">ksud security alerts</string>
+    <string name="ksud_integrity_notification_channel_summary" tools:ignore="MissingTranslation">Warn when /data/adb/ksud no longer matches this manager.</string>
     <string name="setting_change_saved_reboot">Setting saved, reboot to take effect</string>
     <string name="setting_change_failed">Setting failed</string>
     <string name="settings_auto_update_ksud">Auto-update ksud daemon</string>

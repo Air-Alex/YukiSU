@@ -45,6 +45,7 @@ import com.ramcosta.composedestinations.spec.NavHostGraphSpec
 import com.ramcosta.composedestinations.utils.rememberDestinationsNavigator
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.integrity.KsudIntegrity
 import com.anatdx.yukisu.ui.activity.component.BottomBar
 import com.anatdx.yukisu.ui.activity.util.AnimatedBottomBar
 import com.anatdx.yukisu.ui.activity.util.DataRefreshUtils
@@ -69,7 +70,9 @@ import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import com.anatdx.yukisu.ui.webui.WebUIActivity
 import com.anatdx.yukisu.ui.webui.initPlatform
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ui.screen.moreSettings.util.LocaleHelper
 
 class MainActivity : ComponentActivity() {
@@ -307,8 +310,17 @@ class MainActivity : ComponentActivity() {
             resetTaskDescriptionToAppName()
             ThemeUtils.onActivityResume()
 
-            if (isInitialized) {
-                refreshData()
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    val manager = runCatching { Natives.isManager }.getOrDefault(false)
+                    if (manager && !KsuCli.SHELL.isRoot) {
+                        KsuCli.refreshShells(checkKsud = false)
+                    }
+                    KsudIntegrity.refresh(this@MainActivity, notifyOnMismatch = false)
+                }
+                if (isInitialized) {
+                    refreshData()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

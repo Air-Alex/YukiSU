@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
+import com.anatdx.yukisu.integrity.KsudIntegrity
 import com.anatdx.yukisu.update.CiUpdateManager
 import coil.Coil
 import coil.ImageLoader
@@ -38,6 +39,8 @@ class KernelSUApplication : Application(), ViewModelStoreOwner {
             Os.setenv("TMPDIR", cacheDir.absolutePath, true)
             return
         }
+
+        KsudIntegrity.initialize(this)
 
         CiUpdateManager.cleanupCachedUpdate(this)
         CoroutineScope(Dispatchers.IO).launch {
