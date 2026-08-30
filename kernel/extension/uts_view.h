@@ -8,6 +8,9 @@
 int ksu_uts_view_init(void);
 void ksu_uts_view_exit(void);
 bool ksu_uts_view_boot_requested(void);
+/* Passing NULL explicitly disables and overrides ramdisk UTS parameters. */
+int ksu_uts_view_set_imgpatch_boot_template(
+    const struct ksu_uts_template *tmpl);
 
 int ksu_uts_view_get_config(struct ksu_uts_view_config *config);
 int ksu_uts_view_set_config(const struct ksu_uts_view_config *config);

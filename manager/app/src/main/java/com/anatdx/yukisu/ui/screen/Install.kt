@@ -187,7 +187,13 @@ fun InstallScreen(
     var allowShell by remember { mutableStateOf(false) }
     var enableAdb by remember { mutableStateOf(false) }
     var forceBackup by remember { mutableStateOf(false) }
-    var embedLkmInBoot by rememberSaveable { mutableStateOf(false) }
+    val embedLkmInBootByDefault = remember {
+        runCatching { Natives.getLoadMode() == Natives.LOAD_MODE_IMAGE_PATCH }
+            .getOrDefault(false)
+    }
+    var embedLkmInBoot by rememberSaveable {
+        mutableStateOf(embedLkmInBootByDefault)
+    }
 
     val directKernelMethod = installMethod is InstallMethod.SelectFile ||
         installMethod is InstallMethod.DirectInstall ||
@@ -207,14 +213,12 @@ fun InstallScreen(
             hasCustomSelected = false
             partitionSelectionIndex = 0
             forceBackup = false
-            embedLkmInBoot = false
+            embedLkmInBoot = embedLkmInBootByDefault
         }
     }
 
     LaunchedEffect(installMethod) {
-        if (!directKernelMethod) {
-            embedLkmInBoot = false
-        }
+        embedLkmInBoot = directKernelMethod && embedLkmInBootByDefault
     }
 
     val onInstall: (InstallMethod, LkmSelection, String) -> Unit =
@@ -244,8 +248,8 @@ fun InstallScreen(
                             targetKmi = "",
                             ota = isOta,
                             partition = "boot",
-                            allowShell = false,
-                            enableAdb = false,
+                            allowShell = allowShell,
+                            enableAdb = enableAdb,
                             backup = false,
                             superKey = effectiveSuperKey.ifBlank { null },
                             signatureBypass = signatureBypass,
@@ -654,7 +658,7 @@ fun InstallScreen(
                     }
                 }
 
-                // SuperKey input is available for legacy image patching modes.
+                // SuperKey input is shared by ramdisk and ImgPatch flows.
                 AnimatedVisibility(
                     visible = installMethod is InstallMethod.DirectInstall || 
                               installMethod is InstallMethod.DirectInstallToInactiveSlot ||
@@ -874,8 +878,7 @@ fun InstallScreen(
                                 Spacer(modifier = Modifier.height(12.dp))
                             }
 
-                            if (!embedLkmInBoot) {
-                                Row(
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -896,11 +899,11 @@ fun InstallScreen(
                                     checked = allowShell,
                                     onCheckedChange = { allowShell = it }
                                 )
-                                }
+                            }
 
-                                Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                                Row(
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -921,10 +924,9 @@ fun InstallScreen(
                                     checked = enableAdb,
                                     onCheckedChange = { enableAdb = it }
                                 )
-                                }
                             }
 
-                            if (utsBootRepatch && !embedLkmInBoot) {
+                            if (utsBootRepatch) {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.onSecondaryContainer

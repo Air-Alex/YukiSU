@@ -65,6 +65,8 @@ static char uts_boot_release[KSU_UTS_BOOT_PARAM_LEN];
 static char uts_boot_version[KSU_UTS_BOOT_PARAM_LEN];
 static char uts_boot_machine[KSU_UTS_BOOT_PARAM_LEN];
 static char uts_boot_domainname[KSU_UTS_BOOT_PARAM_LEN];
+static bool uts_imgpatch_boot;
+static struct ksu_uts_template uts_imgpatch_template;
 
 module_param_named(uts_boot_global, uts_boot_global, bool, 0);
 module_param_named(uts_boot_mask, uts_boot_mask, uint, 0);
@@ -80,6 +82,18 @@ module_param_string(uts_boot_machine, uts_boot_machine,
 		    sizeof(uts_boot_machine), 0);
 module_param_string(uts_boot_domainname, uts_boot_domainname,
 		    sizeof(uts_boot_domainname), 0);
+
+static void clear_module_boot_params(void)
+{
+	uts_boot_global = false;
+	uts_boot_mask = 0;
+	memzero_explicit(uts_boot_sysname, sizeof(uts_boot_sysname));
+	memzero_explicit(uts_boot_nodename, sizeof(uts_boot_nodename));
+	memzero_explicit(uts_boot_release, sizeof(uts_boot_release));
+	memzero_explicit(uts_boot_version, sizeof(uts_boot_version));
+	memzero_explicit(uts_boot_machine, sizeof(uts_boot_machine));
+	memzero_explicit(uts_boot_domainname, sizeof(uts_boot_domainname));
+}
 
 static bool uts_field_terminated(const char field[KSU_UTS_NAME_LEN])
 {
@@ -147,6 +161,37 @@ static int validate_config(const struct ksu_uts_view_config *config)
 	if (ret)
 		return ret;
 	return validate_template(&config->deny);
+}
+
+int ksu_uts_view_set_imgpatch_boot_template(const struct ksu_uts_template *tmpl)
+{
+	struct ksu_uts_template normalized;
+	int ret;
+
+	/* The embedded source owns the setting even when it disables UTS
+	 * spoofing. */
+	if (!tmpl) {
+		clear_module_boot_params();
+		uts_imgpatch_boot = false;
+		memzero_explicit(&uts_imgpatch_template,
+				 sizeof(uts_imgpatch_template));
+		return 0;
+	}
+	memcpy(&normalized, tmpl, sizeof(normalized));
+	normalize_template(&normalized);
+	if (!normalized.field_mask)
+		return -ENODATA;
+	ret = validate_template(&normalized);
+	if (ret) {
+		memzero_explicit(&normalized, sizeof(normalized));
+		return ret;
+	}
+
+	clear_module_boot_params();
+	memcpy(&uts_imgpatch_template, &normalized, sizeof(normalized));
+	uts_imgpatch_boot = true;
+	memzero_explicit(&normalized, sizeof(normalized));
+	return 0;
 }
 
 static void uts_to_template(struct ksu_uts_template *dst,
@@ -324,19 +369,15 @@ bool ksu_uts_view_boot_requested(void)
 	 * uts_boot_* parameters as inapplicable instead of making the entire
 	 * module load fatal.
 	 */
-	return READ_ONCE(uts_boot_global) && !READ_ONCE(ksu_late_loaded);
+	return (READ_ONCE(uts_boot_global) || READ_ONCE(uts_imgpatch_boot)) &&
+	       !READ_ONCE(ksu_late_loaded);
 }
 
 static void clear_boot_params(void)
 {
-	uts_boot_global = false;
-	uts_boot_mask = 0;
-	memzero_explicit(uts_boot_sysname, sizeof(uts_boot_sysname));
-	memzero_explicit(uts_boot_nodename, sizeof(uts_boot_nodename));
-	memzero_explicit(uts_boot_release, sizeof(uts_boot_release));
-	memzero_explicit(uts_boot_version, sizeof(uts_boot_version));
-	memzero_explicit(uts_boot_machine, sizeof(uts_boot_machine));
-	memzero_explicit(uts_boot_domainname, sizeof(uts_boot_domainname));
+	clear_module_boot_params();
+	uts_imgpatch_boot = false;
+	memzero_explicit(&uts_imgpatch_template, sizeof(uts_imgpatch_template));
 }
 
 static int hex_value(char c)
@@ -429,8 +470,9 @@ static int build_boot_template(struct ksu_uts_template *tmpl)
 int ksu_uts_view_init(void)
 {
 	struct ksu_uts_template boot_cfg;
-	bool late_boot_ignored = uts_boot_global && ksu_late_loaded;
-	bool boot_requested = uts_boot_global && !ksu_late_loaded;
+	bool have_boot_config = uts_boot_global || uts_imgpatch_boot;
+	bool late_boot_ignored = have_boot_config && ksu_late_loaded;
+	bool boot_requested = have_boot_config && !ksu_late_loaded;
 	int ret = 0;
 
 	memset(&boot_cfg, 0, sizeof(boot_cfg));
@@ -440,7 +482,11 @@ int ksu_uts_view_init(void)
 		clear_boot_params();
 	}
 	if (boot_requested) {
-		ret = build_boot_template(&boot_cfg);
+		if (uts_imgpatch_boot)
+			memcpy(&boot_cfg, &uts_imgpatch_template,
+			       sizeof(boot_cfg));
+		else
+			ret = build_boot_template(&boot_cfg);
 		if (ret)
 			goto out_clear_boot;
 	}

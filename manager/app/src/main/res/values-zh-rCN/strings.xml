@@ -279,7 +279,7 @@
     <string name="install_direct_lkm_title">将 LKM 直接嵌入 boot 内核</string>
     <string name="install_direct_lkm_summary">选择修补镜像、直接安装和 OTA 槽位安装均改用 boot 而不是 init_boot，并先清理旧的 KernelSU ramdisk 注入。</string>
     <string name="install_direct_lkm_warning_title">已启用内核直嵌模式</string>
-    <string name="install_direct_lkm_warning_summary">此模式只修补 boot；设备安装时会同时清除 boot 和 init_boot 中已知的 KernelSU ramdisk 文件。会应用 SuperKey，但不应用 Shell/ADB 选项和 UTS 启动参数。</string>
+    <string name="install_direct_lkm_warning_summary">此模式只修补 boot；设备安装时会同时清除 boot 和 init_boot 中已知的 KernelSU ramdisk 文件。SuperKey、Shell Root、USB 调试和 UTS 启动选项会嵌入 LKM。</string>
     <string name="download_file">下载镜像</string>
     <string name="download_file_summary">从 URL 下载并修补 OTA 或 factory 镜像。</string>
     <string name="download_dialog_title">下载镜像</string>

@@ -1,6 +1,7 @@
 MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
 kernelsu-objs := core/init.o
+kernelsu-objs += core/imgpatch_config.o
 kernelsu-objs += policy/allowlist.o
 kernelsu-objs += policy/app_profile.o
 kernelsu-objs += feature/sucompat.o

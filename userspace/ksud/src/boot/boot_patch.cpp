@@ -6,6 +6,7 @@
 #include "../utils.hpp"
 #include "lkm_image.hpp"
 #include "tools.hpp"
+#include "uapi/imgpatch_config.h"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -16,6 +17,7 @@
 #include <array>
 #include <cctype>
 #include <cerrno>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -201,6 +203,71 @@ bool inject_superkey_to_lkm(const std::string& lkm_path, const std::string& supe
         return false;
     }
 
+    return true;
+}
+
+bool inject_imgpatch_config_to_lkm(const std::string& lkm_path, bool allow_shell, bool enable_adbd,
+                                   const ksu_uts_template* uts_config) {
+    static_assert(sizeof(ksu_imgpatch_config) == 512, "ImgPatch config ABI drift");
+    static_assert(offsetof(ksu_imgpatch_config, uts) == 24, "ImgPatch UTS config ABI drift");
+
+    ksu_imgpatch_config config{};
+    config.magic = KSU_IMGPATCH_CONFIG_MAGIC;
+    config.version = KSU_IMGPATCH_CONFIG_VERSION;
+    config.size = sizeof(config);
+    if (allow_shell)
+        config.flags |= KSU_IMGPATCH_CONFIG_ALLOW_SHELL;
+    if (enable_adbd)
+        config.flags |= KSU_IMGPATCH_CONFIG_ENABLE_ADBD;
+    if (uts_config != nullptr) {
+        config.flags |= KSU_IMGPATCH_CONFIG_UTS_BOOT;
+        config.uts = *uts_config;
+    }
+
+    std::vector<uint8_t> content;
+    if (!read_file_bytes(lkm_path, &content)) {
+        LOGE("Failed to open LKM file: %s", lkm_path.c_str());
+        return false;
+    }
+
+    std::array<uint8_t, sizeof(config.magic)> magic_bytes{};
+    memcpy(magic_bytes.data(), &config.magic, magic_bytes.size());
+    std::optional<size_t> config_offset;
+    bool incompatible_marker = false;
+    for (size_t offset = 0; offset + sizeof(config) <= content.size(); ++offset) {
+        if (memcmp(content.data() + offset, magic_bytes.data(), magic_bytes.size()) != 0)
+            continue;
+
+        ksu_imgpatch_config candidate{};
+        memcpy(&candidate, content.data() + offset, sizeof(candidate));
+        if (candidate.version != KSU_IMGPATCH_CONFIG_VERSION ||
+            candidate.size != sizeof(candidate)) {
+            incompatible_marker = true;
+            continue;
+        }
+        if (config_offset.has_value()) {
+            LOGE("LKM contains duplicate ImgPatch config markers");
+            return false;
+        }
+        config_offset = offset;
+    }
+
+    if (!config_offset.has_value()) {
+        if (config.flags != 0) {
+            LOGE("Selected LKM does not support embedded ImgPatch configuration%s",
+                 incompatible_marker ? " (incompatible marker version)" : "");
+            return false;
+        }
+        return true;
+    }
+
+    memcpy(content.data() + *config_offset, &config, sizeof(config));
+    if (!write_file_bytes(lkm_path, content.data(), content.size())) {
+        LOGE("Failed to write ImgPatch configuration to LKM: %s", lkm_path.c_str());
+        return false;
+    }
+    printf("- Injected ImgPatch config at offset 0x%zx: allow_shell=%d enable_adbd=%d uts=%d\n",
+           *config_offset, allow_shell, enable_adbd, uts_config != nullptr);
     return true;
 }
 
@@ -456,6 +523,11 @@ void clean_backup(const std::string& current_sha1) {
 bool inject_superkey_into_lkm(const std::string& lkm_path, const std::string& superkey,
                               bool signature_bypass) {
     return inject_superkey_to_lkm(lkm_path, superkey, signature_bypass);
+}
+
+bool inject_imgpatch_config_into_lkm(const std::string& lkm_path, bool allow_shell,
+                                     bool enable_adbd, const ksu_uts_template* uts_config) {
+    return inject_imgpatch_config_to_lkm(lkm_path, allow_shell, enable_adbd, uts_config);
 }
 
 // Parse boot patch arguments

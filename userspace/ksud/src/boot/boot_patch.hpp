@@ -3,6 +3,10 @@
 #include <string>
 #include <vector>
 
+extern "C" {
+#include "uapi/uts_view.h"
+}
+
 namespace ksud {
 
 // Boot patch functions
@@ -31,5 +35,9 @@ std::string get_slot_suffix(bool ota);
 // Patch the embedded SuperKey state in an LKM before it is loaded.
 bool inject_superkey_into_lkm(const std::string& lkm_path, const std::string& superkey,
                               bool signature_bypass);
+
+// Patch early-boot ImgPatch options into the LKM's fixed configuration block.
+bool inject_imgpatch_config_into_lkm(const std::string& lkm_path, bool allow_shell,
+                                     bool enable_adbd, const ksu_uts_template* uts_config);
 
 }  // namespace ksud

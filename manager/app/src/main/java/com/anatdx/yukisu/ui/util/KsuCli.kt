@@ -1442,12 +1442,32 @@ fun patchBootImageV2(
     bootUri: Uri?,
     lkm: LkmSelection,
     ota: Boolean,
+    allowShell: Boolean = false,
+    enableAdb: Boolean = false,
     superKey: String? = null,
     signatureBypass: Boolean = false,
     onFinish: (Boolean, Int) -> Unit,
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
 ): Boolean {
+    val pendingUtsBoot = getPendingUtsBootTemplate()
+    val pendingUtsBootExists = hasPendingUtsBootConfigFile()
+    if (pendingUtsBootExists && pendingUtsBoot == null) {
+        onStderr(ksuApp.getString(R.string.uts_view_boot_invalid_patch_blocked))
+        onFinish(false, 1)
+        return false
+    }
+    if (pendingUtsBoot != null && !savePendingUtsBootTemplate(pendingUtsBoot)) {
+        onStderr(ksuApp.getString(R.string.uts_view_boot_invalid_patch_blocked))
+        onFinish(false, 1)
+        return false
+    }
+    val patchedUtsBootDraft = pendingUtsBoot ?: getSavedUtsBootDraft() ?: UtsTemplate()
+    val patchedUtsBootToken = utsBootConfigurationToken(
+        enabled = pendingUtsBoot != null,
+        template = patchedUtsBootDraft,
+    )
+
     var bootFile: File? = null
     var lkmFile: File? = null
     try {
@@ -1490,9 +1510,25 @@ fun patchBootImageV2(
                     append(" --signature-bypass")
                 }
             }
+            if (allowShell) {
+                append(" --allow-shell")
+            }
+            if (enableAdb) {
+                append(" --enable-adbd")
+            }
+            if (pendingUtsBoot != null) {
+                append(" --uts-config ")
+                append(shellArg(utsBootConfigFile().absolutePath))
+            }
         }
 
         val result = flashWithIO(ksudCmd(command), onStdout, onStderr)
+        if (
+            result.isSuccess &&
+            !recordPatchedUtsBootConfigurationToken(patchedUtsBootToken)
+        ) {
+            Log.e("KernelSU", "Failed to persist patched UTS boot configuration token")
+        }
         if (result.isSuccess && outputFile != null) {
             MediaScannerConnection.scanFile(
                 ksuApp,
@@ -1534,6 +1570,8 @@ fun installBoot(
             bootUri = bootUri,
             lkm = lkm,
             ota = ota,
+            allowShell = allowShell,
+            enableAdb = enableAdb,
             superKey = superKey,
             signatureBypass = signatureBypass,
             onFinish = onFinish,

@@ -283,7 +283,7 @@
     <string name="install_direct_lkm_title" tools:ignore="MissingTranslation">Embed LKM directly into boot kernel</string>
     <string name="install_direct_lkm_summary" tools:ignore="MissingTranslation">Use boot instead of init_boot for selected-image, direct, and inactive-slot installs. Legacy KernelSU ramdisk payloads are removed first.</string>
     <string name="install_direct_lkm_warning_title" tools:ignore="MissingTranslation">Direct-kernel mode enabled</string>
-    <string name="install_direct_lkm_warning_summary" tools:ignore="MissingTranslation">This mode patches boot only and clears known KernelSU ramdisk files from boot and init_boot during device installs. SuperKey is applied; shell/ADB options and UTS boot parameters are not applied.</string>
+    <string name="install_direct_lkm_warning_summary" tools:ignore="MissingTranslation">This mode patches boot only and clears known KernelSU ramdisk files from boot and init_boot during device installs. SuperKey, Shell Root, USB debugging, and UTS boot options are embedded into the LKM.</string>
     <string name="download_file" tools:ignore="MissingTranslation">Download an image</string>
     <string name="download_file_summary" tools:ignore="MissingTranslation">Download and patch an OTA or factory image from a URL.</string>
     <string name="download_dialog_title" tools:ignore="MissingTranslation">Download image</string>

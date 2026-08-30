@@ -48,6 +48,7 @@ int kernelsu_init(void);
 
 #include "policy/allowlist.h"
 #include "policy/feature.h"
+#include "core/imgpatch_config.h"
 #include "feature/adb_root.h"
 #include "feature/hide_bootloader.h"
 #include "feature/selinux_hide.h"
@@ -137,6 +138,17 @@ int __init kernelsu_init(void)
 	ksu_late_loaded = (current->pid != 1);
 	ksu_imgpatch_loaded = ksu_imgpatch_loaded ||
 			      ksu_boot_load_mode == KSU_LOAD_MODE_IMAGE_PATCH;
+	/*
+	 * The persistent load-mode marker is written together with the embedded
+	 * config. A ramdisk module parameter named imgpatch must not make an
+	 * otherwise normal LKM override the ramdisk configuration.
+	 */
+	if (ksu_boot_load_mode == KSU_LOAD_MODE_IMAGE_PATCH &&
+	    !ksu_late_loaded) {
+		ret = ksu_imgpatch_config_apply();
+		if (ret)
+			return ret;
+	}
 #ifdef CONFIG_KSU_DEBUG
 	pr_alert(
 	    "*************************************************************");
@@ -294,6 +306,9 @@ module_exit(kernelsu_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("weishu");
 MODULE_DESCRIPTION("Android KernelSU");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
+MODULE_IMPORT_NS(ANDROID_GKI_VFS_EXPORT_ONLY);
+#endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
 #else

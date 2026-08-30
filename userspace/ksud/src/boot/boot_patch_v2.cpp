@@ -1,6 +1,7 @@
 #include "boot_patch_v2.hpp"
 
 #include "../assets.hpp"
+#include "../core/uts_view.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
 #include "boot_patch.hpp"
@@ -34,9 +35,12 @@ struct BootPatchV2Args {
     std::string output;
     std::string magiskboot;
     std::string superkey;
+    std::string uts_config;
     bool force = false;
     bool flash = false;
     bool ota = false;
+    bool allow_shell = false;
+    bool enable_adbd = false;
     bool signature_bypass = false;
     bool no_reuse = false;
     bool valid = true;
@@ -65,6 +69,8 @@ BootPatchV2Args parse_args(const std::vector<std::string>& args) {
             take_value(result.magiskboot);
         } else if (argument == "--superkey") {
             take_value(result.superkey);
+        } else if (argument == "--uts-config") {
+            take_value(result.uts_config);
         } else if (argument == "--force") {
             result.force = true;
         } else if (argument == "--flash") {
@@ -73,6 +79,10 @@ BootPatchV2Args parse_args(const std::vector<std::string>& args) {
             result.ota = true;
         } else if (argument == "--signature-bypass") {
             result.signature_bypass = true;
+        } else if (argument == "--allow-shell") {
+            result.allow_shell = true;
+        } else if (argument == "--enable-adbd") {
+            result.enable_adbd = true;
         } else if (argument == "--no-reuse") {
             result.no_reuse = true;
         } else {
@@ -161,7 +171,7 @@ std::optional<fs::path> make_workdir() {
     if (created == nullptr)
         return std::nullopt;
     return fs::path(created);
-#endif
+#endif  // #ifdef _WIN32
 }
 
 bool find_unpacked_kernel(const fs::path& workdir, fs::path* kernel) {
@@ -443,10 +453,22 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         (!device_mode && (parsed.boot.empty() || parsed.output.empty())) ||
         (device_mode && (!parsed.boot.empty() || !parsed.output.empty()))) {
         LOGE("Usage: ksud boot-patch-v2 --boot <boot.img> [--module <kernelsu.ko>] "
-             "--output <patched.img> [--superkey <key>] [--signature-bypass] [--force]\n"
+             "--output <patched.img> [--superkey <key>] [--signature-bypass] "
+             "[--allow-shell] [--enable-adbd] [--uts-config <file>] [--force]\n"
              "       ksud boot-patch-v2 --flash [--ota] [--module <kernelsu.ko>] "
-             "[--superkey <key>] [--signature-bypass]");
+             "[--superkey <key>] [--signature-bypass] [--allow-shell] "
+             "[--enable-adbd] [--uts-config <file>]");
         return 1;
+    }
+    ksu_uts_template boot_uts_config{};
+    const bool have_boot_uts_config = !parsed.uts_config.empty();
+    if (have_boot_uts_config) {
+        std::string config_error;
+        if (!load_uts_boot_config(parsed.uts_config, &boot_uts_config, &config_error)) {
+            LOGE("boot-patch-v2: invalid UTS boot config: %s", config_error.c_str());
+            return 1;
+        }
+        printf("- UTS boot-global config validated (mask=0x%02x)\n", boot_uts_config.field_mask);
     }
     const fs::path module_path(parsed.module);
     std::error_code error;
@@ -700,6 +722,13 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
+    if (!inject_imgpatch_config_into_lkm(module_for_injection.string(), parsed.allow_shell,
+                                         parsed.enable_adbd,
+                                         have_boot_uts_config ? &boot_uts_config : nullptr)) {
+        LOGE("boot-patch-v2: failed to inject ImgPatch configuration into LKM");
+        cleanup();
+        return 1;
+    }
     module = read_binary(module_for_injection);
     if (!module) {
         LOGE("boot-patch-v2: failed to read SuperKey-patched LKM");
@@ -713,8 +742,6 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
-    LOGW("boot-patch-v2: early PID 1 loading uses only the imgpatch marker; "
-         "allow_shell/norc/UTS boot options are not applied");
     if (already_patched)
         printf("- Existing direct-LKM bootstrap found; replacing its module capsule\n");
     else
