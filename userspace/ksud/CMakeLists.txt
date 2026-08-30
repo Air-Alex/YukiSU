@@ -363,6 +363,7 @@ set(NDK_BUSYBOX_DIR ${MAGISKTOOLS_ALONE_DIR}/ndk-busybox)
 if(EXISTS ${NDK_BUSYBOX_DIR}/CMakeLists.txt)
   set(BUSYBOX_EMBEDDED 1 CACHE BOOL "Build busybox as static lib for embedding")
   add_subdirectory(${NDK_BUSYBOX_DIR} ${CMAKE_BINARY_DIR}/ndk-busybox)
+  target_sources(busybox PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/xz_stream_adapter.c)
   set(NDK_BUSYBOX_AVAILABLE 1)
   message(STATUS "ndk-busybox: building busybox into ksud (multi-call)")
 endif()
@@ -374,6 +375,7 @@ set(KSUD_OUR_SOURCES
     src/defs.cpp
     src/log.cpp
     src/utils.cpp
+    src/xz_range.c
     src/kernelsu_loader.cpp
     src/dynamic_manager.cpp
     src/core/ksucalls.cpp
