@@ -37,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -497,7 +496,6 @@ private fun TopBar(
         ),
         actions = {
             if (isDataLoaded) {
-                // 重启按钮
                 var showDropdown by remember { mutableStateOf(false) }
                 KsuIsValid {
                     IconButton(onClick = {
@@ -523,6 +521,7 @@ private fun TopBar(
                             }
                             add(RebootMenuOption(R.string.reboot_recovery, "recovery"))
                             add(RebootMenuOption(R.string.reboot_bootloader, "bootloader"))
+                            add(RebootMenuOption(R.string.reboot_fastbootd, "fastboot"))
                             add(RebootMenuOption(R.string.reboot_download, "download"))
                             add(RebootMenuOption(R.string.reboot_edl, "edl"))
                         }
@@ -531,14 +530,6 @@ private fun TopBar(
                             expanded = showDropdown,
                             onDismissRequest = { showDropdown = false },
                             modifier = Modifier.clickHapticFeedback(),
-                            shape = if (isExpressiveUi) RectangleShape else MenuDefaults.shape,
-                            containerColor = if (isExpressiveUi) {
-                                Color.Transparent
-                            } else {
-                                MenuDefaults.containerColor
-                            },
-                            tonalElevation = if (isExpressiveUi) 0.dp else MenuDefaults.TonalElevation,
-                            shadowElevation = if (isExpressiveUi) 0.dp else MenuDefaults.ShadowElevation,
                         ) {
                             rebootOptions.forEachIndexed { index, option ->
                                 RebootDropdownItem(
