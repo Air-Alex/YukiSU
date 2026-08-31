@@ -354,6 +354,7 @@ void yz_close_early_packet_state(struct yz_early_packet_state *state)
 
 static int yz_install_packet_fd(const void *buf, size_t size)
 {
+	const struct cred *old_cred;
 	struct file *mfd;
 	loff_t pos = 0;
 	ssize_t w;
@@ -363,7 +364,10 @@ static int yz_install_packet_fd(const void *buf, size_t size)
 	if (IS_ERR(mfd))
 		return PTR_ERR(mfd);
 	mfd->f_mode |= FMODE_PREAD | FMODE_PWRITE | FMODE_LSEEK;
+	old_cred = ksu_cred ? override_creds(ksu_cred) : NULL;
 	w = kernel_write(mfd, buf, size, &pos);
+	if (old_cred)
+		revert_creds(old_cred);
 	if (w != (ssize_t)size) {
 		fput(mfd);
 		return w < 0 ? (int)w : -EIO;
@@ -380,7 +384,6 @@ static int yz_install_packet_fd(const void *buf, size_t size)
 
 int yz_stage_early_native_packet(u8 target_type, const char *target,
 				 bool compat,
-				 struct ksu_file_load_policy *policy_state,
 				 struct yz_early_packet_state *state)
 {
 	struct yz_early_native_entry *matches;
@@ -441,8 +444,7 @@ int yz_stage_early_native_packet(u8 target_type, const char *target,
 	hdr->entry_size = sizeof(*entries);
 
 	for (i = 0; i < match_count; i++) {
-		int fd =
-		    yz_stage_fd(matches[i].lib_path, YZ_VMA_NAME, policy_state);
+		int fd = yz_stage_fd(matches[i].lib_path, YZ_VMA_NAME, NULL);
 
 		if (fd < 0) {
 			pr_info("yukizygisk: early native module staging "

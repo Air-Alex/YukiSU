@@ -42,7 +42,7 @@ int yz_stage_fd(const char *path, const char *name,
 	void *buf;
 	loff_t sz, pos;
 	ssize_t r;
-	int fd;
+	int fd, ret;
 
 	/* Access the payload with KernelSU credentials. */
 	old_cred = ksu_cred ? override_creds(ksu_cred) : NULL;
@@ -94,13 +94,6 @@ int yz_stage_fd(const char *path, const char *name,
 		return r < 0 ? (int)r : -EIO;
 	}
 
-	if (policy_state) {
-		int ret = ksu_file_load_policy_allow_current(src, policy_state);
-		if (ret)
-			pr_info("yukizygisk: payload policy update failed "
-				"path=%s err=%d\n",
-				path, ret);
-	}
 	filp_close(src, NULL);
 
 	mfd = shmem_file_setup(name, sz, 0);
@@ -118,7 +111,12 @@ int yz_stage_fd(const char *path, const char *name,
 	/* shmem_file_setup lacks FMODE_PREAD/PWRITE by default. */
 	mfd->f_mode |= FMODE_PREAD | FMODE_PWRITE | FMODE_LSEEK;
 	pos = 0;
+	old_cred = ksu_cred ? override_creds(ksu_cred) : NULL;
 	r = kernel_write(mfd, buf, sz, &pos);
+	if (old_cred) {
+		revert_creds(old_cred);
+		old_cred = NULL;
+	}
 	kvfree(buf);
 	if (r != sz) {
 		pr_info("yukizygisk: payload staging incomplete path=%s "
@@ -132,10 +130,20 @@ int yz_stage_fd(const char *path, const char *name,
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0) {
-		if (policy_state)
-			yz_restore_native_policy_state(policy_state);
 		fput(mfd);
 		return fd;
+	}
+	if (policy_state) {
+		ret = ksu_file_load_policy_allow_current(mfd, policy_state);
+		if (ret) {
+			pr_info(
+			    "yukizygisk: staged payload policy update failed "
+			    "path=%s err=%d\n",
+			    path, ret);
+			put_unused_fd(fd);
+			fput(mfd);
+			return ret;
+		}
 	}
 	fd_install(fd, mfd); /* consumes the shmem reference */
 
@@ -176,10 +184,13 @@ int yz_stage_file_fd(const char *path,
 
 	if (policy_state) {
 		ret = ksu_file_load_policy_allow_current(file, policy_state);
-		if (ret)
+		if (ret) {
 			pr_info("yukizygisk: file payload policy update failed "
 				"path=%s err=%d\n",
 				path, ret);
+			filp_close(file, NULL);
+			return ret;
+		}
 	}
 
 	fd = get_unused_fd_flags(O_CLOEXEC);

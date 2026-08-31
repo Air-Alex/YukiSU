@@ -425,7 +425,7 @@ static void yz_inject_tw_func(struct callback_head *cb)
 		if (native && tw->early_native) {
 			int ret = yz_stage_early_native_packet(
 			    tw->native_target_type, tw->label, compat,
-			    &native_policy, &early_packet);
+			    &early_packet);
 
 			if (ret < 0 || early_packet.packet_fd < 0 ||
 			    early_packet.packet_fd >= 0xffff) {

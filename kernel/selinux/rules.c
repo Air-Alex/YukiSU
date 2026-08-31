@@ -86,7 +86,7 @@ static const char *ksu_dir_load_perms[] = {
 };
 
 static const char *ksu_tmpfs_hook_perms[] = {
-    "read", "write", "open", "getattr", "map", "execute",
+    "read", "open", "getattr", "map", "execute",
 };
 
 /* Read-only SCM_RIGHTS handoff and source mapping from su-domain zygiskd. */
@@ -162,6 +162,203 @@ static u32 ksu_direct_allowed_av(struct policydb *db, u32 src_type,
 	key.specified = AVTAB_ALLOWED;
 	node = avtab_search_node(&db->te_avtab, &key);
 	return node ? node->datum.u.data : 0;
+}
+
+#define KSU_TEMP_AV_RULE_MAX 64
+#define KSU_TEMP_AV_BITS 32
+
+struct ksu_temp_av_key {
+	u32 src_type;
+	u32 tgt_type;
+	u16 tclass;
+};
+
+struct ksu_temp_av_rule {
+	bool used;
+	struct ksu_temp_av_key key;
+	u32 refs[KSU_TEMP_AV_BITS];
+};
+
+static struct ksu_temp_av_rule ksu_temp_av_rules[KSU_TEMP_AV_RULE_MAX];
+
+static bool ksu_temp_av_key_eq(const struct ksu_temp_av_key *a,
+			       const struct ksu_temp_av_key *b)
+{
+	return a->src_type == b->src_type && a->tgt_type == b->tgt_type &&
+	       a->tclass == b->tclass;
+}
+
+static struct ksu_temp_av_rule *
+ksu_temp_av_find_locked(const struct ksu_temp_av_key *key)
+{
+	int i;
+
+	for (i = 0; i < KSU_TEMP_AV_RULE_MAX; i++) {
+		if (ksu_temp_av_rules[i].used &&
+		    ksu_temp_av_key_eq(&ksu_temp_av_rules[i].key, key))
+			return &ksu_temp_av_rules[i];
+	}
+	return NULL;
+}
+
+static struct ksu_temp_av_rule *ksu_temp_av_find_free_locked(void)
+{
+	int i;
+
+	for (i = 0; i < KSU_TEMP_AV_RULE_MAX; i++) {
+		if (!ksu_temp_av_rules[i].used)
+			return &ksu_temp_av_rules[i];
+	}
+	return NULL;
+}
+
+static int ksu_temp_av_free_count_locked(void)
+{
+	int count = 0;
+	int i;
+
+	for (i = 0; i < KSU_TEMP_AV_RULE_MAX; i++) {
+		if (!ksu_temp_av_rules[i].used)
+			count++;
+	}
+	return count;
+}
+
+static u32 ksu_temp_av_mask_locked(const struct ksu_temp_av_key *key)
+{
+	struct ksu_temp_av_rule *rule = ksu_temp_av_find_locked(key);
+	u32 mask = 0;
+	int i;
+
+	if (!rule)
+		return 0;
+	for (i = 0; i < KSU_TEMP_AV_BITS; i++) {
+		if (rule->refs[i])
+			mask |= 1U << i;
+	}
+	return mask;
+}
+
+static int ksu_temp_av_validate_add_locked(const struct ksu_temp_av_key *key,
+					   u32 av, u32 refs)
+{
+	struct ksu_temp_av_rule *rule;
+	int i;
+
+	if (!av || !refs)
+		return 0;
+	rule = ksu_temp_av_find_locked(key);
+	if (!rule && !ksu_temp_av_find_free_locked())
+		return -ENOSPC;
+	if (!rule)
+		return 0;
+	for (i = 0; i < KSU_TEMP_AV_BITS; i++) {
+		if ((av & (1U << i)) && U32_MAX - rule->refs[i] < refs)
+			return -EOVERFLOW;
+	}
+	return 0;
+}
+
+static void ksu_temp_av_add_locked(const struct ksu_temp_av_key *key, u32 av,
+				   u32 refs)
+{
+	struct ksu_temp_av_rule *rule;
+	int i;
+
+	if (!av || !refs)
+		return;
+	rule = ksu_temp_av_find_locked(key);
+	if (!rule) {
+		rule = ksu_temp_av_find_free_locked();
+		if (!rule)
+			return;
+		memset(rule, 0, sizeof(*rule));
+		rule->used = true;
+		rule->key = *key;
+	}
+	for (i = 0; i < KSU_TEMP_AV_BITS; i++) {
+		if (av & (1U << i))
+			rule->refs[i] += refs;
+	}
+}
+
+static int ksu_temp_av_plan_release_locked(const struct ksu_temp_av_key *key,
+					   u32 av, u32 refs, u32 *clear_av)
+{
+	struct ksu_temp_av_rule *rule;
+	u32 clear = 0;
+	int i;
+
+	if (clear_av)
+		*clear_av = 0;
+	if (!av || !refs)
+		return 0;
+	rule = ksu_temp_av_find_locked(key);
+	if (!rule)
+		return -ENOENT;
+	for (i = 0; i < KSU_TEMP_AV_BITS; i++) {
+		if (!(av & (1U << i)))
+			continue;
+		if (rule->refs[i] < refs)
+			return -EINVAL;
+		if (rule->refs[i] == refs)
+			clear |= 1U << i;
+	}
+	if (clear_av)
+		*clear_av = clear;
+	return 0;
+}
+
+static void ksu_temp_av_release_locked(const struct ksu_temp_av_key *key,
+				       u32 av, u32 refs)
+{
+	struct ksu_temp_av_rule *rule;
+	bool any = false;
+	int i;
+
+	if (!av || !refs)
+		return;
+	rule = ksu_temp_av_find_locked(key);
+	if (!rule)
+		return;
+	for (i = 0; i < KSU_TEMP_AV_BITS; i++) {
+		if (av & (1U << i))
+			rule->refs[i] -= refs;
+		if (rule->refs[i])
+			any = true;
+	}
+	if (!any)
+		memset(rule, 0, sizeof(*rule));
+}
+
+static int ksu_temp_av_plan_allow_locked(struct policydb *db,
+					 const struct ksu_temp_av_key *key,
+					 u32 required_av, u32 *held_av,
+					 u32 *commit_av)
+{
+	u32 direct_av;
+	u32 owned_av;
+	u32 held;
+	int ret;
+
+	if (held_av)
+		*held_av = 0;
+	if (commit_av)
+		*commit_av = 0;
+	if (!required_av)
+		return 0;
+	direct_av = ksu_direct_allowed_av(db, key->src_type, key->tgt_type,
+					  key->tclass);
+	owned_av = ksu_temp_av_mask_locked(key);
+	held = required_av & (~direct_av | owned_av);
+	ret = ksu_temp_av_validate_add_locked(key, held, 1);
+	if (ret)
+		return ret;
+	if (held_av)
+		*held_av = held;
+	if (commit_av)
+		*commit_av = held & ~owned_av;
+	return 0;
 }
 
 static const char *ksu_type_name_by_value(struct policydb *db, u32 type)
@@ -274,23 +471,35 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 	struct context *tcontext;
 	struct class_datum *cls;
 	struct class_datum *dir_cls = NULL;
+	struct ksu_temp_av_key file_key = {};
+	struct ksu_temp_av_key tmpfs_key = {};
+	struct ksu_temp_av_key dir_key = {};
 	const char *src_name;
 	const char *tgt_name;
+	char src_log[64];
+	char tgt_log[64];
 	u32 tsid;
 	u32 required_av;
-	u32 direct_av;
-	u32 add_av;
+	u32 add_av = 0;
+	u32 file_commit_av = 0;
 	u32 tmpfs_type;
 	u32 tmpfs_required_av;
-	u32 tmpfs_direct_av;
 	u32 tmpfs_add_av = 0;
+	u32 tmpfs_commit_av = 0;
 	u32 dir_required_av = 0;
-	u32 dir_direct_av = 0;
 	u32 dir_add_av = 0;
+	u32 dir_commit_av = 0;
+	bool commit_policy;
+	int needed_slots = 0;
 	int ret = 0;
 
 	if (!file || !state)
 		return -EINVAL;
+	if (state->added_av || state->tmpfs_added_av || state->dir_added_av ||
+	    state->process_added_av || state->file_lease_refs ||
+	    state->tmpfs_lease_refs || state->dir_lease_refs ||
+	    state->process_lease_refs)
+		return -EBUSY;
 	memset(state, 0, sizeof(*state));
 
 	isec = selinux_inode(file_inode(file));
@@ -328,19 +537,15 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 		ret = -ENOENT;
 		goto out_unlock;
 	}
+	strscpy(src_log, src_name, sizeof(src_log));
+	strscpy(tgt_log, tgt_name, sizeof(tgt_log));
 
 	required_av = ksu_required_av(cls, ksu_file_load_perms,
 				      ARRAY_SIZE(ksu_file_load_perms));
-	direct_av = ksu_direct_allowed_av(db, scontext->type, tcontext->type,
-					  cls->value);
-	add_av = required_av & ~direct_av;
 	if (dir_cls) {
 		dir_required_av =
 		    ksu_required_av(dir_cls, ksu_dir_load_perms,
 				    ARRAY_SIZE(ksu_dir_load_perms));
-		dir_direct_av = ksu_direct_allowed_av(
-		    db, scontext->type, tcontext->type, dir_cls->value);
-		dir_add_av = dir_required_av & ~dir_direct_av;
 	}
 
 	tmpfs_type = tmpfs_perms && tmpfs_perm_count > 0
@@ -349,9 +554,48 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 	if (tmpfs_type) {
 		tmpfs_required_av =
 		    ksu_required_av(cls, tmpfs_perms, tmpfs_perm_count);
-		tmpfs_direct_av = ksu_direct_allowed_av(db, scontext->type,
-							tmpfs_type, cls->value);
-		tmpfs_add_av = tmpfs_required_av & ~tmpfs_direct_av;
+		if (tmpfs_type == tcontext->type) {
+			/* The tmpfs role is a superset; acquire the key only
+			 * once. */
+			required_av = 0;
+		}
+	}
+
+	file_key.src_type = scontext->type;
+	file_key.tgt_type = tcontext->type;
+	file_key.tclass = cls->value;
+	ret = ksu_temp_av_plan_allow_locked(db, &file_key, required_av, &add_av,
+					    &file_commit_av);
+	if (ret)
+		goto out_unlock;
+	if (dir_cls) {
+		dir_key.src_type = scontext->type;
+		dir_key.tgt_type = tcontext->type;
+		dir_key.tclass = dir_cls->value;
+		ret = ksu_temp_av_plan_allow_locked(
+		    db, &dir_key, dir_required_av, &dir_add_av, &dir_commit_av);
+		if (ret)
+			goto out_unlock;
+	}
+	if (tmpfs_type) {
+		tmpfs_key.src_type = scontext->type;
+		tmpfs_key.tgt_type = tmpfs_type;
+		tmpfs_key.tclass = cls->value;
+		ret = ksu_temp_av_plan_allow_locked(
+		    db, &tmpfs_key, tmpfs_required_av, &tmpfs_add_av,
+		    &tmpfs_commit_av);
+		if (ret)
+			goto out_unlock;
+	}
+	if (add_av && !ksu_temp_av_find_locked(&file_key))
+		needed_slots++;
+	if (dir_add_av && !ksu_temp_av_find_locked(&dir_key))
+		needed_slots++;
+	if (tmpfs_add_av && !ksu_temp_av_find_locked(&tmpfs_key))
+		needed_slots++;
+	if (needed_slots > ksu_temp_av_free_count_locked()) {
+		ret = -ENOSPC;
+		goto out_unlock;
 	}
 
 	state->src_type = scontext->type;
@@ -359,9 +603,18 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 	state->tmpfs_type = tmpfs_type;
 	state->target_class = cls->value;
 	state->dir_class = dir_cls ? dir_cls->value : 0;
+	state->added_av = add_av;
+	state->tmpfs_added_av = tmpfs_add_av;
+	state->dir_added_av = dir_add_av;
+	state->file_lease_refs = add_av ? 1 : 0;
+	state->tmpfs_lease_refs = tmpfs_add_av ? 1 : 0;
+	state->dir_lease_refs = dir_add_av ? 1 : 0;
 
 	if (!add_av && !tmpfs_add_av && !dir_add_av)
 		goto out_unlock;
+	commit_policy = file_commit_av || tmpfs_commit_av || dir_commit_av;
+	if (!commit_policy)
+		goto add_leases;
 
 	pol = ksu_dup_sepolicy(rcu_dereference_protected(
 	    old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
@@ -371,40 +624,45 @@ static int ksu_file_load_policy_allow_sid(struct file *file, u32 ssid,
 		goto out_unlock;
 	}
 	db = &pol->policydb;
-	if (add_av && !ksu_apply_file_av(db, src_name, tgt_name, add_av, true,
-					 ksu_file_load_perms,
-					 ARRAY_SIZE(ksu_file_load_perms))) {
+	if (file_commit_av &&
+	    !ksu_apply_file_av(db, src_name, tgt_name, file_commit_av, true,
+			       ksu_file_load_perms,
+			       ARRAY_SIZE(ksu_file_load_perms))) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
-	if (tmpfs_add_av &&
-	    !ksu_apply_file_av(db, src_name, "tmpfs", tmpfs_add_av, true,
+	if (tmpfs_commit_av &&
+	    !ksu_apply_file_av(db, src_name, "tmpfs", tmpfs_commit_av, true,
 			       tmpfs_perms, tmpfs_perm_count)) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
-	if (dir_add_av &&
-	    !ksu_apply_dir_av(db, src_name, tgt_name, dir_add_av, true)) {
+	if (dir_commit_av &&
+	    !ksu_apply_dir_av(db, src_name, tgt_name, dir_commit_av, true)) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
 
-	state->added_av = add_av;
-	state->tmpfs_added_av = tmpfs_add_av;
-	state->dir_added_av = dir_add_av;
-
-	pr_info("file_load_policy: allow src=%s tgt=%s file added=0x%x "
-		"dir=0x%x tmpfs=0x%x\n",
-		src_name, tgt_name, add_av, dir_add_av, tmpfs_add_av);
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 	reset_avc_cache();
 
+add_leases:
+	ksu_temp_av_add_locked(&file_key, add_av, 1);
+	ksu_temp_av_add_locked(&dir_key, dir_add_av, 1);
+	ksu_temp_av_add_locked(&tmpfs_key, tmpfs_add_av, 1);
+	pr_info("file_load_policy: allow src=%s tgt=%s file=0x%x "
+		"dir=0x%x tmpfs=0x%x committed=0x%x/0x%x/0x%x\n",
+		src_log, tgt_log, add_av, dir_add_av, tmpfs_add_av,
+		file_commit_av, dir_commit_av, tmpfs_commit_av);
+
 out_unlock:
+	if (ret)
+		memset(state, 0, sizeof(*state));
 	mutex_unlock(&selinux_state.policy_mutex);
 	return ret;
 }
@@ -583,16 +841,26 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 	struct selinux_policy *pol, *old_pol;
 	struct ksu_process_policy_lease *lease = NULL;
 	struct policydb *db;
+	struct ksu_temp_av_key file_key = {};
+	struct ksu_temp_av_key tmpfs_key = {};
+	struct ksu_temp_av_key dir_key = {};
 	const char *src_name;
 	const char *tgt_name = NULL;
 	const char *tmpfs_name = NULL;
 	const char *process_name = NULL;
+	u32 file_clear_av = 0;
+	u32 tmpfs_clear_av = 0;
+	u32 dir_clear_av = 0;
 	bool release_process = false;
 	bool restore_non_process;
 	int ret = 0;
 
 	if (!state)
 		return 0;
+	if (!!state->added_av != !!state->file_lease_refs ||
+	    !!state->tmpfs_added_av != !!state->tmpfs_lease_refs ||
+	    !!state->dir_added_av != !!state->dir_lease_refs)
+		return -EINVAL;
 	if (!!state->process_added_av != !!state->process_lease_refs)
 		return -EINVAL;
 	if (!state->added_av && !state->tmpfs_added_av &&
@@ -603,8 +871,37 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 
 	old_pol = selinux_state.policy;
 	db = &old_pol->policydb;
-	restore_non_process =
-	    state->added_av || state->tmpfs_added_av || state->dir_added_av;
+	if (state->added_av) {
+		file_key.src_type = state->src_type;
+		file_key.tgt_type = state->tgt_type;
+		file_key.tclass = state->target_class;
+		ret = ksu_temp_av_plan_release_locked(
+		    &file_key, state->added_av, state->file_lease_refs,
+		    &file_clear_av);
+		if (ret)
+			goto out_unlock;
+	}
+	if (state->tmpfs_added_av) {
+		tmpfs_key.src_type = state->src_type;
+		tmpfs_key.tgt_type = state->tmpfs_type;
+		tmpfs_key.tclass = state->target_class;
+		ret = ksu_temp_av_plan_release_locked(
+		    &tmpfs_key, state->tmpfs_added_av, state->tmpfs_lease_refs,
+		    &tmpfs_clear_av);
+		if (ret)
+			goto out_unlock;
+	}
+	if (state->dir_added_av) {
+		dir_key.src_type = state->src_type;
+		dir_key.tgt_type = state->tgt_type;
+		dir_key.tclass = state->dir_class;
+		ret = ksu_temp_av_plan_release_locked(
+		    &dir_key, state->dir_added_av, state->dir_lease_refs,
+		    &dir_clear_av);
+		if (ret)
+			goto out_unlock;
+	}
+	restore_non_process = file_clear_av || tmpfs_clear_av || dir_clear_av;
 	if (state->process_lease_refs) {
 		lease = ksu_find_process_policy_lease(state->process_type,
 						      state->process_class);
@@ -615,6 +912,14 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 		}
 		release_process = state->process_lease_refs == lease->users;
 		if (!restore_non_process && !release_process) {
+			ksu_temp_av_release_locked(&file_key, state->added_av,
+						   state->file_lease_refs);
+			ksu_temp_av_release_locked(&tmpfs_key,
+						   state->tmpfs_added_av,
+						   state->tmpfs_lease_refs);
+			ksu_temp_av_release_locked(&dir_key,
+						   state->dir_added_av,
+						   state->dir_lease_refs);
 			lease->users -= state->process_lease_refs;
 			pr_info(
 			    "file_load_policy: process lease retained type=%u "
@@ -623,20 +928,28 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 			goto out_unlock;
 		}
 	}
+	if (!restore_non_process && !release_process) {
+		ksu_temp_av_release_locked(&file_key, state->added_av,
+					   state->file_lease_refs);
+		ksu_temp_av_release_locked(&tmpfs_key, state->tmpfs_added_av,
+					   state->tmpfs_lease_refs);
+		ksu_temp_av_release_locked(&dir_key, state->dir_added_av,
+					   state->dir_lease_refs);
+		goto out_unlock;
+	}
 
-	src_name = state->src_type ? ksu_type_name_by_value(db, state->src_type)
-				   : NULL;
-	if (state->added_av || state->dir_added_av)
+	src_name = restore_non_process
+		       ? ksu_type_name_by_value(db, state->src_type)
+		       : NULL;
+	if (file_clear_av || dir_clear_av)
 		tgt_name = ksu_type_name_by_value(db, state->tgt_type);
-	if (state->tmpfs_added_av)
+	if (tmpfs_clear_av)
 		tmpfs_name = ksu_type_name_by_value(db, state->tmpfs_type);
 	if (release_process)
 		process_name = ksu_type_name_by_value(db, state->process_type);
-	if (((state->added_av || state->dir_added_av ||
-	      state->tmpfs_added_av) &&
-	     !src_name) ||
-	    ((state->added_av || state->dir_added_av) && !tgt_name) ||
-	    (state->tmpfs_added_av && !tmpfs_name) ||
+	if ((restore_non_process && !src_name) ||
+	    ((file_clear_av || dir_clear_av) && !tgt_name) ||
+	    (tmpfs_clear_av && !tmpfs_name) ||
 	    (release_process && !process_name)) {
 		ret = -ENOENT;
 		goto out_unlock;
@@ -650,25 +963,24 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 		goto out_unlock;
 	}
 	db = &pol->policydb;
-	if (state->added_av &&
-	    !ksu_apply_file_av(db, src_name, tgt_name, state->added_av, false,
+	if (file_clear_av &&
+	    !ksu_apply_file_av(db, src_name, tgt_name, file_clear_av, false,
 			       ksu_file_load_perms,
 			       ARRAY_SIZE(ksu_file_load_perms))) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
-	if (state->tmpfs_added_av &&
-	    !ksu_apply_file_av(db, src_name, tmpfs_name, state->tmpfs_added_av,
-			       false, ksu_tmpfs_hook_perms,
+	if (tmpfs_clear_av &&
+	    !ksu_apply_file_av(db, src_name, tmpfs_name, tmpfs_clear_av, false,
+			       ksu_tmpfs_hook_perms,
 			       ARRAY_SIZE(ksu_tmpfs_hook_perms))) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
-	if (state->dir_added_av &&
-	    !ksu_apply_dir_av(db, src_name, tgt_name, state->dir_added_av,
-			      false)) {
+	if (dir_clear_av &&
+	    !ksu_apply_dir_av(db, src_name, tgt_name, dir_clear_av, false)) {
 		ksu_destroy_sepolicy(pol);
 		ret = -EINVAL;
 		goto out_unlock;
@@ -684,13 +996,19 @@ int ksu_file_load_policy_restore(const struct ksu_file_load_policy *state)
 	pr_info("file_load_policy: restore src=%s tgt=%s file cleared=0x%x "
 		"dir=0x%x tmpfs=0x%x process=0x%x refs=%u\n",
 		src_name ? src_name : process_name, tgt_name ? tgt_name : "-",
-		state->added_av, state->dir_added_av, state->tmpfs_added_av,
+		file_clear_av, dir_clear_av, tmpfs_clear_av,
 		release_process ? state->process_added_av : 0,
 		state->process_lease_refs);
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 	reset_avc_cache();
+	ksu_temp_av_release_locked(&file_key, state->added_av,
+				   state->file_lease_refs);
+	ksu_temp_av_release_locked(&tmpfs_key, state->tmpfs_added_av,
+				   state->tmpfs_lease_refs);
+	ksu_temp_av_release_locked(&dir_key, state->dir_added_av,
+				   state->dir_lease_refs);
 	if (lease) {
 		lease->users -= state->process_lease_refs;
 		if (!lease->users) {

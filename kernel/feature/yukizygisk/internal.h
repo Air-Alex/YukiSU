@@ -117,7 +117,6 @@ void yz_early_packet_state_init(struct yz_early_packet_state *state);
 void yz_close_early_packet_state(struct yz_early_packet_state *state);
 int yz_stage_early_native_packet(u8 target_type, const char *target,
 				 bool compat,
-				 struct ksu_file_load_policy *policy_state,
 				 struct yz_early_packet_state *state);
 void yz_schedule_injection(bool native, u8 target_type, bool early_native,
 			   const char *label);

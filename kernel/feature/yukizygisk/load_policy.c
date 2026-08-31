@@ -173,8 +173,19 @@ yz_find_module_policy_group(const struct ksu_file_load_policy *state)
 	struct yz_module_policy_group *group;
 
 	list_for_each_entry (group, &yz_module_policy_groups, list) {
-		if (group->state.src_type == state->src_type &&
-		    group->state.tgt_type == state->tgt_type)
+		const struct ksu_file_load_policy *cur = &group->state;
+
+		if (cur->src_type == state->src_type &&
+		    cur->tgt_type == state->tgt_type &&
+		    cur->tmpfs_type == state->tmpfs_type &&
+		    cur->process_type == state->process_type &&
+		    cur->target_class == state->target_class &&
+		    cur->process_class == state->process_class &&
+		    cur->dir_class == state->dir_class &&
+		    cur->added_av == state->added_av &&
+		    cur->tmpfs_added_av == state->tmpfs_added_av &&
+		    cur->dir_added_av == state->dir_added_av &&
+		    cur->process_added_av == state->process_added_av)
 			return group;
 	}
 	return NULL;
@@ -203,6 +214,23 @@ static int yz_merge_module_policy_state(struct ksu_file_load_policy *dst,
 	}
 	if (dst->src_type != src->src_type || dst->tgt_type != src->tgt_type)
 		return -EINVAL;
+	if (!!src->added_av != !!src->file_lease_refs ||
+	    !!src->tmpfs_added_av != !!src->tmpfs_lease_refs ||
+	    !!src->dir_added_av != !!src->dir_lease_refs)
+		return -EINVAL;
+	if ((src->added_av && (dst->target_class != src->target_class ||
+			       dst->added_av != src->added_av)) ||
+	    (src->tmpfs_added_av &&
+	     (dst->tmpfs_type != src->tmpfs_type ||
+	      dst->target_class != src->target_class ||
+	      dst->tmpfs_added_av != src->tmpfs_added_av)) ||
+	    (src->dir_added_av && (dst->dir_class != src->dir_class ||
+				   dst->dir_added_av != src->dir_added_av)))
+		return -EINVAL;
+	if (U32_MAX - dst->file_lease_refs < src->file_lease_refs ||
+	    U32_MAX - dst->tmpfs_lease_refs < src->tmpfs_lease_refs ||
+	    U32_MAX - dst->dir_lease_refs < src->dir_lease_refs)
+		return -EOVERFLOW;
 	if (src->process_added_av) {
 		if (!src->process_lease_refs)
 			return -EINVAL;
@@ -222,6 +250,9 @@ static int yz_merge_module_policy_state(struct ksu_file_load_policy *dst,
 	dst->dir_added_av |= src->dir_added_av;
 	dst->tmpfs_added_av |= src->tmpfs_added_av;
 	dst->process_added_av |= src->process_added_av;
+	dst->file_lease_refs += src->file_lease_refs;
+	dst->tmpfs_lease_refs += src->tmpfs_lease_refs;
+	dst->dir_lease_refs += src->dir_lease_refs;
 	dst->process_lease_refs += src->process_lease_refs;
 	return 0;
 }
