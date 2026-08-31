@@ -69,7 +69,8 @@ void ksu_syscall_hook_manager_init(void)
 	ksu_register_syscall_hook(__NR_newfstatat, ksu_hook_newfstatat);
 	ksu_register_syscall_hook(__NR_faccessat, ksu_hook_faccessat);
 #ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	ret = register_trace_sys_enter(ksu_sys_enter_handler, NULL);
+	ret =
+	    register_trace_prio_sys_enter(ksu_sys_enter_handler, NULL, INT_MIN);
 	if (ret) {
 		pr_err("hook_manager: failed to register sys_enter tracepoint: "
 		       "%d\n",

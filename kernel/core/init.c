@@ -200,6 +200,7 @@ int __init kernelsu_init(void)
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 
 	ksu_supercalls_init();
+	ksu_app_profile_init();
 #ifndef CONFIG_KSU_DISABLE_MANAGER
 	ksu_dynamic_manager_init();
 #endif // #ifndef CONFIG_KSU_DISABLE_MANAGER

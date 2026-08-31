@@ -3,6 +3,7 @@
 
 #include "infra/su_mount_ns.h"
 #include "uapi/app_profile.h"
+#include "linux/init.h"
 
 /*
  * Thread flag set after escalating with a NO_NEW_PRIVS root profile; blocks any
@@ -13,13 +14,12 @@
 
 // Forward declarations
 struct cred;
-struct task_struct;
 
 // Escalate current process to root with the appropriate profile
 int escape_with_root_profile(void);
 
 void escape_to_root_for_init(void);
 
-void disable_seccomp(struct task_struct *tsk);
+void __init ksu_app_profile_init(void);
 
 #endif // #ifndef __KSU_H_APP_PROFILE
