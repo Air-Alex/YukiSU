@@ -202,6 +202,7 @@ int escape_with_root_profile(void)
 	       sizeof(cred->cap_bset));
 
 	setup_groups(profile, cred);
+	setup_selinux(profile->selinux_domain, cred);
 
 	commit_creds(cred);
 
@@ -209,8 +210,6 @@ int escape_with_root_profile(void)
 
 	if (profile->flags & FLAG_KSU_NO_NEW_PRIVS)
 		set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
-
-	setup_selinux(profile->selinux_domain);
 
 	for_each_thread(p, t)
 	{
@@ -230,5 +229,13 @@ out_abort_creds:
 
 void escape_to_root_for_init(void)
 {
-	setup_selinux(KERNEL_SU_CONTEXT);
+	struct cred *cred = prepare_creds();
+
+	if (!cred) {
+		pr_err("Failed to prepare init's creds!\n");
+		return;
+	}
+
+	setup_selinux(KERNEL_SU_CONTEXT, cred);
+	commit_creds(cred);
 }

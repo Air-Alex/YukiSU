@@ -55,10 +55,9 @@ static int transive_to_domain(const char *domain, struct cred *cred,
 	return error;
 }
 
-void setup_selinux(const char *domain)
+void setup_selinux(const char *domain, struct cred *cred)
 {
-	if (transive_to_domain(domain, (struct cred *)__task_cred(current),
-			       false)) {
+	if (transive_to_domain(domain, cred, false)) {
 		pr_err("transive domain failed.\n");
 		return;
 	}
