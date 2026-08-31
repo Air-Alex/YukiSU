@@ -111,9 +111,11 @@ const char* monitor_state_name(uint8_t state) {
         return nullptr;
     case YZ_RUNTIME_STATE_DETECTED:
     case YZ_RUNTIME_STATE_REDIRECTED:
+        return "unknown";
     case YZ_RUNTIME_STATE_FAILED:
-    default:
         return "failed";
+    default:
+        return "unknown";
     }
 }
 
@@ -300,11 +302,14 @@ std::vector<NativeInjection> build_native_injections(const RuntimeSnapshot& snap
                 continue;
 
             const yz_runtime_record* report = find_native_report(snapshot, base, module.module_id);
-            const char* state = "failed";
+            const char* state = "unknown";
             if (report != nullptr)
                 state = monitor_state_name(report->state);
             else if (base.state == YZ_RUNTIME_STATE_SAFEMODE)
                 state = "crashed";
+            else if (base.state == YZ_RUNTIME_STATE_FAILED ||
+                     base.state == YZ_RUNTIME_STATE_INJECTED)
+                state = "failed";
             if (state == nullptr)
                 continue;
             injections.push_back(NativeInjection{
@@ -330,13 +335,16 @@ std::vector<NativeInjection> build_native_injections(const RuntimeSnapshot& snap
 
 std::string native_module_state(const std::string& module_id, uint8_t target_type,
                                 const std::string& target,
-                                const std::vector<NativeInjection>& injections) {
+                                const std::vector<NativeInjection>& injections,
+                                const RuntimeSnapshot& snapshot) {
     bool injected = false;
     bool failed = false;
+    bool observed = false;
     for (const NativeInjection& injection : injections) {
         if (injection.module_id != module_id || injection.target_type != target_type ||
             injection.target != target)
             continue;
+        observed = true;
         if (injection.state == "crashed")
             return "crashed";
         if (injection.state == "failed")
@@ -346,11 +354,52 @@ std::string native_module_state(const std::string& module_id, uint8_t target_typ
     }
     if (failed)
         return "failed";
-    return injected ? "injected" : "failed";
+    if (injected)
+        return "injected";
+
+    uint32_t latest_generation = 0;
+    const yz_runtime_record* latest_base = nullptr;
+    const yz_runtime_record* latest_report = nullptr;
+    for (const yz_runtime_record& record : snapshot.records) {
+        if (record.kind != YZ_RUNTIME_KIND_NATIVE || record.target_type != target_type ||
+            bounded_string(record.target) != target || record.module_id[0] != '\0')
+            continue;
+        if (latest_base == nullptr || record.generation > latest_generation) {
+            latest_generation = record.generation;
+            latest_base = &record;
+        }
+    }
+    if (latest_base != nullptr) {
+        for (const yz_runtime_record& record : snapshot.records) {
+            if (record.kind != YZ_RUNTIME_KIND_NATIVE || record.pid != latest_base->pid ||
+                record.generation != latest_base->generation || record.abi != latest_base->abi ||
+                bounded_string(record.module_id) != module_id)
+                continue;
+            latest_report = &record;
+            break;
+        }
+    }
+    if (latest_base == nullptr)
+        return observed ? "failed" : "unknown";
+    if (latest_report != nullptr) {
+        if (latest_report->state == YZ_RUNTIME_STATE_SAFEMODE)
+            return "crashed";
+        if (latest_report->state == YZ_RUNTIME_STATE_INJECTED ||
+            latest_report->state == YZ_RUNTIME_STATE_EXITED)
+            return "injected";
+        if (latest_report->state == YZ_RUNTIME_STATE_FAILED)
+            return "failed";
+    }
+    if (latest_base->state == YZ_RUNTIME_STATE_FAILED)
+        return "failed";
+    if (latest_base->state == YZ_RUNTIME_STATE_SAFEMODE)
+        return "crashed";
+    return "unknown";
 }
 
 std::vector<NativeModuleView> build_native_module_views(
-    const ModuleInventory& inventory, const std::vector<NativeInjection>& injections) {
+    const RuntimeSnapshot& snapshot, const ModuleInventory& inventory,
+    const std::vector<NativeInjection>& injections) {
     std::vector<NativeModuleView> views;
     for (const NativeDefinition& definition : inventory.native_modules) {
         const NativeModule& module = definition.module;
@@ -365,8 +414,8 @@ std::vector<NativeModuleView> build_native_module_views(
                 module.target_type,
                 module.target,
                 module.has_companion,
-                native_module_state(module.module_id, module.target_type, module.target,
-                                    injections),
+                native_module_state(module.module_id, module.target_type, module.target, injections,
+                                    snapshot),
             });
         } else {
             existing->has_companion = existing->has_companion || module.has_companion;
@@ -393,7 +442,7 @@ json::Value number(uint32_t value) {
 json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInventory& inventory) {
     const std::vector<NativeInjection> injections = build_native_injections(snapshot, inventory);
     const std::vector<NativeModuleView> native_modules =
-        build_native_module_views(inventory, injections);
+        build_native_module_views(snapshot, inventory, injections);
     json::Value root = json::Value::object();
     root["generation"] = number(snapshot.generation);
     root["enabled"] = json::Value(snapshot.enabled);
@@ -523,9 +572,12 @@ std::set<std::string> yz_loaded_module_ids() {
     const std::vector<NativeInjection> injections = build_native_injections(snapshot, inventory);
 
     std::set<std::string> loaded(inventory.zygisk_modules.begin(), inventory.zygisk_modules.end());
-    for (const NativeInjection& injection : injections)
-        loaded.insert(injection.module_id);
-    for (const NativeModuleView& view : build_native_module_views(inventory, injections)) {
+    for (const NativeInjection& injection : injections) {
+        if (injection.state == "injected")
+            loaded.insert(injection.module_id);
+    }
+    for (const NativeModuleView& view :
+         build_native_module_views(snapshot, inventory, injections)) {
         if (view.state == "injected")
             loaded.insert(view.module_id);
     }

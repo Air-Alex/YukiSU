@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.Adb
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Memory
@@ -145,6 +146,7 @@ private enum class MonitorState {
     Unsupported32,
     Crashed,
     Failed,
+    Unknown,
 }
 
 private enum class NativeMonitorMode {
@@ -161,7 +163,8 @@ private fun parseMonitorState(value: String): MonitorState = when (value) {
     "injected" -> MonitorState.Injected
     "unsupported32" -> MonitorState.Unsupported32
     "crashed" -> MonitorState.Crashed
-    else -> MonitorState.Failed
+    "failed" -> MonitorState.Failed
+    else -> MonitorState.Unknown
 }
 
 private data class ZygoteMonitorEntry(
@@ -245,7 +248,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 pid = z.optInt("pid", 0),
                 name = z.optString("target").ifBlank { z.optString("name", "zygote") },
                 abi = z.optString("abi", "unknown"),
-                state = parseMonitorState(z.optString("state", "failed")),
+                state = parseMonitorState(z.optString("state", "unknown")),
             )
         }
     } ?: emptyList()
@@ -258,7 +261,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 targetType = n.optString("target_type", "name"),
                 target = n.optString("target", ""),
                 companion = n.optBoolean("companion", false),
-                state = parseMonitorState(n.optString("state", "failed")),
+                state = parseMonitorState(n.optString("state", "unknown")),
             )
         }
     } ?: emptyList()
@@ -273,7 +276,7 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 target = n.optString("target", ""),
                 abi = n.optString("abi", "unknown"),
                 companion = n.optBoolean("companion", false),
-                state = parseMonitorState(n.optString("state", "failed")),
+                state = parseMonitorState(n.optString("state", "unknown")),
             )
         }
     } ?: emptyList()
@@ -513,14 +516,10 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
             ) {
                 val moduleRows = remember(nativeModules, nativeInjections) {
                     nativeModules.map { module ->
-                        val targets = nativeInjections.filter { it.module == module.id }
-                        val state = when {
-                            targets.any { it.state == MonitorState.Crashed } -> MonitorState.Crashed
-                            targets.any { it.state == MonitorState.Failed } -> MonitorState.Failed
-                            targets.any { it.state == MonitorState.Unsupported32 } ->
-                                MonitorState.Unsupported32
-                            targets.any { it.state == MonitorState.Injected } -> MonitorState.Injected
-                            else -> module.state
+                        val targets = nativeInjections.filter {
+                            it.module == module.id &&
+                                it.targetType == module.targetType &&
+                                it.target == module.target
                         }
                         NativeModuleMonitorEntry(
                             id = module.id,
@@ -528,7 +527,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                             target = module.target,
                             companion = module.companion,
                             targets = targets,
-                            state = state,
+                            state = module.state,
                         )
                     }
                 }
@@ -542,7 +541,8 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                                 rows.any { it.state == MonitorState.Failed } -> MonitorState.Failed
                                 rows.any { it.state == MonitorState.Unsupported32 } ->
                                     MonitorState.Unsupported32
-                                else -> MonitorState.Injected
+                                rows.any { it.state == MonitorState.Injected } -> MonitorState.Injected
+                                else -> MonitorState.Unknown
                             }
                             NativeProcessEntry(
                                 pid = first.pid,
@@ -834,6 +834,10 @@ private fun MonitorStateButton(state: MonitorState, onClick: () -> Unit) {
             icon = Icons.Outlined.Cancel
             tint = MaterialTheme.colorScheme.error
         }
+        MonitorState.Unknown -> {
+            icon = Icons.AutoMirrored.Outlined.HelpOutline
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        }
     }
     IconButton(
         onClick = onClick,
@@ -917,6 +921,7 @@ private fun zygoteDialog(zygote: ZygoteMonitorEntry): MonitorDialogState {
         MonitorState.Unsupported32 -> stringResource(R.string.yukizygisk_zygote_unsupported_message)
         MonitorState.Crashed -> stringResource(R.string.yukizygisk_zygote_crashed_message)
         MonitorState.Failed -> stringResource(R.string.yukizygisk_zygote_failed_message)
+        MonitorState.Unknown -> stringResource(R.string.yukizygisk_zygote_unknown_message)
     }
     return MonitorDialogState(zygote.name, message)
 }
@@ -933,6 +938,7 @@ private fun nativeProcessDialog(process: NativeProcessEntry): MonitorDialogState
             stringResource(R.string.yukizygisk_native_process_unsupported_message)
         MonitorState.Crashed -> stringResource(R.string.yukizygisk_native_process_failed_message)
         MonitorState.Failed -> stringResource(R.string.yukizygisk_native_process_failed_message)
+        MonitorState.Unknown -> stringResource(R.string.yukizygisk_native_process_unknown_message)
     }
     return MonitorDialogState(process.process, appendDetail(base, modules))
 }
@@ -954,6 +960,7 @@ private fun nativeModuleDialog(module: NativeModuleMonitorEntry): MonitorDialogS
             stringResource(R.string.yukizygisk_native_module_unsupported_message)
         MonitorState.Crashed -> stringResource(R.string.yukizygisk_native_module_failed_message)
         MonitorState.Failed -> stringResource(R.string.yukizygisk_native_module_failed_message)
+        MonitorState.Unknown -> stringResource(R.string.yukizygisk_native_module_unknown_message)
     }
     return MonitorDialogState(module.id, appendDetail(base, targets))
 }

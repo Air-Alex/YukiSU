@@ -849,13 +849,16 @@
     <string name="yukizygisk_zygote_unsupported_message" tools:ignore="MissingTranslation">32-bit Zygote is not supported.</string>
     <string name="yukizygisk_zygote_crashed_message" tools:ignore="MissingTranslation">Zygote crashed repeatedly; safe mode stopped injection for this boot.</string>
     <string name="yukizygisk_zygote_failed_message" tools:ignore="MissingTranslation">Safe mode enabled; not injected.</string>
+    <string name="yukizygisk_zygote_unknown_message" tools:ignore="MissingTranslation">No active Zygote observation is available.</string>
     <string name="yukizygisk_native_process_injected_message" tools:ignore="MissingTranslation">Native modules injected.</string>
     <string name="yukizygisk_native_process_unsupported_message" tools:ignore="MissingTranslation">32-bit Native process is not supported.</string>
-    <string name="yukizygisk_native_process_failed_message" tools:ignore="MissingTranslation">Safe mode enabled; not injected.</string>
+    <string name="yukizygisk_native_process_failed_message" tools:ignore="MissingTranslation">Native injection did not complete.</string>
+    <string name="yukizygisk_native_process_unknown_message" tools:ignore="MissingTranslation">The target process has not been observed during this boot.</string>
     <string name="yukizygisk_native_process_module_line" tools:ignore="MissingTranslation">Module %1$s</string>
     <string name="yukizygisk_native_module_injected_message" tools:ignore="MissingTranslation">Injected into target process.</string>
     <string name="yukizygisk_native_module_unsupported_message" tools:ignore="MissingTranslation">32-bit Native module is not supported.</string>
-    <string name="yukizygisk_native_module_failed_message" tools:ignore="MissingTranslation">Safe mode enabled; some targets skipped.</string>
+    <string name="yukizygisk_native_module_failed_message" tools:ignore="MissingTranslation">The target was observed, but module injection did not complete.</string>
+    <string name="yukizygisk_native_module_unknown_message" tools:ignore="MissingTranslation">The target process has not been observed during this boot.</string>
     <string name="yukizygisk_native_target_line" tools:ignore="MissingTranslation">%1$s · %2$s · pid %3$d</string>
     <string name="yukizygisk_module_loading" tools:ignore="MissingTranslation">Module loading</string>
     <string name="yukizygisk_anon_loading_title" tools:ignore="MissingTranslation">Anonymous loading (yukilinker)</string>
