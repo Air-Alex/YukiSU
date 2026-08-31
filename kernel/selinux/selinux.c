@@ -33,7 +33,7 @@ static int transive_to_domain(const char *domain, struct cred *cred,
 #else
 	struct cred_security_struct *tsec;
 #endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
-	tsec = cred->security;
+	tsec = selinux_cred(cred);
 	if (!tsec) {
 		pr_err("tsec == NULL!\n");
 		return -1;
@@ -172,7 +172,7 @@ static bool is_sid_match(const struct cred *cred, u32 cached_sid,
 		return false;
 	}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	const struct task_security_struct *tsec = cred->security;
+	const struct task_security_struct *tsec = selinux_cred(cred);
 #else
 	const struct cred_security_struct *tsec = selinux_cred(cred);
 #endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...

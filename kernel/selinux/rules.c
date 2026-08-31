@@ -427,11 +427,7 @@ static u32 ksu_file_load_policy_cred_sid(const struct cred *cred)
 
 	if (!cred)
 		return 0;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	tsec = cred->security;
-#else
 	tsec = selinux_cred(cred);
-#endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
 	return tsec ? tsec->sid : 0;
 }
 
