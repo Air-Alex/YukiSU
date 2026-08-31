@@ -112,6 +112,7 @@ target_link_options(zygisk PRIVATE -Wl,--gc-sections -Wl,--strip-all
 yukisu_enable_clang_tidy(zygisk CXX)
 
 add_library(yukizncore SHARED
+    src/hyos_runtime.cpp
     src/yukizncore.cpp
     src/runtime_log.cpp
     src/yukilinker.cpp
@@ -128,6 +129,7 @@ set_target_properties(yukizncore PROPERTIES
     OUTPUT_NAME "yukizncore${YUKIZYGISK_ABI_SUFFIX}")
 target_include_directories(yukizncore PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../daemon
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/lsplt/lsplt/src/main/jni/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ksud/third_party/ndk-busybox/archival/libarchive/unxz
