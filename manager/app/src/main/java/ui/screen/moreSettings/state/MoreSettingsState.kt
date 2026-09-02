@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import ui.screen.moreSettings.util.LocaleHelper
-import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.ThemeConfig
@@ -59,12 +58,8 @@ class MoreSettingsState(
     var allowAnyDynamicManager by mutableStateOf(
         prefs.getBoolean(DynamicManagerSettings.KEY_ALLOW_ANY_DYNAMIC_MANAGER, false)
     )
-    var enhancedSecurityEnabled by mutableStateOf(Natives.isEnhancedSecurityEnabled())
-    var magiskCompatEnabled by mutableStateOf(Natives.isMagiskCompatEnabled())
 
     var selinuxEnabled by mutableStateOf(false)
-
-    var hideBlEnabled by mutableStateOf(false)
 
     var cardAlpha by mutableFloatStateOf(CardConfig.cardAlpha)
     var cardDim by mutableFloatStateOf(CardConfig.cardDim)

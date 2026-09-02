@@ -416,13 +416,27 @@ fun getFeatureValue(feature: Int): Boolean = Natives.isFeatureEnabled(feature)
 internal fun getFeatureValueOrNull(feature: Int): Boolean? =
     Natives.getFeature(feature).takeIf { it >= 0 }?.let { it > 0 }
 
-/** Set a feature value and persist it; returns whether ksud reported success.
- *  Unlike the reads above this cannot go straight to the kernel: ksud also
- *  brings up sulogd/msud and refreshes the YukiZygisk early snapshot. */
-suspend fun setFeatureValue(feature: String, enabled: Boolean): Boolean =
+/** Set and persist a feature value, restoring the previous runtime value if
+ *  persistence fails. ksud also brings up sulogd/msud and refreshes the
+ *  YukiZygisk early snapshot for the features that need those side effects. */
+suspend fun setFeatureValue(feature: String, featureId: Int, enabled: Boolean): Boolean =
     withContext(Dispatchers.IO) {
-        execKsud("feature set ${shellArg(feature)} ${if (enabled) 1 else 0}", true) &&
+        val previous = getFeatureValue(featureId)
+        val changed = execKsud(
+            "feature set ${shellArg(feature)} ${if (enabled) 1 else 0}",
+            true
+        )
+        if (!changed) return@withContext false
+        if (execKsud("feature save", true)) return@withContext true
+
+        val rolledBack = execKsud(
+            "feature set ${shellArg(feature)} ${if (previous) 1 else 0}",
+            true
+        )
+        if (rolledBack) {
             execKsud("feature save", true)
+        }
+        false
     }
 
 const val UTS_FIELD_SYSNAME = 1 shl 0
@@ -1620,9 +1634,8 @@ fun downloadBoot(
     )
 }
 
-fun restartAdbd() {
-    ShellUtils.fastCmd(getRootShell(), "setprop ctl.restart adbd")
-}
+fun restartAdbd(): Boolean =
+    ShellUtils.fastCmdResult(getRootShell(), "setprop ctl.restart adbd")
 
 fun reboot(reason: String = "") {
     if (reason == "soft_reboot") {

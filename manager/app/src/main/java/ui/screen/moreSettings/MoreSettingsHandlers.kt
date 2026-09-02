@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
-import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.ConfirmResult
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
@@ -34,7 +33,6 @@ import com.anatdx.yukisu.ui.screen.SwitchItem
 import com.anatdx.yukisu.ui.theme.*
 import com.anatdx.yukisu.ui.util.DynamicManagerSettings
 import com.anatdx.yukisu.ui.util.*
-import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getRootShell
 import com.anatdx.yukisu.ui.util.isSELinuxEnforcing
 import com.topjohnwu.superuser.ShellUtils
@@ -90,9 +88,6 @@ class MoreSettingsHandlers(
         CardConfig.save(context)
 
         state.selinuxEnabled = isSELinuxEnforcing()
-        state.hideBlEnabled = Natives.isHideBootloaderEnabled()
-        state.enhancedSecurityEnabled = Natives.isEnhancedSecurityEnabled()
-        state.magiskCompatEnabled = Natives.isMagiskCompatEnabled()
     }
 
     fun handleThemeModeChange(index: Int) {
@@ -308,22 +303,6 @@ class MoreSettingsHandlers(
         state.allowAnyDynamicManager = newValue
     }
 
-    fun handleEnhancedSecurityChange(enabled: Boolean) {
-        if (Natives.setEnhancedSecurityEnabled(enabled)) {
-            execKsud("feature save", true)
-            state.enhancedSecurityEnabled = Natives.isEnhancedSecurityEnabled()
-        }
-    }
-
-    fun handleMagiskCompatChange(enabled: Boolean): Boolean {
-        if (!Natives.setMagiskCompatEnabled(enabled)) return false
-        execKsud("feature save", true)
-        // Enabling defers the mount until boot; disabling tears it down now.
-        execKsud("magisk-compat apply", true)
-        state.magiskCompatEnabled = Natives.isMagiskCompatEnabled()
-        return true
-    }
-
     fun handleSelinuxChange(enabled: Boolean) {
         val ok = ShellUtils.fastCmdResult(getRootShell(), if (enabled) "setenforce 1" else "setenforce 0")
         if (ok) {
@@ -332,23 +311,6 @@ class MoreSettingsHandlers(
             Toast.makeText(context, context.getString(msg), Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(context, context.getString(R.string.selinux_change_failed), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun handleHideBlChange(enabled: Boolean) {
-        val previous = Natives.isHideBootloaderEnabled()
-        val changed = Natives.setHideBootloaderEnabled(enabled)
-        val ok = changed && execKsud("feature save", true)
-        if (ok) {
-            state.hideBlEnabled = Natives.isHideBootloaderEnabled()
-            val msg = if (enabled) R.string.hide_bl_enabled_toast else R.string.hide_bl_disabled_toast
-            Toast.makeText(context, context.getString(msg), Toast.LENGTH_SHORT).show()
-        } else {
-            if (changed) {
-                Natives.setHideBootloaderEnabled(previous)
-            }
-            state.hideBlEnabled = Natives.isHideBootloaderEnabled()
-            Toast.makeText(context, context.getString(R.string.hide_bl_change_failed), Toast.LENGTH_SHORT).show()
         }
     }
 }

@@ -39,13 +39,10 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.BuildConfig
-import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.theme.*
-import com.anatdx.yukisu.ui.util.getFeatureStatus
 import com.yalantis.ucrop.UCrop
-import androidx.compose.material.icons.rounded.EnhancedEncryption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,7 +75,6 @@ fun MoreSettingsScreen(
     }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val snackBarHost = remember { SnackbarHostState() }
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
     val systemIsDark = isSystemInDarkTheme()
 
@@ -153,7 +149,6 @@ fun MoreSettingsScreen(
                 scrollBehavior = scrollBehavior
             )
         },
-        snackbarHost = { SnackbarHost(snackBarHost) },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     ) { paddingValues ->
         Column(
@@ -183,7 +178,6 @@ fun MoreSettingsScreen(
                 AdvancedSettings(
                     state = settingsState,
                     handlers = settingsHandlers,
-                    snackBarHost = snackBarHost,
                 )
             }
         }
@@ -410,22 +404,8 @@ private fun HideOptionsSettings(
 private fun AdvancedSettings(
     state: MoreSettingsState,
     handlers: MoreSettingsHandlers,
-    snackBarHost: SnackbarHostState,
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val rebootMsg = stringResource(R.string.reboot_to_apply)
-    val enhancedStatus by produceState(initialValue = "") {
-        value = getFeatureStatus(Natives.FEATURE_ENHANCED_SECURITY)
-    }
-    val magiskCompatStatus by produceState(initialValue = "") {
-        value = getFeatureStatus(Natives.FEATURE_MAGISK_COMPAT)
-    }
-    val hideBootloaderStatus by produceState(initialValue = "") {
-        value = getFeatureStatus(Natives.FEATURE_HIDE_BOOTLOADER)
-    }
-
     SettingsCard(title = stringResource(R.string.advanced_settings)) {
-
         SwitchSettingItem(
             icon = Icons.Filled.Security,
             title = stringResource(R.string.selinux),
@@ -438,67 +418,16 @@ private fun AdvancedSettings(
         )
 
         SwitchSettingItem(
-            icon = Icons.Filled.Lock,
-            title = stringResource(R.string.hide_bl_title),
-            summary = when (hideBootloaderStatus) {
-                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
-                "managed" -> stringResource(R.string.feature_status_managed_summary)
-                else -> if (state.hideBlEnabled) {
-                    stringResource(R.string.hide_bl_enabled)
-                } else {
-                    stringResource(R.string.hide_bl_disabled)
-                }
-            },
-            checked = state.hideBlEnabled,
-            enabled = hideBootloaderStatus == "supported",
-            onChange = handlers::handleHideBlChange
-        )
-
-        SettingsDivider()
-
-        SwitchSettingItem(
-            icon = Icons.Rounded.EnhancedEncryption,
-            title = stringResource(R.string.settings_enable_enhanced_security),
-            summary = when (enhancedStatus) {
-                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
-                "managed" -> stringResource(R.string.feature_status_managed_summary)
-                else -> stringResource(R.string.settings_enable_enhanced_security_summary)
-            },
-            checked = state.enhancedSecurityEnabled,
-            enabled = enhancedStatus == "supported",
-            onChange = handlers::handleEnhancedSecurityChange,
-        )
-
-        SwitchSettingItem(
             icon = Icons.Filled.AdminPanelSettings,
             title = stringResource(R.string.allow_any_dynamic_manager),
             summary = stringResource(R.string.allow_any_dynamic_manager_summary),
             checked = state.allowAnyDynamicManager,
-            onChange = handlers::handleAllowAnyDynamicManagerChange
-        )
-
-        SwitchSettingItem(
-            icon = Icons.Filled.Security,
-            title = stringResource(R.string.magisk_compat_title),
-            summary = when (magiskCompatStatus) {
-                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
-                "managed" -> stringResource(R.string.feature_status_managed_summary)
-                else -> stringResource(R.string.magisk_compat_summary)
-            },
-            checked = state.magiskCompatEnabled,
-            enabled = magiskCompatStatus == "supported",
             groupPosition = if (BuildConfig.DEBUG) {
                 MoreSettingsItemPosition.Middle
             } else {
                 MoreSettingsItemPosition.Last
             },
-            onChange = { enabled ->
-                if (handlers.handleMagiskCompatChange(enabled) && enabled) {
-                    coroutineScope.launch {
-                        snackBarHost.showSnackbar(rebootMsg)
-                    }
-                }
-            },
+            onChange = handlers::handleAllowAnyDynamicManagerChange
         )
 
         // Web debugging and the Eruda console it feeds are developer tools, and

@@ -423,6 +423,10 @@
     <!-- lkm/gki install -->
     <string name="Lkm_install_methods">LKM repair/installation</string>
     <string name="configuration">Configure</string>
+    <string name="feature_control" tools:ignore="MissingTranslation">Feature controls</string>
+    <string name="feature_control_summary" tools:ignore="MissingTranslation">Manage features supported by the running kernel</string>
+    <string name="kernelsu_features" tools:ignore="MissingTranslation">KernelSU features</string>
+    <string name="yukisu_features" tools:ignore="MissingTranslation">YukiSU features</string>
     <string name="app_settings">Application Settings</string>
     <string name="tools">Tools</string>
     <!--  String resources used in SuperUser -->

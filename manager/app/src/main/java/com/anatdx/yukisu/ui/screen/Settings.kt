@@ -16,8 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.FolderDelete
-import androidx.compose.material.icons.rounded.RemoveCircle
-import androidx.compose.material.icons.rounded.RemoveModerator
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,12 +33,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.maxkeppeker.sheets.core.models.base.IconSource
 import com.maxkeppeler.sheets.list.models.ListOption
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.AppProfileTemplateScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FlashScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.FeatureControlScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.LogViewerScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UmountManagerScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UtsViewScreenDestination
@@ -65,6 +66,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import ui.screen.feature.FeatureControlState
 
 /**
  * @author ShirkNeko
@@ -96,7 +98,11 @@ fun SettingScreen(navigator: DestinationsNavigator) {
     val resources = LocalResources.current
     val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     val isKsuManager = remember { Natives.isManager }
-    var isSuLogEnabled by remember { mutableStateOf(Natives.isSuLogEnabled()) }
+    val initialSuLogEnabled = remember { Natives.isSuLogEnabled() }
+    val isSuLogEnabled = FeatureControlState.suLogEnabled ?: initialSuLogEnabled
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        FeatureControlState.refreshSuLog()
+    }
     var selectedEngine by rememberSaveable {
         mutableStateOf(
             prefs.getString("webui_engine", "default") ?: "default"
@@ -172,7 +178,15 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
-                        // 不保存 SuperKey
+                        SettingItem(
+                            icon = Icons.Filled.Memory,
+                            title = stringResource(R.string.feature_control),
+                            summary = stringResource(R.string.feature_control_summary),
+                            onClick = {
+                                navigator.navigate(FeatureControlScreenDestination)
+                            }
+                        )
+
                         var skipStoreSuperKey by remember {
                             mutableStateOf(SuperKeyHelper.shouldSkipStorage(context))
                         }
@@ -210,7 +224,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
-                        // 清除 SuperKey
                         val clearKeyDialog = rememberConfirmDialog(onConfirm = {
                             SuperKeyHelper.clearSavedSuperKey(context)
                             hasSavedSuperKey = false
@@ -233,180 +246,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
-                        var selinuxHideEnabled by remember {
-                            mutableStateOf(Natives.isSelinuxHideEnabled())
-                        }
-                        val selinuxHideStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_SELINUX_HIDE)
-                        }
-                        val selinuxHideSummary = when (selinuxHideStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_selinux_hide_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.Security,
-                            title = stringResource(id = R.string.settings_selinux_hide),
-                            summary = selinuxHideSummary,
-                            checked = selinuxHideEnabled,
-                            enabled = selinuxHideStatus == "supported",
-                            onCheckedChange = { enabled ->
-                                val ok = Natives.setSelinuxHideEnabled(enabled)
-                                if (ok) {
-                                    execKsud("feature save", true)
-                                    selinuxHideEnabled = enabled
-                                }
-                                scope.launch {
-                                    snackBarHost.showSnackbar(
-                                        resources.getString(
-                                            if (ok) R.string.setting_change_saved_reboot
-                                            else R.string.setting_change_failed
-                                        )
-                                    )
-                                }
-                            }
-                        )
-
-                        var suCompatDisabled by remember {
-                            mutableStateOf(!Natives.isSuEnabled())
-                        }
-                        val suStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_SU_COMPAT)
-                        }
-                        val suSummary = when (suStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_disable_su_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Rounded.RemoveModerator,
-                            title = stringResource(id = R.string.settings_disable_su),
-                            summary = suSummary,
-                            checked = suCompatDisabled,
-                            enabled = suStatus == "supported",
-                            onCheckedChange = { disabled ->
-                                if (Natives.setSuEnabled(!disabled)) {
-                                    execKsud("feature save", true)
-                                    suCompatDisabled = !Natives.isSuEnabled()
-                                }
-                            }
-                        )
-
-                        var kernelUmountDisabled by remember {
-                            mutableStateOf(!Natives.isKernelUmountEnabled())
-                        }
-                        val umountStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_KERNEL_UMOUNT)
-                        }
-                        val umountSummary = when (umountStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_disable_kernel_umount_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Rounded.RemoveCircle,
-                            title = stringResource(id = R.string.settings_disable_kernel_umount),
-                            summary = umountSummary,
-                            checked = kernelUmountDisabled,
-                            enabled = umountStatus == "supported",
-                            onCheckedChange = { disabled ->
-                                if (Natives.setKernelUmountEnabled(!disabled)) {
-                                    execKsud("feature save", true)
-                                    kernelUmountDisabled = !Natives.isKernelUmountEnabled()
-                                }
-                            }
-                        )
-
-                        var webViewZygoteUmountEnabled by rememberSaveable {
-                            mutableStateOf(
-                                getFeatureValue(Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT)
-                            )
-                        }
-                        val webViewZygoteUmountStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT)
-                        }
-                        val webViewZygoteUmountSummary = when (webViewZygoteUmountStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_webview_zygote_umount_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.Language,
-                            title = stringResource(id = R.string.settings_webview_zygote_umount),
-                            summary = webViewZygoteUmountSummary,
-                            checked = webViewZygoteUmountEnabled,
-                            enabled = webViewZygoteUmountStatus == "supported",
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    val ok = setFeatureValue("webview_zygote_umount", enabled)
-                                    webViewZygoteUmountEnabled = if (ok) {
-                                        enabled
-                                    } else {
-                                        getFeatureValue(Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT)
-                                    }
-                                    snackBarHost.showSnackbar(
-                                        resources.getString(
-                                            if (ok) R.string.setting_change_saved_reboot
-                                            else R.string.setting_change_failed
-                                        )
-                                    )
-                                }
-                            }
-                        )
-
-                        var suLogEnabled by remember {
-                            mutableStateOf(Natives.isSuLogEnabled())
-                        }
-                        val suLogStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_SULOG)
-                        }
-                        val suLogSummary = when (suLogStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_disable_sulog_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.Visibility,
-                            title = stringResource(id = R.string.settings_disable_sulog),
-                            summary = suLogSummary,
-                            checked = suLogEnabled,
-                            enabled = suLogStatus == "supported",
-                            onCheckedChange = { enabled ->
-                                if (Natives.setSuLogEnabled(enabled)) {
-                                    execKsud("feature save", true)
-                                    suLogEnabled = Natives.isSuLogEnabled()
-                                    isSuLogEnabled = suLogEnabled
-                                }
-                            }
-                        )
-
-                        var adbRootEnabled by rememberSaveable {
-                            mutableStateOf(Natives.isAdbRootEnabled())
-                        }
-                        val adbRootStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_ADB_ROOT)
-                        }
-                        val adbRootSummary = when (adbRootStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_adb_root_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.DeveloperMode,
-                            title = stringResource(id = R.string.settings_adb_root),
-                            summary = adbRootSummary,
-                            checked = adbRootEnabled,
-                            enabled = adbRootStatus == "supported",
-                            onCheckedChange = { enabled ->
-                                if (Natives.setAdbRootEnabled(enabled)) {
-                                    execKsud("feature save", true)
-                                    restartAdbd()
-                                    adbRootEnabled = enabled
-                                }
-                            }
-                        )
-
-                        // 卸载模块开关
                         var umountChecked by rememberSaveable { mutableStateOf(Natives.isDefaultUmountModules()) }
                         SwitchItem(
                             icon = Icons.Rounded.FolderDelete,
@@ -416,64 +255,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             onCheckedChange = {
                                 if (Natives.setDefaultUmountModules(it)) {
                                     umountChecked = it
-                                }
-                            }
-                        )
-
-                        // app profile 防逃逸：全局默认 NO_NEW_PRIVS（含默认档/manager/shell）
-                        var defaultNnpChecked by rememberSaveable {
-                            mutableStateOf(Natives.isDefaultNoNewPrivsEnabled())
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.FrontHand,
-                            title = stringResource(id = R.string.settings_default_no_new_privs),
-                            summary = stringResource(id = R.string.settings_default_no_new_privs_summary),
-                            checked = defaultNnpChecked,
-                            onCheckedChange = {
-                                if (Natives.setDefaultNoNewPrivsEnabled(it)) {
-                                    execKsud("feature save", true)
-                                    defaultNnpChecked = it
-                                }
-                            }
-                        )
-
-                        // YukiZygisk：内核捕获 zygote、注入 zygisk 模块（接全局防逃逸之后）
-                        var yukiZygiskEnabled by remember { mutableStateOf(false) }
-                        val yukiZygiskStatus by produceState(initialValue = "") {
-                            value = getFeatureStatus(Natives.FEATURE_YUKIZYGISK)
-                        }
-                        LaunchedEffect(Unit) {
-                            yukiZygiskEnabled = getFeatureValue(Natives.FEATURE_YUKIZYGISK)
-                        }
-                        val yukiZygiskSummary = when (yukiZygiskStatus) {
-                            "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
-                            "managed" -> stringResource(id = R.string.feature_status_managed_summary)
-                            else -> stringResource(id = R.string.settings_yukizygisk_summary)
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.Extension,
-                            title = stringResource(id = R.string.settings_yukizygisk),
-                            summary = yukiZygiskSummary,
-                            checked = yukiZygiskEnabled,
-                            enabled = yukiZygiskStatus == "supported",
-                            groupPosition = SettingsItemPosition.Middle,
-                            onCheckedChange = { enable ->
-                                // toggle UX：先翻到用户意图，再异步落地 + toast，失败回滚
-                                yukiZygiskEnabled = enable
-                                scope.launch {
-                                    if (setFeatureValue("yukizygisk", enable)) {
-                                        snackBarHost.showSnackbar(
-                                            resources.getString(
-                                                if (enable) R.string.settings_yukizygisk_toast_on
-                                                else R.string.settings_yukizygisk_toast_off
-                                            )
-                                        )
-                                    } else {
-                                        yukiZygiskEnabled = getFeatureValue(Natives.FEATURE_YUKIZYGISK)
-                                        snackBarHost.showSnackbar(
-                                            resources.getString(R.string.settings_yukizygisk_toast_failed)
-                                        )
-                                    }
                                 }
                             }
                         )
@@ -549,7 +330,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
-                    // WebUI引擎选择
                     KsuIsValid {
                         WebUIEngineSelector(
                             selectedEngine = selectedEngine,
@@ -584,7 +364,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
-                    // More settings
                     SettingItem(
                         icon = Icons.Filled.Settings,
                         title = stringResource(R.string.more_settings),
@@ -597,7 +376,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                 }
             )
 
-            // 工具卡片
             SettingsGroupCard(
                 title = stringResource(R.string.tools),
                 content = {
@@ -616,7 +394,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
-                    // 查看使用日志
                     KsuIsValid {
                         if (isSuLogEnabled) {
                             SettingItem(
@@ -708,7 +485,6 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                 }
             )
 
-            // 关于卡片
             SettingsGroupCard(
                 title = stringResource(R.string.about),
                 content = {

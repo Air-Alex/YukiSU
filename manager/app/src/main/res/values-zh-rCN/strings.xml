@@ -419,6 +419,10 @@
     <!-- lkm/gki install -->
     <string name="Lkm_install_methods">LKM 修补/安装</string>
     <string name="configuration">配置</string>
+    <string name="feature_control">功能控制</string>
+    <string name="feature_control_summary">管理当前内核支持的功能。</string>
+    <string name="kernelsu_features">KernelSU 功能</string>
+    <string name="yukisu_features">YukiSU 功能</string>
     <string name="app_settings">应用设置</string>
     <string name="tools">工具</string>
     <!--  String resources used in SuperUser -->
