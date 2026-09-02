@@ -64,16 +64,25 @@ int apply_magisk_compat_now() {
     if (value != 0) {
         // Zygote must inherit the complete bind tree; defer mounting until boot.
         ensure_msud_running();
-        LOGI("magisk_su: enabled (msud up; su mounts on next reboot)");
-    } else {
-        if (enter_init_mount_ns()) {
-            magic_umount_su();
-        } else {
-            LOGW("magisk_su: could not enter init ns; su stays until reboot");
-        }
-        kill_msud();
-        LOGI("magisk_su: disabled live (su unmounted, msud killed)");
+        LOGI("magisk_su: enabled (su mounts on next reboot)");
+        return 0;
     }
+
+    if (!enter_init_mount_ns()) {
+        LOGW("magisk_su: could not enter init ns; su stays until reboot");
+        kill_msud();
+        return 1;
+    }
+
+    magic_umount_su();
+    const bool unmounted = !su_magic_mounted();
+    kill_msud();
+    if (!unmounted) {
+        LOGE("magisk_su: could not unmount live su");
+        return 1;
+    }
+
+    LOGI("magisk_su: disabled live (su unmounted, msud killed)");
     return 0;
 }
 
