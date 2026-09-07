@@ -19,6 +19,7 @@
 #include "policy/feature.h"
 #include "feature/kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
+#include "ksu.h"
 #include "runtime/ksud_boot.h"
 #include "runtime/ksud.h"
 #include "manager/manager_identity.h"
@@ -522,12 +523,19 @@ static void ensure_default_shell_profile(void)
 
 static void do_persistent_allow_list(struct callback_head *_cb)
 {
+	const struct cred *old_cred;
 	u32 magic = FILE_MAGIC;
 	u32 version = FILE_FORMAT_VERSION;
 	struct perm_data *p = NULL;
 	loff_t off = 0;
 	int bucket;
 
+	if (unlikely(!ksu_cred)) {
+		pr_err("save_allow_list: KernelSU credential is unavailable\n");
+		goto free_cb;
+	}
+
+	old_cred = override_creds(ksu_cred);
 	if (allowlist_file_missing())
 		ensure_default_shell_profile();
 
@@ -565,6 +573,8 @@ close_file:
 	filp_close(fp, 0);
 unlock:
 	mutex_unlock(&allowlist_mutex);
+	revert_creds(old_cred);
+free_cb:
 	kfree(_cb);
 }
 

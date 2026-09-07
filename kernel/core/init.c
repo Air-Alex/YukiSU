@@ -172,6 +172,7 @@ int __init kernelsu_init(void)
 	ksu_cred = prepare_creds();
 	if (!ksu_cred) {
 		pr_err("prepare cred failed!\n");
+		return -ENOMEM;
 	}
 
 	uts_boot_requested = ksu_uts_view_boot_requested();
@@ -294,6 +295,7 @@ static void kernelsu_exit(void)
 
 	if (ksu_cred) {
 		put_cred(ksu_cred);
+		ksu_cred = NULL;
 	}
 }
 
