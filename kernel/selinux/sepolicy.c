@@ -1,5 +1,6 @@
 #include <linux/gfp.h>
 #include <linux/err.h>
+#include <linux/kernel.h>
 #include <linux/overflow.h>
 #include <linux/printk.h>
 #include <linux/slab.h>
@@ -447,6 +448,21 @@ static void add_xperm_rule_raw(struct policydb *db, struct type_datum *src,
 	}
 }
 
+static bool parse_xperm_number(const char *text, size_t len, u16 *value)
+{
+	char number[16];
+	unsigned int parsed;
+
+	if (!len || len >= sizeof(number))
+		return false;
+	memcpy(number, text, len);
+	number[len] = '\0';
+	if (kstrtouint(number, 16, &parsed) || parsed > 0xffffU)
+		return false;
+	*value = (u16)parsed;
+	return true;
+}
+
 static bool add_xperm_rule(struct policydb *db, const char *s, const char *t,
 			   const char *c, const char *range, int effect,
 			   bool invert)
@@ -481,10 +497,22 @@ static bool add_xperm_rule(struct policydb *db, const char *s, const char *t,
 	u16 low, high;
 
 	if (range) {
-		if (strchr(range, '-')) {
-			sscanf(range, "%hx-%hx", &low, &high);
+		const char *dash = strchr(range, '-');
+
+		if (dash) {
+			if (strchr(dash + 1, '-') ||
+			    !parse_xperm_number(range, (size_t)(dash - range),
+						&low) ||
+			    !parse_xperm_number(dash + 1, strlen(dash + 1),
+						&high) ||
+			    low > high) {
+				pr_warn("invalid xperm range: %s\n", range);
+				return false;
+			}
+		} else if (!parse_xperm_number(range, strlen(range), &low)) {
+			pr_warn("invalid xperm value: %s\n", range);
+			return false;
 		} else {
-			sscanf(range, "%hx", &low);
 			high = low;
 		}
 	} else {

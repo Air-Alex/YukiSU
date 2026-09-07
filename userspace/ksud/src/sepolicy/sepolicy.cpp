@@ -2,6 +2,7 @@
 #include "../core/ksucalls.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
+#include "xperm_parser.hpp"
 
 #include <sys/stat.h>
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace ksud {
@@ -50,7 +52,7 @@ static constexpr uint32_t SUBCMD_TYPE_MEMBER = 2;
 // PolicyObject - holds a sepolicy string or represents "all" (*)
 class PolicyObject {
 public:
-    enum class Type : std::uint8_t { NONE, ALL, ONE };
+    enum class Type : std::uint8_t { NONE, ALL, ONE, INVALID };
 
     PolicyObject() = default;
 
@@ -66,10 +68,12 @@ public:
         PolicyObject obj;
         if (s == "*") {
             obj.type_ = Type::ALL;
-        } else if (s.length() < SEPOLICY_MAX_LEN) {
+        } else if (!s.empty() && s.length() < SEPOLICY_MAX_LEN) {
             obj.type_ = Type::ONE;
             (void)strncpy(obj.buf_.data(), s.c_str(), SEPOLICY_MAX_LEN - 1);
             obj.buf_[SEPOLICY_MAX_LEN - 1] = '\0';
+        } else {
+            obj.type_ = Type::INVALID;
         }
         return obj;
     }
@@ -82,6 +86,7 @@ public:
     }
 
     [[nodiscard]] Type type() const { return type_; }
+    [[nodiscard]] bool valid() const { return type_ != Type::INVALID; }
 
 private:
     Type type_{Type::NONE};
@@ -104,6 +109,12 @@ struct AtomicStatement {
 
     [[nodiscard]] std::array<const PolicyObject*, 7> args() const {
         return {&sepol1, &sepol2, &sepol3, &sepol4, &sepol5, &sepol6, &sepol7};
+    }
+
+    [[nodiscard]] bool valid() const {
+        const auto values = args();
+        return std::all_of(values.begin(), values.end(),
+                           [](const PolicyObject* value) { return value->valid(); });
     }
 };
 
@@ -167,6 +178,62 @@ const char* parse_seobj(const char* p, std::vector<std::string>& out) {
     return p;
 }
 
+const char* parse_seobj_strict(const char* p, std::vector<std::string>& out) {
+    out.clear();
+    if (*p == '*') {
+        out.push_back("*");
+        return p + 1;
+    }
+
+    if (*p == '{') {
+        ++p;
+        for (;;) {
+            p = skip_space(p);
+            if (*p == '}')
+                return out.empty() ? nullptr : p + 1;
+            if (*p == '\0')
+                return nullptr;
+
+            std::string word;
+            const char* next = parse_word(p, word);
+            if (word.empty())
+                return nullptr;
+            out.push_back(std::move(word));
+            p = next;
+        }
+    }
+
+    std::string word;
+    p = parse_word(p, word);
+    if (word.empty())
+        return nullptr;
+    out.push_back(std::move(word));
+    return p;
+}
+
+const char* skip_required_space(const char* p) {
+    if (*p == '\0' || !std::isspace(static_cast<unsigned char>(*p)))
+        return nullptr;
+    return skip_space(p);
+}
+
+const char* parse_class(const char* p, std::vector<std::string>& classes) {
+    if (*p == ':') {
+        ++p;
+        p = skip_space(p);
+        return parse_seobj_strict(p, classes);
+    }
+
+    p = skip_required_space(p);
+    if (p == nullptr)
+        return nullptr;
+    if (*p == ':') {
+        ++p;
+        p = skip_space(p);
+    }
+    return parse_seobj_strict(p, classes);
+}
+
 // Parse and expand a single rule into AtomicStatements
 bool parse_rule(const std::string& rule, std::vector<AtomicStatement>& statements) {
     const char* p = rule.c_str();
@@ -198,29 +265,29 @@ bool parse_rule(const std::string& rule, std::vector<AtomicStatement>& statement
         std::vector<std::string> classes;
         std::vector<std::string> perms;
 
-        p = parse_seobj(p, sources);
-        p = parse_seobj(p, targets);
-
-        // Parse class (may be target:class format or separate)
-        p = skip_space(p);
-        if (*p == ':') {
-            p++;
-            p = parse_seobj(p, classes);
-        } else {
-            // Check if last target contains ':'
-            if (!targets.empty()) {
-                std::string& last = targets.back();
-                const size_t colon = last.find(':');
-                if (colon != std::string::npos) {
-                    classes.push_back(last.substr(colon + 1));
-                    last = last.substr(0, colon);
-                } else {
-                    p = parse_seobj(p, classes);
-                }
-            }
-        }
-
-        p = parse_seobj(p, perms);
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
+        p = parse_seobj_strict(p, sources);
+        if (p == nullptr)
+            return false;
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
+        p = parse_seobj_strict(p, targets);
+        if (p == nullptr)
+            return false;
+        p = parse_class(p, classes);
+        if (p == nullptr)
+            return false;
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
+        p = parse_seobj_strict(p, perms);
+        if (p == nullptr)
+            return false;
+        if (*skip_space(p) != '\0')
+            return false;
 
         // Expand to atomic statements
         for (const auto& s : sources) {
@@ -257,54 +324,51 @@ bool parse_rule(const std::string& rule, std::vector<AtomicStatement>& statement
         std::vector<std::string> targets;
         std::vector<std::string> classes;
         std::string operation;
-        std::string perm_set;
+        std::vector<std::string> perm_sets;
 
-        p = parse_seobj(p, sources);
-        p = parse_seobj(p, targets);
-
-        p = skip_space(p);
-        if (*p == ':') {
-            p++;
-            p = parse_seobj(p, classes);
-        } else if (!targets.empty()) {
-            std::string& last = targets.back();
-            const size_t colon = last.find(':');
-            if (colon != std::string::npos) {
-                classes.push_back(last.substr(colon + 1));
-                last = last.substr(0, colon);
-            } else {
-                p = parse_seobj(p, classes);
-            }
-        }
-
-        p = skip_space(p);
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
+        p = parse_seobj_strict(p, sources);
+        if (p == nullptr)
+            return false;
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
+        p = parse_seobj_strict(p, targets);
+        if (p == nullptr)
+            return false;
+        p = parse_class(p, classes);
+        if (p == nullptr)
+            return false;
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
         p = parse_word(p, operation);
-
-        // Parse xperm_set (could be { 0x1234 } or just value)
-        p = skip_space(p);
-        if (*p == '{') {
-            const char* start = p;
-            while (*p && *p != '}')
-                p++;
-            if (*p == '}')
-                p++;
-            perm_set = std::string(start, p);
-        } else {
-            p = parse_word(p, perm_set);
-        }
+        if (operation.empty())
+            return false;
+        p = skip_required_space(p);
+        if (p == nullptr)
+            return false;
+        auto parsed_perm_sets = parse_xperm_set(p);
+        if (!parsed_perm_sets)
+            return false;
+        perm_sets = std::move(*parsed_perm_sets);
 
         for (const auto& s : sources) {
             for (const auto& t : targets) {
                 for (const auto& c : classes) {
-                    AtomicStatement stmt;
-                    stmt.cmd = CMD_XPERM;
-                    stmt.subcmd = subcmd;
-                    stmt.sepol1 = PolicyObject::from_str(s);
-                    stmt.sepol2 = PolicyObject::from_str(t);
-                    stmt.sepol3 = PolicyObject::from_str(c);
-                    stmt.sepol4 = PolicyObject::from_str(operation);
-                    stmt.sepol5 = PolicyObject::from_str(perm_set);
-                    statements.push_back(stmt);
+                    for (const auto& perm_set : perm_sets) {
+                        AtomicStatement stmt;
+                        stmt.cmd = CMD_XPERM;
+                        stmt.subcmd = subcmd;
+                        stmt.sepol1 = PolicyObject::from_str(s);
+                        stmt.sepol2 = PolicyObject::from_str(t);
+                        stmt.sepol3 = PolicyObject::from_str(c);
+                        stmt.sepol4 = PolicyObject::from_str(operation);
+                        stmt.sepol5 = PolicyObject::from_str(perm_set);
+                        statements.push_back(stmt);
+                    }
                 }
             }
         }
@@ -563,6 +627,10 @@ void append_u32(std::vector<uint8_t>& payload, uint32_t value) {
 }
 
 bool append_policy_object(std::vector<uint8_t>& payload, const PolicyObject& object) {
+    if (!object.valid()) {
+        LOGW("Invalid or oversized sepolicy object");
+        return false;
+    }
     const char* value = object.c_ptr();
     const uint32_t len = value ? static_cast<uint32_t>(strlen(value)) : 0;
 
@@ -604,36 +672,39 @@ bool serialize_statements(const std::vector<AtomicStatement>& statements,
     return true;
 }
 
+bool parse_policy_text(std::string_view policy, std::vector<AtomicStatement>* statements) {
+    bool success = true;
+    for_each_line(policy, [&](std::string_view line) {
+        const size_t comment = line.find('#');
+        if (comment != std::string_view::npos)
+            line = line.substr(0, comment);
+        for_each_field(line, ';', [&](std::string_view raw_rule) {
+            const std::string_view trimmed_view = trim_view(raw_rule);
+            if (trimmed_view.empty())
+                return;
+
+            const std::string trimmed(trimmed_view);
+            std::vector<AtomicStatement> parsed;
+            if (!parse_rule(trimmed, parsed) || parsed.empty() ||
+                !std::all_of(parsed.begin(), parsed.end(),
+                             [](const AtomicStatement& statement) { return statement.valid(); })) {
+                LOGW("Failed to parse rule: %s", trimmed.c_str());
+                success = false;
+                return;
+            }
+            if (statements != nullptr)
+                statements->insert(statements->end(), parsed.begin(), parsed.end());
+        });
+    });
+    return success;
+}
+
 }  // namespace
 
 int sepolicy_live_patch(const std::string& policy) {
-    int errors = 0;
     std::vector<AtomicStatement> statements;
-
-    // Split by newline and semicolon without constructing two stream objects per
-    // line. parse_rule still owns a NUL-terminated string because its parser is
-    // pointer-based; that is the only allocation left per non-empty rule.
-    for_each_line(policy, [&](std::string_view line) {
-        for_each_field(line, ';', [&](std::string_view raw_rule) {
-            const std::string_view trimmed_view = trim_view(raw_rule);
-            if (trimmed_view.empty() || trimmed_view[0] == '#') {
-                return;
-            }
-            const std::string trimmed(trimmed_view);
-            std::vector<AtomicStatement> rule_stmts;
-            if (!parse_rule(trimmed, rule_stmts)) {
-                LOGW("Failed to parse rule: %s", trimmed.c_str());
-                errors++;
-                return;
-            }
-
-            statements.insert(statements.end(), rule_stmts.begin(), rule_stmts.end());
-        });
-    });
-
-    if (errors > 0) {
+    if (!parse_policy_text(policy, &statements))
         return 1;
-    }
 
     if (statements.empty()) {
         return 0;
@@ -667,23 +738,7 @@ int sepolicy_apply_file(const std::string& file) {
     return sepolicy_live_patch(*content);
 }
 
-namespace {
-
-bool is_valid_rule_type(std::string_view trimmed) {
-    return starts_with(trimmed, "allow") || starts_with(trimmed, "deny") ||
-           starts_with(trimmed, "auditallow") || starts_with(trimmed, "dontaudit") ||
-           starts_with(trimmed, "allowxperm") || starts_with(trimmed, "auditallowxperm") ||
-           starts_with(trimmed, "dontauditxperm") || starts_with(trimmed, "type ") ||
-           starts_with(trimmed, "attribute") || starts_with(trimmed, "permissive") ||
-           starts_with(trimmed, "enforce") || starts_with(trimmed, "typeattribute") ||
-           starts_with(trimmed, "type_transition") || starts_with(trimmed, "type_change") ||
-           starts_with(trimmed, "type_member") || starts_with(trimmed, "genfscon");
-}
-
-}  // namespace
-
 int sepolicy_check_rule(const std::string& policy_or_file) {
-    // Check if it's a file path
     struct stat st{};
     if (stat(policy_or_file.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
         auto content = read_file(policy_or_file);
@@ -691,47 +746,23 @@ int sepolicy_check_rule(const std::string& policy_or_file) {
             printf("Failed to read file: %s\n", policy_or_file.c_str());
             return 1;
         }
-
-        int line_num = 0;
-        int errors = 0;
-        for_each_line(*content, [&](std::string_view line) {
-            line_num++;
-            const std::string_view trimmed = trim_view(line);
-
-            if (trimmed.empty() || trimmed[0] == '#') {
-                return;
-            }
-
-            if (!is_valid_rule_type(trimmed)) {
-                printf("Line %d: Unknown rule type: %.*s\n", line_num,
-                       static_cast<int>(trimmed.size()), trimmed.data());
-                errors++;
-            }
-        });
-
-        if (errors > 0) {
-            printf("Found %d invalid rules\n", errors);
+        if (!parse_policy_text(*content, nullptr)) {
+            printf("Invalid sepolicy rules\n");
             return 1;
         }
-
         printf("All sepolicy rules are valid\n");
         return 0;
     }
 
-    // Treat as a single rule
-    const std::string_view trimmed = trim_view(policy_or_file);
-
-    if (trimmed.empty()) {
+    if (trim_view(policy_or_file).empty()) {
         printf("Invalid: empty rule\n");
         return 1;
     }
-
-    if (is_valid_rule_type(trimmed)) {
+    if (parse_policy_text(policy_or_file, nullptr)) {
         printf("Valid sepolicy rule\n");
         return 0;
     }
-
-    printf("Unknown rule type\n");
+    printf("Invalid sepolicy rule\n");
     return 1;
 }
 

@@ -397,6 +397,7 @@ set(KSUD_OUR_SOURCES
     src/boot/apk_sign.cpp
     src/profile/profile.cpp
     src/sepolicy/sepolicy.cpp
+    src/sepolicy/xperm_parser.cpp
     src/su.cpp
     src/su_args.cpp
     src/init_event.cpp
