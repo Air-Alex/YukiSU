@@ -64,6 +64,11 @@ bool restore_syscon_if_unlabeled(const fs::path& dir) {
     for (auto it = fs::recursive_directory_iterator(dir, ec);
          it != fs::recursive_directory_iterator() && !ec; it.increment(ec)) {
         const std::string con = lgetfilecon(it->path());
+        if (it->path() == DAEMON_PATH) {
+            if (con != KSU_CON && !lsetfilecon(it->path(), KSU_CON))
+                LOGW("Failed to migrate daemon context for %s", it->path().c_str());
+            continue;
+        }
         if (con.empty() || con == UNLABEL_CON) {
             if (!lsetfilecon(it->path(), SYSTEM_CON)) {
                 LOGW("Failed to restore context for %s", it->path().c_str());
@@ -81,7 +86,7 @@ bool restorecon() {
     bool success = true;
 
     // Set context for daemon
-    if (!lsetfilecon(DAEMON_PATH, ADB_CON)) {
+    if (!lsetfilecon(DAEMON_PATH, KSU_CON)) {
         LOGW("Failed to set context for daemon");
         success = false;
     }
@@ -102,8 +107,11 @@ bool restorecon(const fs::path& path, bool recursive) {
         return false;
     }
 
-    // For /data/adb, use ADB context
-    const char* context = (path == "/data/adb") ? ADB_CON : SYSTEM_CON;
+    const char* context = SYSTEM_CON;
+    if (path == DAEMON_PATH)
+        context = KSU_CON;
+    else if (path == "/data/adb")
+        context = ADB_CON;
 
     if (recursive) {
         const bool directory = fs::is_directory(path, ec);

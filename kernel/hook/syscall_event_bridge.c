@@ -37,25 +37,15 @@ void ksu_stop_ksud_execve_hook(void)
 
 long __nocfi ksu_hook_newfstatat(int orig_nr, const struct pt_regs *regs)
 {
-	if (ksu_su_compat_enabled) {
-		int *dfd = (int *)&PT_REGS_PARM1(regs);
-		const char __user **filename_user =
-		    (const char __user **)&PT_REGS_PARM2(regs);
-		int *flags = (int *)&PT_REGS_SYSCALL_PARM4(regs);
-		ksu_handle_stat(dfd, filename_user, flags);
-	}
+	if (ksu_su_compat_enabled)
+		return ksu_handle_stat_sucompat(orig_nr, regs);
 	return ksu_syscall_table[orig_nr](regs);
 }
 
 long __nocfi ksu_hook_faccessat(int orig_nr, const struct pt_regs *regs)
 {
-	if (ksu_su_compat_enabled) {
-		int *dfd = (int *)&PT_REGS_PARM1(regs);
-		const char __user **filename_user =
-		    (const char __user **)&PT_REGS_PARM2(regs);
-		int *mode = (int *)&PT_REGS_PARM3(regs);
-		ksu_handle_faccessat(dfd, filename_user, mode, NULL);
-	}
+	if (ksu_su_compat_enabled)
+		return ksu_handle_faccessat_sucompat(orig_nr, regs);
 	return ksu_syscall_table[orig_nr](regs);
 }
 
