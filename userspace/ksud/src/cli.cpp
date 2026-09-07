@@ -881,6 +881,7 @@ int cmd_late_load(const std::vector<std::string>& args) {
 int cli_run(int argc, char** argv) {
     // Initialize logging
     log_init("KernelSU");
+    setup_sigsys_handler();
 
     // Check if invoked as su or sh
     const std::string arg0 = argv[0];

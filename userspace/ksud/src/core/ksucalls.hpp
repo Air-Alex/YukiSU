@@ -45,6 +45,10 @@ struct ListTryUmountCmd {
 #define KSU_IOCTL_LIST_TRY_UMOUNT _IOC(_IOC_READ | _IOC_WRITE, 'K', 200, 0)
 
 // API functions
+// Install the SIGSYS guard used only while trying the legacy reboot syscall
+// fallback for driver-fd retrieval. Other SIGSYS deliveries retain the
+// previously installed disposition.
+void setup_sigsys_handler();
 int ksuctl(int request, void* arg);
 // Claim the scoped fd installed after sucompat's exec; it is already CLOEXEC
 // for the target shell. Call only during fresh-exec, single-threaded su startup.

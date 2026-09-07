@@ -7,9 +7,11 @@
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/ucontext.h>
 #include <unistd.h>
 #include <array>
 #include <cerrno>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -29,13 +31,65 @@ struct PrctlGetFdCmd {
 
 int g_driver_fd = -1;
 bool g_driver_fd_init = false;
-GetInfoCmd g_info_cache = {0, 0};
+GetInfoCmd g_info_cache{};
 bool g_info_cached = false;
 
 constexpr size_t kLinkPathSize = 64;
 constexpr size_t kReadlinkBufSize = 256;
 constexpr const char* kDriverFdName = "anon_inode:[ksu_driver]";
 constexpr const char* kSuDriverFdName = "anon_inode:[ksu_driver_su]";
+constexpr int kSysSeccomp = 1;
+
+thread_local volatile sig_atomic_t g_reboot_fallback_in_flight = 0;
+thread_local volatile sig_atomic_t g_reboot_fallback_trapped = 0;
+struct sigaction g_previous_sigsys_action{};
+volatile sig_atomic_t g_sigsys_handler_installed = 0;
+
+bool set_syscall_permission_error(void* context) {
+    if (context == nullptr) {
+        return false;
+    }
+
+    auto* ucontext = static_cast<ucontext_t*>(context);
+#if defined(__aarch64__)
+    ucontext->uc_mcontext.regs[0] = static_cast<unsigned long>(-EPERM);
+    return true;
+#elif defined(__x86_64__)
+    ucontext->uc_mcontext.gregs[REG_RAX] = -EPERM;
+    return true;
+#else
+    (void)ucontext;
+    return false;
+#endif
+}
+
+// POSIX sigaction exposes its handler and metadata through unions.
+// NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
+void forward_sigsys(int signal, siginfo_t* info, void* context) {
+    const struct sigaction previous = g_previous_sigsys_action;
+    if (previous.sa_handler == SIG_IGN)
+        return;
+    if (previous.sa_handler == SIG_DFL)
+        _exit(128 + signal);
+    if ((previous.sa_flags & SA_SIGINFO) != 0) {
+        previous.sa_sigaction(signal, info, context);
+    } else {
+        previous.sa_handler(signal);
+    }
+}
+
+void sigsys_handler(int signal, siginfo_t* info, void* context) {
+    const bool is_reboot_seccomp_trap =
+        signal == SIGSYS && info != nullptr && info->si_code == kSysSeccomp &&
+        info->si_syscall == SYS_reboot && g_reboot_fallback_in_flight != 0;
+    if (!is_reboot_seccomp_trap || !set_syscall_permission_error(context)) {
+        forward_sigsys(signal, info, context);
+        return;
+    }
+
+    g_reboot_fallback_trapped = 1;
+}
+// NOLINTEND(cppcoreguidelines-pro-type-union-access)
 
 struct DriverFd {
     int fd{-1};
@@ -106,8 +160,19 @@ auto init_driver_fd() -> int {
     }
 
     // Method 3: Fallback to reboot syscall (may be blocked by SECCOMP)
+    setup_sigsys_handler();
+    if (g_sigsys_handler_installed == 0) {
+        LOGE("Skipping KernelSU driver fd fallback without a SIGSYS handler");
+        return -1;
+    }
     int fd_reboot = -1;  // NOLINT(misc-const-correctness) written via pointer by syscall
+    g_reboot_fallback_trapped = 0;
+    g_reboot_fallback_in_flight = 1;
     syscall(SYS_reboot, KSU_INSTALL_MAGIC1, KSU_INSTALL_MAGIC2, 0, &fd_reboot);
+    g_reboot_fallback_in_flight = 0;
+    if (g_reboot_fallback_trapped != 0) {
+        LOGE("KernelSU driver fd fallback was blocked by seccomp");
+    }
     if (fd_reboot >= 0) {
         LOGD("Got driver fd via reboot syscall: %d", fd_reboot);
         return fd_reboot;
@@ -126,6 +191,24 @@ auto get_driver_fd() -> int {
 }
 
 }  // namespace
+
+void setup_sigsys_handler() {
+    if (g_sigsys_handler_installed != 0) {
+        return;
+    }
+
+    struct sigaction action{};
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access)
+    action.sa_sigaction = sigsys_handler;
+    action.sa_flags = SA_SIGINFO;
+    (void)sigemptyset(&action.sa_mask);
+    g_sigsys_handler_installed = 1;
+    if (sigaction(SIGSYS, &action, &g_previous_sigsys_action) != 0) {
+        g_sigsys_handler_installed = 0;
+        LOGW("Failed to install SIGSYS handler: %s", strerror(errno));
+        return;
+    }
+}
 
 int claim_inherited_su_driver_fd() {
     const DriverFd driver = scan_driver_fd();
@@ -175,7 +258,7 @@ int uts_ksuctl(int request, void* arg) {
 
 const GetInfoCmd& get_info() {
     if (!g_info_cached) {
-        GetInfoCmd cmd = {0, 0};
+        GetInfoCmd cmd{};
         ksuctl(KSU_IOCTL_GET_INFO, &cmd);
         g_info_cache = cmd;
         g_info_cached = true;
