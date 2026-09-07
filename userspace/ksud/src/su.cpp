@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -46,7 +47,7 @@ void print_su_usage() {
 }
 
 bool set_identity(uid_t uid, gid_t gid, const std::vector<gid_t>& groups) {
-    if (!groups.empty() && setgroups(groups.size(), groups.data()) != 0) {
+    if (setgroups(groups.size(), groups.empty() ? nullptr : groups.data()) != 0) {
         LOGE("Failed to set supplementary groups: %s", strerror(errno));
         return false;
     }
@@ -128,9 +129,7 @@ int run_su_shell(int argc, char** argv) {
     bool use_fd_wrapper = true;
     bool ksu_no_new_privs = false;
     std::optional<std::string> selinux_context;
-    uid_t target_uid = 0;
-    gid_t target_gid = 0;
-    bool gid_specified = false;
+    std::optional<std::uint32_t> requested_gid;
     std::vector<gid_t> groups;
 
     // Split off any positional command and order the remaining options ahead of the operands, so
@@ -194,13 +193,23 @@ int run_su_shell(int argc, char** argv) {
         case 'M':
             mount_master = true;
             break;
-        case 'g':
-            target_gid = static_cast<gid_t>(std::stoul(optarg));
-            gid_specified = true;
+        case 'g': {
+            requested_gid = su_args::parse_numeric_id(optarg);
+            if (!requested_gid.has_value()) {
+                LOGE("Invalid GID: %s", optarg);
+                return 1;
+            }
             break;
-        case 'G':
-            groups.push_back(static_cast<gid_t>(std::stoul(optarg)));
+        }
+        case 'G': {
+            const auto group = su_args::parse_numeric_id(optarg);
+            if (!group.has_value()) {
+                LOGE("Invalid supplementary GID: %s", optarg);
+                return 1;
+            }
+            groups.push_back(static_cast<gid_t>(*group));
             break;
+        }
         case 'W':
             use_fd_wrapper = false;
             break;
@@ -223,35 +232,27 @@ int run_su_shell(int argc, char** argv) {
         optind++;
     }
 
-    // Check for username/uid. Any operand past this one is ignored: a positional command comes
-    // from su_args::split, not from whatever getopt left behind.
+    std::optional<std::uint32_t> requested_uid;
     if (optind < argc) {
         const char* user = argv[optind];
-        // Try to parse as number first
-        char* endptr;
-        const long uid_num = strtol(user, &endptr, 10);
-        if (*endptr == '\0') {
-            target_uid = static_cast<uid_t>(uid_num);
-        } else {
-            // Try to look up username
-            const struct passwd* pw = getpwnam(user);
-            if (pw) {
-                target_uid = pw->pw_uid;
-            } else {
-                // Invalid username, default to 0 (matching Rust behavior)
-                target_uid = 0;
-            }
+        const struct passwd* pw = getpwnam(user);
+        const std::optional<std::uint32_t> passwd_uid =
+            pw == nullptr ? std::nullopt
+                          : std::optional<std::uint32_t>(static_cast<std::uint32_t>(pw->pw_uid));
+        requested_uid = su_args::resolve_uid(user, passwd_uid);
+        if (!requested_uid.has_value()) {
+            LOGE("Unknown user: %s", user);
+            return 1;
         }
     }
 
-    // If no gid specified, use first supplementary group or uid
-    if (!gid_specified) {
-        if (!groups.empty()) {
-            target_gid = groups[0];
-        } else {
-            target_gid = target_uid;
-        }
-    }
+    const std::optional<std::uint32_t> first_group =
+        groups.empty() ? std::nullopt
+                       : std::optional<std::uint32_t>(static_cast<std::uint32_t>(groups[0]));
+    const su_args::IdentityPlan identity = su_args::make_identity_plan(
+        requested_uid, requested_gid, first_group, static_cast<std::uint32_t>(getuid()));
+    const uid_t target_uid = static_cast<uid_t>(identity.uid);
+    const gid_t target_gid = static_cast<gid_t>(identity.gid);
 
     // Switch to global mount namespace if requested
     if (mount_master) {
@@ -300,16 +301,16 @@ int run_su_shell(int argc, char** argv) {
             setenv("LOGNAME", pw->pw_name, 1);
             setenv("SHELL", shell.c_str(), 1);
         } else {
+            const std::string uid_name = std::to_string(target_uid);
             setenv("HOME", "/data", 1);
-            setenv("USER", "root", 1);
-            setenv("LOGNAME", "root", 1);
+            setenv("USER", uid_name.c_str(), 1);
+            setenv("LOGNAME", uid_name.c_str(), 1);
             setenv("SHELL", shell.c_str(), 1);
         }
     }
 
-    // Set identity
     umask(022);
-    if (!set_identity(target_uid, target_gid, groups)) {
+    if (identity.requested && !set_identity(target_uid, target_gid, groups)) {
         return 1;
     }
 

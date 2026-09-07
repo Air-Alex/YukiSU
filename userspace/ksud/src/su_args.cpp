@@ -3,8 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ksud::su_args {
@@ -142,6 +146,45 @@ ParsedArgv split(const std::vector<std::string>& argv) {
     parsed.option_argv.insert(parsed.option_argv.end(), operands.begin(), operands.end());
 
     return parsed;
+}
+
+std::optional<std::uint32_t> parse_numeric_id(std::string_view value) {
+    if (value.empty()) {
+        return std::nullopt;
+    }
+
+    std::uint32_t result = 0;
+    for (const char ch : value) {
+        if (ch < '0' || ch > '9') {
+            return std::nullopt;
+        }
+        const std::uint32_t digit = static_cast<std::uint32_t>(ch - '0');
+        if (result > (std::numeric_limits<std::uint32_t>::max() - digit) / 10) {
+            return std::nullopt;
+        }
+        result = result * 10 + digit;
+    }
+    if (result == std::numeric_limits<std::uint32_t>::max()) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+std::optional<std::uint32_t> resolve_uid(std::string_view user,
+                                         std::optional<std::uint32_t> passwd_uid) {
+    if (passwd_uid.has_value()) {
+        return *passwd_uid == std::numeric_limits<std::uint32_t>::max() ? std::nullopt : passwd_uid;
+    }
+    return parse_numeric_id(user);
+}
+
+IdentityPlan make_identity_plan(std::optional<std::uint32_t> uid, std::optional<std::uint32_t> gid,
+                                std::optional<std::uint32_t> first_group,
+                                std::uint32_t current_uid) {
+    const bool requested = uid.has_value() || gid.has_value() || first_group.has_value();
+    const std::uint32_t resolved_uid = uid.value_or(current_uid);
+    const std::uint32_t resolved_gid = gid.value_or(first_group.value_or(resolved_uid));
+    return {requested, resolved_uid, resolved_gid};
 }
 
 }  // namespace ksud::su_args

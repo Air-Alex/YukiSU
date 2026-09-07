@@ -1,6 +1,7 @@
 #include "../src/su_args.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -147,6 +148,51 @@ void test_odd_shapes() {
     expect({"su", "a", "b"}, {"su", "a"}, "b", {});
 }
 
+void test_uid_resolution() {
+    assert(args::resolve_uid("shell", 2000) == 2000);
+    assert(args::resolve_uid("123", 456) == 456);
+    assert(args::resolve_uid("0", std::nullopt) == 0);
+    assert(args::resolve_uid("4294967294", std::nullopt) == UINT32_MAX - 1);
+
+    assert(!args::resolve_uid("", std::nullopt).has_value());
+    assert(!args::resolve_uid("missing", std::nullopt).has_value());
+    assert(!args::resolve_uid("-1", std::nullopt).has_value());
+    assert(!args::resolve_uid("12x", std::nullopt).has_value());
+    assert(!args::resolve_uid("4294967295", std::nullopt).has_value());
+    assert(!args::resolve_uid("4294967296", std::nullopt).has_value());
+    assert(!args::resolve_uid("invalid", UINT32_MAX).has_value());
+}
+
+void test_numeric_id_parsing() {
+    assert(args::parse_numeric_id("0") == 0);
+    assert(args::parse_numeric_id("4294967294") == UINT32_MAX - 1);
+    assert(!args::parse_numeric_id("").has_value());
+    assert(!args::parse_numeric_id("-1").has_value());
+    assert(!args::parse_numeric_id("12x").has_value());
+    assert(!args::parse_numeric_id("4294967295").has_value());
+    assert(!args::parse_numeric_id("4294967296").has_value());
+}
+
+void expect_identity(std::optional<std::uint32_t> uid, std::optional<std::uint32_t> gid,
+                     std::optional<std::uint32_t> first_group, std::uint32_t current_uid,
+                     bool requested, std::uint32_t expected_uid, std::uint32_t expected_gid) {
+    const args::IdentityPlan plan = args::make_identity_plan(uid, gid, first_group, current_uid);
+    assert(plan.requested == requested);
+    assert(plan.uid == expected_uid);
+    assert(plan.gid == expected_gid);
+}
+
+void test_identity_plan() {
+    expect_identity(std::nullopt, std::nullopt, std::nullopt, 2000, false, 2000, 2000);
+    expect_identity(0, std::nullopt, std::nullopt, 2000, true, 0, 0);
+    expect_identity(1000, std::nullopt, std::nullopt, 2000, true, 1000, 1000);
+    expect_identity(std::nullopt, 0, std::nullopt, 2000, true, 2000, 0);
+    expect_identity(std::nullopt, 3000, std::nullopt, 2000, true, 2000, 3000);
+    expect_identity(std::nullopt, std::nullopt, 0, 2000, true, 2000, 0);
+    expect_identity(std::nullopt, std::nullopt, 4000, 2000, true, 2000, 4000);
+    expect_identity(1000, 3000, 4000, 2000, true, 1000, 3000);
+}
+
 }  // namespace
 
 int main() {
@@ -158,6 +204,9 @@ int main() {
     test_legacy_aliases();
     test_command_precedence();
     test_odd_shapes();
+    test_uid_resolution();
+    test_numeric_id_parsing();
+    test_identity_plan();
     std::cout << "su_args_test: all checks passed\n";
     return 0;
 }
