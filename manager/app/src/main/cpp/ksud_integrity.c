@@ -21,7 +21,7 @@
 #define KSUD_MAX_SIZE (128ULL * 1024ULL * 1024ULL)
 
 static const char kSelinuxXattr[] = "security.selinux";
-static const char kAdbFileContext[] = "u:object_r:adb_data_file:s0";
+static const char kKsuFileContext[] = "u:object_r:ksu_file:s0";
 
 enum ksud_task_type {
   KSUD_TASK_VERIFY,
@@ -84,7 +84,7 @@ static bool has_daemon_context(int descriptor) {
     return false;
   }
   context[size] = '\0';
-  return strcmp(context, kAdbFileContext) == 0;
+  return strcmp(context, kKsuFileContext) == 0;
 }
 
 static int verify_ksud(const char *source_path) {
@@ -220,8 +220,8 @@ static bool copy_source_to_temp(int source, int directory,
 
   if (success) {
     success = fchown(output, 0, 0) == 0 && fchmod(output, 0755) == 0 &&
-              fsetxattr(output, kSelinuxXattr, kAdbFileContext,
-                        sizeof(kAdbFileContext), 0) == 0 &&
+              fsetxattr(output, kSelinuxXattr, kKsuFileContext,
+                        sizeof(kKsuFileContext), 0) == 0 &&
               fsync(output) == 0;
   }
   close(output);
