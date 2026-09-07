@@ -1058,6 +1058,101 @@ int exec_command_async(const std::vector<std::string>& args) {
 
 namespace {
 
+bool install_daemon_atomically() {
+    const int source = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+    if (source < 0) {
+        LOGE("Failed to open /proc/self/exe: %s", strerror(errno));
+        return false;
+    }
+    struct stat source_stat{};
+    if (fstat(source, &source_stat) != 0 || !S_ISREG(source_stat.st_mode) ||
+        source_stat.st_size <= 0) {
+        LOGE("Invalid /proc/self/exe source");
+        close(source);
+        return false;
+    }
+
+    std::string temporary = std::string(DAEMON_PATH) + ".tmp.XXXXXX";
+    std::vector<char> temporary_path(temporary.begin(), temporary.end());
+    temporary_path.push_back('\0');
+    const int target = mkstemp(temporary_path.data());
+    if (target < 0) {
+        LOGE("Failed to create temporary ksud: %s", strerror(errno));
+        close(source);
+        return false;
+    }
+
+    bool success = true;
+    std::array<char, 65536> buffer{};
+    while (success) {
+        const ssize_t count = read(source, buffer.data(), buffer.size());
+        if (count == 0)
+            break;
+        if (count < 0) {
+            if (errno == EINTR)
+                continue;
+            LOGE("Failed to read /proc/self/exe: %s", strerror(errno));
+            success = false;
+            break;
+        }
+
+        size_t offset = 0;
+        while (offset < static_cast<size_t>(count)) {
+            const ssize_t written =
+                write(target, buffer.data() + offset, static_cast<size_t>(count) - offset);
+            if (written < 0) {
+                if (errno == EINTR)
+                    continue;
+                LOGE("Failed to write temporary ksud: %s", strerror(errno));
+                success = false;
+                break;
+            }
+            if (written == 0) {
+                LOGE("Failed to write temporary ksud: zero-length write");
+                success = false;
+                break;
+            }
+            offset += static_cast<size_t>(written);
+        }
+    }
+
+    if (success && fchmod(target, 0755) != 0) {
+        LOGE("Failed to chmod temporary ksud: %s", strerror(errno));
+        success = false;
+    }
+    if (success && !lsetfilecon(temporary_path.data(), KSU_CON))
+        success = false;
+    if (success && fsync(target) != 0) {
+        LOGE("Failed to sync temporary ksud: %s", strerror(errno));
+        success = false;
+    }
+
+    close(source);
+    if (close(target) != 0 && success) {
+        LOGE("Failed to close temporary ksud: %s", strerror(errno));
+        success = false;
+    }
+
+    if (!success) {
+        unlink(temporary_path.data());
+        return false;
+    }
+
+    if (rename(temporary_path.data(), DAEMON_PATH) != 0) {
+        LOGE("Failed to replace %s: %s", DAEMON_PATH, strerror(errno));
+        unlink(temporary_path.data());
+        return false;
+    }
+
+    const int directory = open(ADB_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (directory >= 0) {
+        if (fsync(directory) != 0)
+            LOGW("Failed to sync %s after ksud update: %s", ADB_DIR, strerror(errno));
+        close(directory);
+    }
+    return true;
+}
+
 bool copy_optional_file(const std::optional<std::string>& src_path, const char* dst_path,
                         mode_t mode) {
     if (!src_path) {
@@ -1083,22 +1178,10 @@ int install(const std::optional<std::string>& magiskboot_path,
         return 1;
     }
 
-    // Copy self to DAEMON_PATH
-    std::array<char, PATH_MAX> self_path{};
-    const ssize_t len = readlink("/proc/self/exe", self_path.data(), self_path.size() - 1);
-    if (len < 0) {
-        LOGE("Failed to get self path");
-        return 1;
-    }
-    self_path[static_cast<size_t>(len)] = '\0';
-
-    // Copy binary
-    if (!copy_file_data(self_path.data(), DAEMON_PATH)) {
+    if (!install_daemon_atomically()) {
         LOGE("Failed to copy ksud");
         return 1;
     }
-
-    chmod(DAEMON_PATH, 0755);
 
     // Restore SELinux contexts
     if (!restorecon()) {
