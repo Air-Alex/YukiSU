@@ -19,6 +19,7 @@
 #include "klog.h" // IWYU pragma: keep
 #include "runtime/ksud.h"
 #include "sulog/event.h"
+#include "supercall/supercall.h"
 #include "uapi/supercall.h"
 #include "feature/sucompat.h"
 
@@ -222,7 +223,7 @@ ksu_handle_execve_sucompat_common(const char __user **filename_user,
 	if (ret) {
 		pr_err("escape_with_root_profile failed: %ld\n", ret);
 		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
-		goto do_orig_execve;
+		return ret;
 	}
 
 	ret = ksu_syscall_table[orig_nr](regs);
@@ -231,6 +232,10 @@ ksu_handle_execve_sucompat_common(const char __user **filename_user,
 		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 		*filename_user = sh_user_path();
 	} else {
+		int su_fd = ksu_install_su_fd();
+
+		if (su_fd < 0)
+			pr_warn("install su session fd failed: %d\n", su_fd);
 		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 		return ret;
 	}

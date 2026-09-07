@@ -34,11 +34,19 @@ bool g_info_cached = false;
 
 constexpr size_t kLinkPathSize = 64;
 constexpr size_t kReadlinkBufSize = 256;
+constexpr const char* kDriverFdName = "anon_inode:[ksu_driver]";
+constexpr const char* kSuDriverFdName = "anon_inode:[ksu_driver_su]";
 
-auto scan_driver_fd() -> int {
+struct DriverFd {
+    int fd{-1};
+    bool su_session{false};
+    int error{0};
+};
+
+auto scan_driver_fd() -> DriverFd {
     DIR* dir = opendir("/proc/self/fd");
     if (dir == nullptr) {
-        return -1;
+        return {-1, false, errno != 0 ? errno : EIO};
     }
 
     int found_fd = -1;
@@ -67,23 +75,26 @@ auto scan_driver_fd() -> int {
         const ssize_t len = readlink(link_path.data(), target.data(), target.size() - 1);
         if (len > 0 && static_cast<size_t>(len) < target.size()) {
             target[static_cast<size_t>(len)] = '\0';
-            if (strstr(target.data(), "[ksu_driver]") != nullptr) {
+            if (strcmp(target.data(), kSuDriverFdName) == 0) {
+                closedir(dir);
+                return {static_cast<int>(fd_num), true};
+            }
+            if (strcmp(target.data(), kDriverFdName) == 0) {
                 found_fd = static_cast<int>(fd_num);
-                break;
             }
         }
     }
 
     closedir(dir);
-    return found_fd;
+    return {found_fd, false};
 }
 
 auto init_driver_fd() -> int {
     // Method 1: Check if we already have an inherited fd
-    const int driver_fd = scan_driver_fd();
-    if (driver_fd >= 0) {
-        LOGD("Found inherited driver fd: %d", driver_fd);
-        return driver_fd;
+    const DriverFd driver = scan_driver_fd();
+    if (driver.fd >= 0) {
+        LOGD("Found inherited driver fd: %d", driver.fd);
+        return driver.fd;
     }
 
     // Method 2: Try prctl to get fd (SECCOMP-safe)
@@ -115,6 +126,21 @@ auto get_driver_fd() -> int {
 }
 
 }  // namespace
+
+int claim_inherited_su_driver_fd() {
+    const DriverFd driver = scan_driver_fd();
+    if (driver.error != 0) {
+        return -driver.error;
+    }
+    if (driver.fd < 0 || !driver.su_session) {
+        return 0;
+    }
+
+    g_driver_fd = driver.fd;
+    g_driver_fd_init = true;
+    LOGD("Claimed inherited su-session driver fd: %d", driver.fd);
+    return 1;
+}
 
 int ksuctl(int request, void* arg) {
     const int fd = get_driver_fd();

@@ -66,7 +66,8 @@ struct ksu_become_daemon_cmd {
  * number-stable across versions -- the manager's auth/fd handshake depends on
  * GET_INFO working even when kernel and userspace are skewed during an update.
  */
-#define KERNEL_SU_UAPI_VERSION 2
+// 3: scoped su-session driver fd
+#define KERNEL_SU_UAPI_VERSION 3
 
 #define KSU_GET_INFO_FLAG_LKM (1U << 0)
 #define KSU_GET_INFO_FLAG_MANAGER (1U << 1)

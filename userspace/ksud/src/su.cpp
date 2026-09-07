@@ -87,7 +87,8 @@ bool set_selinux_context(const std::string& context) {
 }
 
 void wrap_tty(int fd) {
-    if (isatty(fd) != 1) {
+    errno = 0;
+    if (isatty(fd) != 1 && errno != EACCES) {
         return;
     }
     const int new_fd = get_wrapped_fd(fd);
@@ -95,27 +96,29 @@ void wrap_tty(int fd) {
         LOGW("Failed to get wrapped fd for %d", fd);
         return;
     }
-    if (dup2(new_fd, fd) == -1) {
-        LOGW("Failed to dup %d -> %d: %s", new_fd, fd, strerror(errno));
+    if (isatty(new_fd) != 1) {
+        close(new_fd);
+        return;
     }
+    const int dup_result = dup2(new_fd, fd);
+    const int dup_errno = errno;
     close(new_fd);
+    if (dup_result == -1) {
+        LOGW("Failed to dup %d -> %d: %s", new_fd, fd, strerror(dup_errno));
+    }
 }
 
 }  // namespace
 
 int su_main(int argc, char** argv) {
-    // Grant root first
-    if (grant_root() < 0) {
-        LOGE("Failed to grant root");
+    // sucompat applies the selected profile before exec and installs a scoped
+    // driver fd once that exec succeeds. Older kernels may not provide the fd,
+    // but have already applied the profile as well.
+    const int claim_result = claim_inherited_su_driver_fd();
+    if (claim_result < 0) {
+        LOGE("Failed to scan inherited driver fds: %s", strerror(-claim_result));
         return 1;
     }
-
-    // Set userspace creds after kernel grant; skip if already root.
-    if (geteuid() != 0 || getegid() != 0) {
-        setgid(0);
-        setuid(0);
-    }
-
     return run_su_shell(argc, argv);
 }
 

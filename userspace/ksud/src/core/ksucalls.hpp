@@ -46,6 +46,10 @@ struct ListTryUmountCmd {
 
 // API functions
 int ksuctl(int request, void* arg);
+// Claim the scoped fd installed after sucompat's exec; it is already CLOEXEC
+// for the target shell. Call only during fresh-exec, single-threaded su startup.
+// Returns 1 when claimed, 0 when absent, or -errno.
+int claim_inherited_su_driver_fd();
 
 int32_t get_version();
 uint32_t get_flags();

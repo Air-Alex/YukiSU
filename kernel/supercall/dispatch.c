@@ -1488,7 +1488,8 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_GET_WRAPPER_FD,
      .name = "GET_WRAPPER_FD",
      .handler = do_get_wrapper_fd,
-     .perm_check = manager_or_root},
+     .perm_check = manager_or_root,
+     .allow_su_session = true},
     {.cmd = KSU_IOCTL_MANAGE_MARK,
      .name = "MANAGE_MARK",
      .handler = do_manage_mark,
@@ -1512,7 +1513,8 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
     {.cmd = KSU_IOCTL_DISABLE_ESCAPE_TO_ROOT,
      .name = "DISABLE_ESCAPE_TO_ROOT",
      .handler = do_disable_escape_to_root,
-     .perm_check = only_root},
+     .perm_check = only_root,
+     .allow_su_session = true},
     {.cmd = KSU_IOCTL_GET_UAPI_VERSION,
      .name = "GET_UAPI_VERSION",
      .handler = do_get_uapi_version,
@@ -1635,7 +1637,8 @@ void ksu_supercall_dump_commands(void)
 	}
 }
 
-long ksu_supercall_handle_ioctl(unsigned int cmd, void __user *argp)
+long ksu_supercall_handle_ioctl(const struct file *filp, unsigned int cmd,
+				void __user *argp)
 {
 	int i;
 
@@ -1646,7 +1649,9 @@ long ksu_supercall_handle_ioctl(unsigned int cmd, void __user *argp)
 	for (i = 0; ksu_ioctl_handlers[i].handler; i++) {
 		if (cmd == ksu_ioctl_handlers[i].cmd) {
 			if (ksu_ioctl_handlers[i].perm_check &&
-			    !ksu_ioctl_handlers[i].perm_check()) {
+			    !ksu_ioctl_handlers[i].perm_check() &&
+			    !(ksu_ioctl_handlers[i].allow_su_session &&
+			      ksu_is_su_session_fd(filp))) {
 				pr_warn("ksu ioctl: permission denied for "
 					"cmd=0x%x uid=%d\n",
 					cmd, current_uid().val);
