@@ -250,10 +250,11 @@ static __always_inline bool check_v2_signature(char *path,
 					       struct apk_sign_match *match)
 {
 	unsigned char buffer[0x10] = {0};
-	u32 cd_offset;
+	u32 cd_offset, cd_size;
+	u32 zip64_locator_magic;
 	u64 size_of_block, size_of_block_at_head;
 
-	loff_t pos, pairs_end, file_size;
+	loff_t pos, pairs_end, file_size, eocd_offset;
 
 	bool v2_signing_valid = false;
 	int v2_signing_blocks = 0;
@@ -287,6 +288,7 @@ static __always_inline bool check_v2_signature(char *path,
 					file_size))
 				goto clean;
 			if (magic == 0x06054b50) {
+				eocd_offset = pos - sizeof(magic);
 				break;
 			}
 		}
@@ -296,9 +298,25 @@ static __always_inline bool check_v2_signature(char *path,
 		}
 	}
 
-	pos += 12;
+	// Reject ZIP64 before looking for a signing block.
+	if (eocd_offset >= 20) {
+		pos = eocd_offset - 20;
+		if (!read_exact(fp, &zip64_locator_magic,
+				sizeof(zip64_locator_magic), &pos, file_size))
+			goto clean;
+		if (zip64_locator_magic == 0x07064b50)
+			goto clean;
+	}
+
+	pos = eocd_offset + 12;
+	// Size of central directory.
+	if (!read_exact(fp, &cd_size, sizeof(cd_size), &pos, file_size))
+		goto clean;
 	// offset of central directory
 	if (!read_exact(fp, &cd_offset, sizeof(cd_offset), &pos, file_size))
+		goto clean;
+	if ((u64)cd_offset > (u64)eocd_offset ||
+	    (u64)cd_size != (u64)eocd_offset - cd_offset)
 		goto clean;
 	if (cd_offset < 0x20)
 		goto clean;
