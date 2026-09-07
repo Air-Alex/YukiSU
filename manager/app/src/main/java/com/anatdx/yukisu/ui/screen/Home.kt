@@ -21,6 +21,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -1009,6 +1010,7 @@ private fun HomeInfoItem(
     contentColor: Color = Color.Unspecified,
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
+    contentScrollable: Boolean = false,
     index: Int = 0,
     count: Int = 1,
 ) {
@@ -1020,6 +1022,12 @@ private fun HomeInfoItem(
         repeatDelayMillis = 2_000,
         velocity = 18.dp,
     )
+    val contentScrollState = rememberScrollState()
+    LaunchedEffect(content, contentScrollable) {
+        if (contentScrollable) {
+            contentScrollState.scrollTo(0)
+        }
+    }
     val cardCorners = cardShape as? CornerBasedShape
     val compactCorners = compactShape as? CornerBasedShape
     val expressiveShape = when {
@@ -1101,7 +1109,11 @@ private fun HomeInfoItem(
             )
             Text(
                 text = content,
-                modifier = marqueeModifier,
+                modifier = if (contentScrollable) {
+                    Modifier.horizontalScroll(contentScrollState)
+                } else {
+                    marqueeModifier
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (contentColor == Color.Unspecified) {
                     LocalContentColor.current
@@ -1124,6 +1136,7 @@ private data class HomeInfoEntry(
     val contentColor: Color = Color.Unspecified,
     val onClick: (() -> Unit)? = null,
     val trailing: (@Composable () -> Unit)? = null,
+    val contentScrollable: Boolean = false,
 )
 
 @Composable
@@ -1204,6 +1217,7 @@ private fun InfoCard(
             label = stringResource(R.string.home_kernel),
             content = displayedKernelRelease,
             icon = Icons.Default.Memory,
+            contentScrollable = true,
             trailing = originalKernelRelease?.let {
                 {
                     YukiIcon(
@@ -1329,6 +1343,7 @@ private fun InfoCard(
                     contentColor = entry.contentColor,
                     onClick = entry.onClick,
                     trailing = entry.trailing,
+                    contentScrollable = entry.contentScrollable,
                     index = index,
                     count = entries.size,
                 )
@@ -1352,6 +1367,7 @@ private fun InfoCard(
                         contentColor = entry.contentColor,
                         onClick = entry.onClick,
                         trailing = entry.trailing,
+                        contentScrollable = entry.contentScrollable,
                     )
                 }
             }
