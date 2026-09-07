@@ -9,8 +9,6 @@
 #include <getopt.h>
 #include <grp.h>
 #include <pwd.h>
-#include <sched.h>
-#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <array>
@@ -373,12 +371,8 @@ int grant_root_shell(bool global_mnt) {
     }
 
     // Switch to global mount namespace if requested
-    if (global_mnt) {
-        const int fd = open("/proc/1/ns/mnt", O_RDONLY);
-        if (fd >= 0) {
-            setns(fd, CLONE_NEWNS);
-            close(fd);
-        }
+    if (global_mnt && !switch_mnt_ns(1)) {
+        LOGW("Failed to switch to global mount namespace");
     }
 
     // Add /data/adb/ksu/bin to PATH
