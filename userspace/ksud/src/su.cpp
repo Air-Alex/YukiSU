@@ -225,7 +225,7 @@ int run_su_shell(int argc, char** argv) {
             ksu_no_new_privs = true;
             break;
         default:
-            break;
+            return 1;
         }
     }
 
