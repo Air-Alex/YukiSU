@@ -81,16 +81,8 @@ DaemonizeResult daemonize_soft_reboot() {
         _exit(1);
     }
 
-    const int devnull = open("/dev/null", O_RDWR | O_CLOEXEC);
-    if (devnull < 0 || dup2(devnull, STDIN_FILENO) < 0 || dup2(devnull, STDOUT_FILENO) < 0 ||
-        dup2(devnull, STDERR_FILENO) < 0) {
-        LOGE("Failed to redirect soft reboot daemon stdio: %s", strerror(errno));
-        if (devnull >= 0)
-            close(devnull);
+    if (!reset_stdio_to_devnull())
         _exit(1);
-    }
-    if (devnull > STDERR_FILENO)
-        close(devnull);
 
     const pid_t daemon_pid = fork();
     if (daemon_pid < 0)

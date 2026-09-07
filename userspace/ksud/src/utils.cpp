@@ -315,6 +315,61 @@ void switch_cgroups() {
     }
 }
 
+bool reset_stdio_to_devnull() {
+    const int devnull = open("/dev/null", O_RDWR);
+    if (devnull < 0) {
+        LOGE("Failed to open /dev/null: %s", strerror(errno));
+        return false;
+    }
+
+    bool success = true;
+    for (const int target : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
+        if (devnull != target && dup2(devnull, target) < 0) {
+            LOGE("Failed to redirect fd %d to /dev/null: %s", target, strerror(errno));
+            success = false;
+            break;
+        }
+    }
+    if (devnull > STDERR_FILENO)
+        close(devnull);
+    return success;
+}
+
+ProcessDaemonizeResult daemonize_process(bool use_init_pgrp) {
+    const pid_t child = fork();
+    if (child < 0) {
+        LOGE("Failed to fork daemon launcher: %s", strerror(errno));
+        return ProcessDaemonizeResult::Error;
+    }
+
+    if (child > 0) {
+        int status = 0;
+        pid_t waited;
+        do {
+            waited = waitpid(child, &status, 0);
+        } while (waited < 0 && errno == EINTR);
+
+        if (waited < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            LOGE("Daemon launcher failed to initialize");
+            return ProcessDaemonizeResult::Error;
+        }
+        return ProcessDaemonizeResult::Parent;
+    }
+
+    detach_process_group(use_init_pgrp);
+    switch_cgroups();
+    if (!reset_stdio_to_devnull())
+        _exit(1);
+
+    const pid_t daemon = fork();
+    if (daemon < 0)
+        _exit(1);
+    if (daemon > 0)
+        _exit(0);
+
+    return ProcessDaemonizeResult::Daemon;
+}
+
 void umask(mode_t mask) {  // NOLINT(misc-unused-parameters) forwarded to ::umask
     ::umask(mask);
 }

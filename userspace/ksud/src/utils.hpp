@@ -27,9 +27,17 @@ std::optional<std::string> getprop(const std::string& prop);
 bool is_safe_mode();
 
 // Process utilities
+enum class ProcessDaemonizeResult : std::uint8_t {
+    Parent,
+    Daemon,
+    Error,
+};
+
 bool switch_mnt_ns(pid_t pid);
 void detach_process_group(bool use_init_pgrp);
 void switch_cgroups();
+bool reset_stdio_to_devnull();
+ProcessDaemonizeResult daemonize_process(bool use_init_pgrp);
 void umask(mode_t mask);
 
 // Magisk detection

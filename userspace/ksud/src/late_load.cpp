@@ -159,9 +159,26 @@ void run_post_magica_cleanup() {
 }  // namespace
 
 int run(bool post_magica, bool allow_shell) {
+    switch (daemonize_process(false)) {
+    case ProcessDaemonizeResult::Parent:
+        return 0;
+    case ProcessDaemonizeResult::Error:
+        return 1;
+    case ProcessDaemonizeResult::Daemon:
+        break;
+    }
+
     LOGI("late-load command triggered");
     const auto execute = [allow_shell]() -> int {
         if (!is_kernelsu_loaded() && !extract_and_load_kernelsu(allow_shell)) {
+            return 1;
+        }
+
+        // Loading the LKM may transition this process into the KernelSU domain.
+        // Reopen standard descriptors so later Binder fd transfers carry the
+        // current SELinux identity rather than that of the bootstrap shell.
+        if (!reset_stdio_to_devnull()) {
+            LOGE("late-load: failed to reset stdio after loading the LKM");
             return 1;
         }
 
