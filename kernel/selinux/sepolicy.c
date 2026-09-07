@@ -1,5 +1,6 @@
 #include <linux/gfp.h>
 #include <linux/err.h>
+#include <linux/overflow.h>
 #include <linux/printk.h>
 #include <linux/slab.h>
 #include <linux/version.h>
@@ -951,12 +952,23 @@ void ksu_destroy_sepolicy(struct selinux_policy *pol)
 struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
 {
 	int ret;
+	size_t ebitmap_extra;
 	size_t len;
 	struct selinux_policy *new_pol;
 	void *data;
 	struct policy_file fp;
 
-	len = old_pol->policydb.len;
+	/*
+	 * policydb_read() adds every type to its own attribute map, so the
+	 * serialized copy can grow by one ebitmap node per type.
+	 */
+	if (check_mul_overflow((size_t)old_pol->policydb.p_types.nprim,
+			       sizeof(u32) + sizeof(u64), &ebitmap_extra) ||
+	    check_add_overflow(old_pol->policydb.len, ebitmap_extra, &len)) {
+		pr_err("sepolicy: policy buffer length overflow\n");
+		return ERR_PTR(-EOVERFLOW);
+	}
+
 	data = vmalloc(len);
 	if (!data) {
 		pr_err("sepolicy: alloc policy len %zu\n", len);
@@ -972,6 +984,7 @@ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
 		pr_err("sepolicy: policydb_write: %d\n", ret);
 		goto out_free_data;
 	}
+	len -= fp.len;
 
 	// https://android.googlesource.com/kernel/common/+/35a7845718734ae638b85b420534cb859498dab6%5E%21
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
@@ -1007,7 +1020,7 @@ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
 		pr_err("sepolicy: policydb_read: %d\n", ret);
 		goto out_free_policy;
 	}
-	new_pol->policydb.len = old_pol->policydb.len;
+	new_pol->policydb.len = len;
 	kvfree(data);
 
 	return new_pol;
