@@ -24,6 +24,7 @@
 #include "feature/sucompat_vfs.h"
 #include "feature/sucompat_exec.h"
 #include "feature/sucompat_prompt.h"
+#include "feature/sucompat_module_guard.h"
 #include "infra/symbol_resolver.h"
 #include "ksu.h"
 #include "policy/allowlist.h"
@@ -122,6 +123,7 @@ struct ksu_suvfs_state {
 static struct ksu_suvfs_state suvfs;
 static struct lock_class_key suvfs_vnode_i_mutex_key;
 static DEFINE_MUTEX(suvfs_lock);
+static DEFINE_MUTEX(suvfs_transition_lock);
 static DEFINE_SPINLOCK(suvfs_sop_lock);
 static DECLARE_WAIT_QUEUE_HEAD(suvfs_wait);
 static DEFINE_HASHTABLE(suvfs_dops, KSU_SUVFS_DOP_HASH_BITS);
@@ -1720,7 +1722,20 @@ static int suvfs_disable(void)
 
 int ksu_sucompat_vfs_set_enabled(bool enabled)
 {
-	return enabled ? suvfs_enable() : suvfs_disable();
+	int ret;
+
+	mutex_lock(&suvfs_transition_lock);
+	if (enabled) {
+		ret = ksu_sucompat_module_guard_acquire();
+		if (ret)
+			goto out;
+	}
+	ret = enabled ? suvfs_enable() : suvfs_disable();
+	if (!ksu_sucompat_vfs_active())
+		ksu_sucompat_module_guard_release();
+out:
+	mutex_unlock(&suvfs_transition_lock);
+	return ret;
 }
 
 int ksu_sucompat_vfs_init(void)
@@ -1744,9 +1759,14 @@ int ksu_sucompat_vfs_init(void)
 	hash_init(suvfs_fops_by_orig);
 	hash_init(suvfs_fops_by_ingress);
 	hash_init(suvfs_synth_dops);
-	ret = suvfs_fop_bridge_init();
+	ret = ksu_sucompat_module_guard_init();
 	if (ret)
 		return ret;
+	ret = suvfs_fop_bridge_init();
+	if (ret) {
+		ksu_sucompat_module_guard_exit();
+		return ret;
+	}
 
 	hash_init(suvfs_dops);
 	INIT_LIST_HEAD(&suvfs_dop_list);
@@ -1763,7 +1783,7 @@ void ksu_sucompat_vfs_exit(void)
 	int ret;
 
 	WRITE_ONCE(suvfs.ready, false);
-	ret = suvfs_disable();
+	ret = ksu_sucompat_vfs_set_enabled(false);
 	flush_delayed_work(&suvfs_reap_dops_work);
 	if (!ret) {
 		suvfs_fop_bridge_exit();
@@ -1773,6 +1793,7 @@ void ksu_sucompat_vfs_exit(void)
 		WRITE_ONCE(suvfs.prompt_enabled, false);
 		suvfs.active_fop_template = NULL;
 		mutex_unlock(&suvfs_lock);
+		ksu_sucompat_module_guard_exit();
 	}
 	WARN_ON_ONCE(ret || suvfs.enabled || suvfs.retiring || suvfs.sb ||
 		     suvfs.parent_fop_installed || suvfs.active_fop_template ||
