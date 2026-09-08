@@ -1,5 +1,5 @@
 # libzygisk64.so / libzygisk32.so -- the Zygisk core (see src/core.cpp).
-# Standalone NDK CMake build, like userspace/su.
+# Standalone NDK CMake build.
 
 cmake_minimum_required(VERSION 3.14)
 project(zygisk_core VERSION 1.0.0 LANGUAGES C CXX ASM)

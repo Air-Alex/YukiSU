@@ -385,35 +385,6 @@ int get_uts_view_status(ksu_uts_view_status* status) {
     return uts_ksuctl(KSU_IOCTL_GET_UTS_VIEW_STATUS, status);
 }
 
-bool uid_granted_root(uint32_t uid) {
-    ksu_uid_granted_root_cmd cmd{};
-    cmd.uid = uid;
-    if (ksuctl(KSU_IOCTL_UID_GRANTED_ROOT, &cmd) != 0) {
-        return false;
-    }
-    return cmd.granted != 0;
-}
-
-bool uid_should_umount(uint32_t uid) {
-    ksu_uid_should_umount_cmd cmd{};
-    cmd.uid = uid;
-    if (ksuctl(KSU_IOCTL_UID_SHOULD_UMOUNT, &cmd) != 0) {
-        return false;
-    }
-    return cmd.should_umount != 0;
-}
-
-int set_magisk_su_profile(const std::string& package, uint32_t uid, bool allow) {
-    if (package.empty()) {
-        return -1;
-    }
-    ksu_magisk_persist_cmd cmd{};
-    cmd.uid = uid;
-    cmd.allow = allow ? 1 : 0;
-    strncpy(cmd.package, package.c_str(), sizeof(cmd.package) - 1);
-    return ksuctl(KSU_IOCTL_MAGISK_PERSIST, &cmd);
-}
-
 int get_manager_uid() {
     ksu_get_manager_uid_cmd cmd = {};
     if (ksuctl(KSU_IOCTL_GET_MANAGER_UID, &cmd) != 0) {
@@ -430,6 +401,11 @@ int get_wrapped_fd(int fd) {
 int get_sulog_fd() {
     GetSulogFdCmd cmd = {0};
     return ksuctl(KSU_IOCTL_GET_SULOG_FD, &cmd);
+}
+
+int get_su_prompt_fd() {
+    GetSuPromptFdCmd cmd = {0};
+    return ksuctl(KSU_IOCTL_GET_SU_PROMPT_FD, &cmd);
 }
 
 uint32_t mark_get(int32_t pid) {

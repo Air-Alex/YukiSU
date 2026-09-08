@@ -283,7 +283,7 @@ if(NOT VERSION_RESULT EQUAL 0)
 endif()
 
 # Run embed_assets.py to generate assets_data.cpp from everything in assets/. All
-# assets (ko, ksuinit, su) are staged into assets/ by build.sh BEFORE configure,
+# assets (ko and ksuinit) are staged into assets/ by build.sh before configure,
 # so the glob catches them. DEPEND on the asset files (not just the script) plus
 # CONFIGURE_DEPENDS so the table regenerates whenever an asset is added/changed.
 file(GLOB ASSET_FILES CONFIGURE_DEPENDS ${ASSETS_DIR}/*)
@@ -410,9 +410,7 @@ set(KSUD_OUR_SOURCES
     src/debug.cpp
     src/sulog.cpp
     src/magisk_compat/msud.cpp
-    src/magisk_compat/su_mount.cpp
-    src/magisk_compat/su_magic.cpp
-    src/magisk_compat/su_protocol.cpp
+    src/magisk_compat/su_transition.cpp
     src/magica/adb_client.cpp
     src/magica/magica.cpp
     src/core/hide_bootloader.cpp
@@ -634,7 +632,3 @@ endif()
 
 # Install
 install(TARGETS ksud DESTINATION bin)
-
-# NOTE: the standalone magisk-compat `su` is built separately (userspace/su,
-# like ksuinit) and staged into assets/ by build.sh BEFORE this CMake configures,
-# so it is embedded as an ordinary prebuilt asset -- ksud does NOT compile it.

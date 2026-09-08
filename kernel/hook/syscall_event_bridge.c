@@ -37,14 +37,14 @@ void ksu_stop_ksud_execve_hook(void)
 
 long __nocfi ksu_hook_newfstatat(int orig_nr, const struct pt_regs *regs)
 {
-	if (ksu_su_compat_enabled)
+	if (READ_ONCE(ksu_su_compat_enabled))
 		return ksu_handle_stat_sucompat(orig_nr, regs);
 	return ksu_syscall_table[orig_nr](regs);
 }
 
 long __nocfi ksu_hook_faccessat(int orig_nr, const struct pt_regs *regs)
 {
-	if (ksu_su_compat_enabled)
+	if (READ_ONCE(ksu_su_compat_enabled))
 		return ksu_handle_faccessat_sucompat(orig_nr, regs);
 	return ksu_syscall_table[orig_nr](regs);
 }
@@ -130,7 +130,7 @@ static long __nocfi ksu_hook_execve_common(int orig_nr,
 		ret = ksu_syscall_table[orig_nr](regs);
 		ksu_sulog_emit_pending(pending_root_execve, ret, GFP_KERNEL);
 		return ret;
-	} else if (ksu_su_compat_enabled) {
+	} else if (ksu_sucompat_exec_enabled()) {
 		ret = execveat ? ksu_handle_execveat_sucompat(filename_user,
 							      orig_nr, regs)
 			       : ksu_handle_execve_sucompat(filename_user,

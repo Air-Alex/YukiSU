@@ -25,6 +25,7 @@ using GetFeatureCmd = ksu_get_feature_cmd;
 using SetFeatureCmd = ksu_set_feature_cmd;
 using GetWrapperFdCmd = ksu_get_wrapper_fd_cmd;
 using GetSulogFdCmd = ksu_get_sulog_fd_cmd;
+using GetSuPromptFdCmd = ksu_get_su_prompt_fd_cmd;
 using ManageMarkCmd = ksu_manage_mark_cmd;
 using NukeExt4SysfsCmd = ksu_nuke_ext4_sysfs_cmd;
 using AddTryUmountCmd = ksu_add_try_umount_cmd;
@@ -85,6 +86,7 @@ int get_uts_view_status(ksu_uts_view_status* status);
 
 int get_wrapped_fd(int fd);
 int get_sulog_fd();
+int get_su_prompt_fd();
 
 // Mark management
 uint32_t mark_get(int32_t pid);
@@ -101,11 +103,6 @@ int umount_list_wipe();
 int umount_list_add(const std::string& path, uint32_t flags);
 int umount_list_del(const std::string& path);
 std::optional<std::string> umount_list_list();
-
-bool uid_granted_root(uint32_t uid);
-bool uid_should_umount(uint32_t uid);
-
-int set_magisk_su_profile(const std::string& package, uint32_t uid, bool allow);
 
 int get_manager_uid();
 

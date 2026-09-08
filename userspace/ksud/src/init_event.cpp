@@ -10,7 +10,6 @@
 #include "integrity_monitor.hpp"
 #include "log.hpp"
 #include "magisk_compat/msud.hpp"
-#include "magisk_compat/su_mount.hpp"
 #include "module/metamodule.hpp"
 #include "module/module.hpp"
 #include "module/module_config.hpp"
@@ -519,10 +518,10 @@ int on_post_data_fs() {
 
     umount_apply_config();
 
-    // Register per-app unmount only after umount_apply_config resets the list.
-    mount_magisk_compat_su_if_enabled();
-
     run_stage("post-mount", true);
+    if (refresh_sucompat_vfs() != 0) {
+        LOGW("refresh vnode-backed su after final mounts failed");
+    }
 
     chdir("/");
 

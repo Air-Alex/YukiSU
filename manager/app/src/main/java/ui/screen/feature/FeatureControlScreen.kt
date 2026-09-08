@@ -9,7 +9,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.EnhancedEncryption
 import androidx.compose.material.icons.rounded.RemoveCircle
-import androidx.compose.material.icons.rounded.RemoveModerator
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,15 +23,16 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
-import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getFeatureStatus
 import com.anatdx.yukisu.ui.util.getFeatureValue
+import com.anatdx.yukisu.ui.util.getFeatureValueOrNull
 import com.anatdx.yukisu.ui.util.restartAdbd
 import com.anatdx.yukisu.ui.util.setFeatureValue
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -59,6 +59,17 @@ private class FeatureToggleState(initialChecked: Boolean) {
     var saving by mutableStateOf(false)
 }
 
+private val suCompactController = SuCompactController(
+    read = {
+        SuCompactSnapshot(
+            traditional = getFeatureValueOrNull(Natives.FEATURE_SU_COMPAT) ?: true,
+            ksm = getFeatureValue(Natives.FEATURE_KASUMI_SUCOMPAT),
+            magisk = getFeatureValue(Natives.FEATURE_MAGISK_COMPAT),
+        )
+    },
+    write = ::setFeatureValue,
+)
+
 @Composable
 private fun rememberFeatureToggleState(
     featureId: Int,
@@ -74,6 +85,7 @@ private fun CoroutineScope.persistFeature(
     featureName: String,
     kernelEnabled: Boolean,
     displayInverted: Boolean = false,
+    relatedStates: List<FeatureToggleState> = emptyList(),
     optimistic: Boolean = false,
     afterPersist: suspend () -> Boolean = { true },
     afterPersistenceFailure: suspend () -> Unit = {},
@@ -82,19 +94,20 @@ private fun CoroutineScope.persistFeature(
     onSuccess: suspend () -> Unit = {},
     onFailure: suspend () -> Unit = {}
 ) {
-    if (state.saving) return
+    val savingStates = relatedStates + state
+    if (savingStates.any { it.saving }) return
 
     val previousKernelEnabled = getFeatureValue(featureId)
     if (optimistic) {
         state.checked = if (displayInverted) !kernelEnabled else kernelEnabled
     }
-    state.saving = true
+    savingStates.forEach { it.saving = true }
     launch {
         // Persistence and required runtime follow-ups must survive leaving this screen.
         val (success, runtimeEnabled) = withContext(NonCancellable) {
-            var persisted = setFeatureValue(featureName, featureId, kernelEnabled)
+            var persisted = setFeatureValue(featureName, kernelEnabled)
             if (persisted && !afterPersist()) {
-                setFeatureValue(featureName, featureId, previousKernelEnabled)
+                setFeatureValue(featureName, previousKernelEnabled)
                 afterPostRollback()
                 persisted = false
             } else if (!persisted) {
@@ -105,7 +118,7 @@ private fun CoroutineScope.persistFeature(
             persisted to current
         }
         state.checked = if (displayInverted) !runtimeEnabled else runtimeEnabled
-        state.saving = false
+        savingStates.forEach { it.saving = false }
         if (success) onSuccess() else onFailure()
     }
 }
@@ -125,10 +138,10 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
     val snackbarHost = remember { SnackbarHostState() }
 
     val selinuxHide = rememberFeatureToggleState(Natives.FEATURE_SELINUX_HIDE)
-    val suCompatDisabled = rememberFeatureToggleState(
-        Natives.FEATURE_SU_COMPAT,
-        displayInverted = true
-    )
+    var suCompact by remember { mutableStateOf(suCompactController.read()) }
+    var requestedSuCompact by remember { mutableStateOf<SuCompactMode?>(null) }
+    val suCompactSupported = remember { getFeatureStatus(Natives.FEATURE_SU_COMPAT) == "supported" }
+    val ksmSupported = remember { getFeatureStatus(Natives.FEATURE_KASUMI_SUCOMPAT) == "supported" }
     val kernelUmountDisabled = rememberFeatureToggleState(
         Natives.FEATURE_KERNEL_UMOUNT,
         displayInverted = true
@@ -146,10 +159,31 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
 
     val savedRebootMessage = stringResource(R.string.setting_change_saved_reboot)
     val failedMessage = stringResource(R.string.setting_change_failed)
-    val rebootMessage = stringResource(R.string.reboot_to_apply)
     val yukiZygiskEnabledMessage = stringResource(R.string.settings_yukizygisk_toast_on)
     val yukiZygiskDisabledMessage = stringResource(R.string.settings_yukizygisk_toast_off)
     val yukiZygiskFailedMessage = stringResource(R.string.settings_yukizygisk_toast_failed)
+
+    fun updateSuCompact(mode: SuCompactMode? = null, magisk: Boolean? = null) {
+        if (magiskCompat.saving) return
+        magiskCompat.saving = true
+        requestedSuCompact = mode
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val success = withContext(NonCancellable) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        if (mode != null) suCompactController.select(mode)
+                        else suCompactController.setMagisk(magisk ?: false)
+                    }
+                } finally {
+                    suCompact = suCompactController.read()
+                    magiskCompat.checked = suCompact.magisk
+                    magiskCompat.saving = false
+                    requestedSuCompact = null
+                }
+            }
+            if (!success) snackbarHost.showSnackbar(failedMessage)
+        }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -189,23 +223,6 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
                                 kernelEnabled = enabled,
                                 onSuccess = { snackbarHost.showSnackbar(savedRebootMessage) },
                                 onFailure = { snackbarHost.showSnackbar(failedMessage) }
-                            )
-                        }
-                    )
-
-                    FeatureSwitchItem(
-                        featureId = Natives.FEATURE_SU_COMPAT,
-                        icon = Icons.Rounded.RemoveModerator,
-                        title = stringResource(R.string.settings_disable_su),
-                        summary = stringResource(R.string.settings_disable_su_summary),
-                        state = suCompatDisabled,
-                        onChange = { disabled ->
-                            scope.persistFeature(
-                                state = suCompatDisabled,
-                                featureId = Natives.FEATURE_SU_COMPAT,
-                                featureName = "su_compat",
-                                kernelEnabled = !disabled,
-                                displayInverted = true
                             )
                         }
                     )
@@ -307,43 +324,23 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
+                    SuCompactSelector(
+                        selected = requestedSuCompact ?: suCompact.mode,
+                        enabled = suCompactSupported && !magiskCompat.saving,
+                        ksmSupported = ksmSupported,
+                        onSelect = { mode ->
+                            if (mode != suCompact.mode) updateSuCompact(mode = mode)
+                        },
+                    )
+
                     FeatureSwitchItem(
                         featureId = Natives.FEATURE_MAGISK_COMPAT,
                         icon = Icons.Filled.Security,
-                        title = stringResource(R.string.magisk_compat_title),
-                        summary = stringResource(R.string.magisk_compat_summary),
+                        title = stringResource(R.string.su_compact_magisk_title),
+                        summary = stringResource(R.string.su_compact_magisk_summary),
                         state = magiskCompat,
-                        onChange = { enabled ->
-                            scope.persistFeature(
-                                state = magiskCompat,
-                                featureId = Natives.FEATURE_MAGISK_COMPAT,
-                                featureName = "magisk_compat",
-                                kernelEnabled = enabled,
-                                afterPersist = {
-                                    withContext(Dispatchers.IO) {
-                                        execKsud("magisk-compat apply", true)
-                                    }
-                                },
-                                afterPersistenceFailure = {
-                                    withContext(Dispatchers.IO) {
-                                        execKsud("magisk-compat apply", true)
-                                    }
-                                },
-                                afterPostRollback = {
-                                    withContext(Dispatchers.IO) {
-                                        execKsud("magisk-compat apply", true)
-                                    }
-                                },
-                                onSuccess = {
-                                    if (enabled) {
-                                        snackbarHost.showSnackbar(rebootMessage)
-                                    }
-                                },
-                                onFailure = {
-                                    snackbarHost.showSnackbar(failedMessage)
-                                }
-                            )
-                        }
+                        enabled = suCompact.mode == SuCompactMode.KSM,
+                        onChange = { enabled -> updateSuCompact(magisk = enabled) },
                     )
 
                     FeatureSwitchItem(
@@ -445,6 +442,7 @@ private fun FeatureSwitchItem(
     summary: String,
     state: FeatureToggleState,
     groupPosition: MoreSettingsItemPosition = MoreSettingsItemPosition.Middle,
+    enabled: Boolean = true,
     onChange: (Boolean) -> Unit
 ) {
     val status = remember(featureId) { getFeatureStatus(featureId) }
@@ -459,7 +457,7 @@ private fun FeatureSwitchItem(
         title = title,
         summary = renderedSummary,
         checked = state.checked,
-        enabled = status == "supported" && !state.saving,
+        enabled = enabled && status == "supported" && !state.saving,
         groupPosition = groupPosition,
         onChange = onChange
     )

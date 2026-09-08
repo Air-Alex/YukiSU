@@ -132,6 +132,13 @@ object Natives {
 
     external fun isMagiskCompatEnabled(): Boolean
     external fun setMagiskCompatEnabled(enabled: Boolean): Boolean
+    external fun submitSuPrompt(
+        requestId: Long,
+        nonce: Long,
+        choice: Int,
+        packageName: String,
+    ): Boolean
+    external fun suPromptReady(requestId: Long, nonce: Long): Int
 
     /**
      * Kernel module umount can be disabled temporarily.
@@ -207,6 +214,7 @@ object Natives {
     const val FEATURE_DEFAULT_NO_NEW_PRIVS = 102
     const val FEATURE_YUKIZYGISK = 103
     const val FEATURE_HIDE_BOOTLOADER = 104
+    const val FEATURE_KASUMI_SUCOMPAT = 105
 
     /**
      * Reads a feature's value straight from the kernel, or -1 when the kernel

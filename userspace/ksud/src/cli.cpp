@@ -17,7 +17,6 @@
 #include "log.hpp"
 #include "magica/magica.hpp"
 #include "magisk_compat/msud.hpp"
-#include "magisk_compat/su_mount.hpp"
 #include "module/module.hpp"
 #include "module/module_config.hpp"
 #include "plugin/plugin.hpp"
@@ -32,6 +31,7 @@
 #include <unistd.h>
 #include <algorithm>
 #include <cerrno>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -162,6 +162,7 @@ void print_usage() {
     printf("  initrc         Manage init.rc injection\n");
     printf("  sulogd         Run sulog reader daemon\n");
     printf("  msud           Run magisk-compat su prompt daemon\n");
+    printf("  magisk-compat  Apply the configured vnode-backed su prompt state\n");
     printf("  boot-patch     Patch boot image\n");
     printf(
         "  boot-patch-v2  Patch boot.img with direct LKM injection (or flash boot with --flash)\n");
@@ -257,6 +258,7 @@ int cmd_feature(const std::vector<std::string>& args) {
         printf("SUBCOMMANDS:\n");
         printf("  get <ID>        Get feature value\n");
         printf("  set <ID> <VAL>  Set feature value\n");
+        printf("  set-save <ID> <VAL>  Set and persist atomically\n");
         printf("  list            List all features\n");
         printf("  check <ID>      Check feature status\n");
         printf("  load            Load config from file\n");
@@ -270,6 +272,8 @@ int cmd_feature(const std::vector<std::string>& args) {
         return feature_get(args[1]);
     } else if (subcmd == "set" && args.size() > 2) {
         return feature_set(args[1], std::stoull(args[2]));
+    } else if (subcmd == "set-save" && args.size() > 2) {
+        return feature_set_and_save(args[1], std::stoull(args[2]));
     } else if (subcmd == "list") {
         feature_list();
         return 0;
@@ -1000,18 +1004,21 @@ int cli_run(int argc, char** argv) {
     } else if (cmd == "sulogd") {
         return run_sulogd();
     } else if (cmd == "msud") {
-        return run_msud();
+        if (args.empty()) {
+            return run_msud();
+        }
+        uint32_t ready_fd = 0;
+        if (args.size() == 2 && args[0] == "--ready-fd" && parse_uint32(args[1], &ready_fd) &&
+            ready_fd <= INT_MAX) {
+            return run_msud(static_cast<int>(ready_fd));
+        }
+        LOGE("Usage: ksud msud");
+        return 1;
     } else if (cmd == "magisk-compat") {
         if (!args.empty() && args[0] == "apply") {
             return apply_magisk_compat_now();
         }
-        if (!args.empty() && args[0] == "mount") {
-            return mount_su_now();
-        }
-        if (!args.empty() && args[0] == "umount") {
-            return umount_su_now();
-        }
-        LOGE("Usage: ksud magisk-compat apply|mount|umount");
+        LOGE("Usage: ksud magisk-compat apply");
         return 1;
     } else if (cmd == "boot-patch") {
         return boot_patch(args);

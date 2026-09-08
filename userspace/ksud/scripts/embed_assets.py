@@ -55,7 +55,7 @@ def main() -> None:
         files = sorted(
             path
             for path in assets_dir.iterdir()
-            if path.is_file() and not path.name.startswith(".")
+            if path.is_file() and not path.name.startswith(".") and path.name != "su"
         )
 
     ordinary_assets = []
@@ -330,7 +330,6 @@ int ensure_binaries(bool ignore_if_exist) {
     for (const auto& name : list_assets()) {
         // These payloads are extracted only by their dedicated install paths.
         if (name == "ksuinit" || name.find("_kernelsu.ko") != std::string::npos ||
-            name == "su" ||
             name == "libzygisk64.so" || name == "libzygisk32.so" ||
             name == "libyukizncore64.so" || name == "libyukizncore32.so" ||
             name == "libyukilinker64.so" || name == "libyukilinker32.so" ||
@@ -348,8 +347,9 @@ int ensure_binaries(bool ignore_if_exist) {
         chmod(dest.c_str(), 0755);
     }
 
-    // Older builds placed su here, where it shadows the hooked /system/bin/su.
+    // Remove standalone su clients left by older compatibility modes.
     unlink((std::string(BINARY_DIR) + "su").c_str());
+    unlink((std::string(WORKING_DIR) + "su").c_str());
 
     // Multi-call entries must remain links to the installed daemon.
     struct stat st{};

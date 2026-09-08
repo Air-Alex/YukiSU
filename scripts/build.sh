@@ -244,26 +244,6 @@ echo "    staged LKMs: ${KMI_TARGETS[*]}"
 
 cp "$KSUINIT_DIR/build/ksuinit" "$KSUD_ASSETS/"
 
-# Build the standalone magisk-compat su (its own project, like ksuinit) and stage
-# it into ksud assets BEFORE ksud configures, so embed_assets picks it up as a
-# prebuilt asset -- ksud no longer compiles su itself.
-echo ">>> Build su (magisk-compat) ..."
-SU_DIR="$REPO_ROOT/userspace/su"
-prepare_build_dir "$SU_DIR/build"
-cd "$SU_DIR/build"
-cmake .. \
-	-G Ninja \
-	-DCMAKE_SYSTEM_NAME=Android \
-	-DCMAKE_ANDROID_ARCH_ABI="$ANDROID_ABI" \
-	-DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
-	-DCMAKE_SYSTEM_VERSION="$ANDROID_API" \
-	-DCMAKE_C_COMPILER="$CC" \
-	-DCMAKE_CXX_COMPILER="$CXX" \
-	-DCMAKE_BUILD_TYPE=Release
-ninja
-cp "$SU_DIR/build/su" "$KSUD_ASSETS/su"
-echo "    su staged"
-
 # YukiZygisk payload.
 echo ">>> Build YukiZygisk payload ..."
 ZCORE_DIR="$REPO_ROOT/userspace/zygisk/core"
@@ -296,8 +276,7 @@ cmake .. \
 	-DCMAKE_CXX_COMPILER="$CXX" \
 	-DCMAKE_BUILD_TYPE=Release
 
-# su, ksuinit and the .ko assets are all staged into assets/ above (before this
-# configure), so ksud just embeds whatever is there -- no in-tree su target.
+# ksuinit and the .ko assets are staged into assets/ before this configure.
 ninja
 echo "    ksud built"
 

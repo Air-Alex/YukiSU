@@ -1,10 +1,10 @@
 package com.anatdx.yukisu.ui
 
 import android.content.pm.ActivityInfo
-import android.net.LocalSocket
-import android.net.LocalSocketAddress
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.widget.Toast
 import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,19 +39,20 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.roundToInt
 import kotlin.concurrent.thread
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class SuRequestActivity : ComponentActivity() {
 
-    private var reqId = -1
+    private var reqId = 0L
     private var nonce = 0L
-    private var sockName: String? = null
+    private var requestPackage = ""
 
     @Volatile
     private var replied = false
@@ -84,13 +86,12 @@ class SuRequestActivity : ComponentActivity() {
         setFinishOnTouchOutside(false)
         onBackPressedDispatcher.addCallback(this) { onChoice(Choice.DENY) }
 
-        reqId = intent.getIntExtra(EXTRA_REQ_ID, -1)
+        reqId = intent.getLongExtra(EXTRA_REQ_ID, 0L)
         nonce = intent.getLongExtra(EXTRA_NONCE, 0L)
-        sockName = intent.getStringExtra(EXTRA_SOCKET)
         val uid = intent.getIntExtra(EXTRA_UID, -1)
         val comm = intent.getStringExtra(EXTRA_COMM).orEmpty()
 
-        if (reqId < 0 || sockName.isNullOrEmpty()) {
+        if (reqId == 0L || nonce == 0L || uid < 0) {
             finish()
             return
         }
@@ -98,6 +99,7 @@ class SuRequestActivity : ComponentActivity() {
         val pkg = runCatching {
             packageManager.getPackagesForUid(uid)?.firstOrNull()
         }.getOrNull()
+        requestPackage = pkg.orEmpty()
         val label = pkg?.let { p ->
             runCatching {
                 packageManager.getApplicationLabel(
@@ -122,6 +124,9 @@ class SuRequestActivity : ComponentActivity() {
                         packageName = pkg ?: comm,
                         uid = uid,
                         icon = icon,
+                        canPersist = requestPackage.isNotEmpty(),
+                        onReady = { Natives.suPromptReady(reqId, nonce) },
+                        onStale = ::finishStaleRequest,
                         onChoice = ::onChoice,
                     )
                 }
@@ -140,9 +145,22 @@ class SuRequestActivity : ComponentActivity() {
         replied = true
         val wire = choice.wire
         thread {
-            reply(wire)
-            runOnUiThread { finishAndRemoveTask() }
+            val submitted = reply(wire)
+            runOnUiThread {
+                if (!submitted) showRequestFailure()
+                finishAndRemoveTask()
+            }
         }
+    }
+
+    private fun showRequestFailure() {
+        Toast.makeText(this, R.string.su_request_failed, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun finishStaleRequest() {
+        replied = true
+        showRequestFailure()
+        finishAndRemoveTask()
     }
 
     override fun onDestroy() {
@@ -154,37 +172,14 @@ class SuRequestActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun reply(choice: Int) {
-        val name = sockName ?: return
-        runCatching {
-            val socket = LocalSocket()
-            try {
-                socket.connect(
-                    LocalSocketAddress(name, LocalSocketAddress.Namespace.ABSTRACT)
-                )
-                val buf = ByteBuffer.allocate(WIRE_SIZE).order(ByteOrder.LITTLE_ENDIAN)
-                buf.putInt(WIRE_MAGIC)
-                buf.putInt(reqId)
-                buf.putLong(nonce)
-                buf.putInt(choice)
-                socket.outputStream.write(buf.array())
-                socket.outputStream.flush()
-            } finally {
-                runCatching { socket.close() }
-            }
-        }
-    }
+    private fun reply(choice: Int): Boolean =
+        Natives.submitSuPrompt(reqId, nonce, choice, requestPackage)
 
     companion object {
         const val EXTRA_REQ_ID = "ksu.req_id"
         const val EXTRA_UID = "ksu.uid"
         const val EXTRA_COMM = "ksu.comm"
-        const val EXTRA_SOCKET = "ksu.socket"
         const val EXTRA_NONCE = "ksu.nonce"
-
-        // Must match MsudReply in msud.cpp.
-        private const val WIRE_MAGIC = 0x4D535544 // "MSUD"
-        private const val WIRE_SIZE = 20
     }
 }
 
@@ -196,13 +191,27 @@ private fun SuRequestCard(
     packageName: String,
     uid: Int,
     icon: ImageBitmap?,
+    canPersist: Boolean,
+    onReady: () -> Int,
+    onStale: () -> Unit,
     onChoice: (SuRequestActivity.Choice) -> Unit,
 ) {
     var remaining by remember { mutableIntStateOf(COUNTDOWN_SECONDS) }
+    var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        while (remaining > 0) {
-            delay(1000)
-            remaining--
+        val started = SystemClock.elapsedRealtime()
+        val budget = withContext(Dispatchers.IO) { onReady() }
+        if (budget <= 2000) {
+            onStale()
+            return@LaunchedEffect
+        }
+        val deadline = started + minOf(COUNTDOWN_SECONDS * 1000, budget - 2000)
+        ready = true
+        while (true) {
+            val millisLeft = deadline - SystemClock.elapsedRealtime()
+            remaining = ((millisLeft.coerceAtLeast(0) + 999) / 1000).toInt()
+            if (millisLeft <= 0) break
+            delay(minOf(250L, millisLeft))
         }
         onChoice(SuRequestActivity.Choice.DENY)
     }
@@ -258,10 +267,12 @@ private fun SuRequestCard(
                 Button(
                     onClick = { onChoice(SuRequestActivity.Choice.ALLOW_FOREVER) },
                     modifier = Modifier.weight(1f),
+                    enabled = ready && canPersist,
                 ) { Text(stringResource(R.string.su_request_allow_forever)) }
                 FilledTonalButton(
                     onClick = { onChoice(SuRequestActivity.Choice.ALLOW_ONCE) },
                     modifier = Modifier.weight(1f),
+                    enabled = ready,
                 ) { Text(stringResource(R.string.su_request_allow_once)) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -272,6 +283,7 @@ private fun SuRequestCard(
                 OutlinedButton(
                     onClick = { onChoice(SuRequestActivity.Choice.DENY_HIDE) },
                     modifier = Modifier.weight(1f),
+                    enabled = ready && canPersist,
                 ) { Text(stringResource(R.string.su_request_deny_hide)) }
             }
         }

@@ -243,6 +243,9 @@ int run(bool post_magica, bool allow_shell) {
         }
 
         run_stage_scripts("post-mount", true);
+        if (refresh_sucompat_vfs() != 0) {
+            LOGW("late-load: refresh vnode-backed su after final mounts failed");
+        }
         on_services();
         on_boot_completed();
 

@@ -30,12 +30,12 @@ static struct group_info root_groups = {
 static struct group_info root_groups = {.usage = ATOMIC_INIT(2)};
 #endif // #if LINUX_VERSION_CODE >= KERNEL_VERSIO...
 
-static void setup_groups(struct root_profile *profile, struct cred *cred)
+static int setup_groups(const struct root_profile *profile, struct cred *cred)
 {
 	if (profile->groups_count > KSU_MAX_GROUPS) {
 		pr_warn("Failed to setgroups, too large group: %d!\n",
 			profile->uid);
-		return;
+		return -E2BIG;
 	}
 
 	if (profile->groups_count == 1 && profile->groups[0] == 0) {
@@ -43,14 +43,14 @@ static void setup_groups(struct root_profile *profile, struct cred *cred)
 		if (cred->group_info)
 			put_group_info(cred->group_info);
 		cred->group_info = get_group_info(&root_groups);
-		return;
+		return 0;
 	}
 
 	u32 ngroups = profile->groups_count;
 	struct group_info *group_info = groups_alloc(ngroups);
 	if (!group_info) {
 		pr_warn("Failed to setgroups, ENOMEM for: %d\n", profile->uid);
-		return;
+		return -ENOMEM;
 	}
 
 	int i;
@@ -60,7 +60,7 @@ static void setup_groups(struct root_profile *profile, struct cred *cred)
 		if (!gid_valid(kgid)) {
 			pr_warn("Failed to setgroups, invalid gid: %d\n", gid);
 			put_group_info(group_info);
-			return;
+			return -EINVAL;
 		}
 		group_info->gid[i] = kgid;
 	}
@@ -68,6 +68,7 @@ static void setup_groups(struct root_profile *profile, struct cred *cred)
 	groups_sort(group_info);
 	set_groups(cred, group_info);
 	put_group_info(group_info);
+	return 0;
 }
 
 void seccomp_filter_release(struct task_struct *tsk);
@@ -84,14 +85,14 @@ void seccomp_filter_release(struct task_struct *tsk);
 static bool has_call_to_spin_lock = false;
 #endif
 
-static void disable_seccomp(void)
+static int disable_seccomp(void)
 {
 	struct task_struct *fake;
 
 	fake = kmalloc(sizeof(*fake), GFP_KERNEL);
 	if (!fake) {
 		pr_warn("failed to alloc fake task_struct\n");
-		return;
+		return -ENOMEM;
 	}
 
 	// Refer to kernel/seccomp.c: seccomp_set_mode_strict
@@ -129,37 +130,45 @@ static void disable_seccomp(void)
 
 	seccomp_filter_release(fake);
 	kfree(fake);
+	return 0;
 }
 
-int escape_with_root_profile(void)
+void ksu_restore_root_profile_caps(struct cred *cred,
+				   const struct ksu_root_profile_state *state)
 {
-	struct cred *cred;
+	const struct root_profile *profile;
+
+	if (!cred || !state || !state->applied)
+		return;
+	profile = &state->profile;
+	cred->securebits = 0;
+
+	BUILD_BUG_ON(sizeof(profile->capabilities.effective) !=
+		     sizeof(kernel_cap_t));
+	memcpy(&cred->cap_effective, &profile->capabilities.effective,
+	       sizeof(cred->cap_effective));
+	memcpy(&cred->cap_permitted, &profile->capabilities.effective,
+	       sizeof(cred->cap_permitted));
+	memcpy(&cred->cap_bset, &profile->capabilities.effective,
+	       sizeof(cred->cap_bset));
+}
+
+static int ksu_apply_root_profile_state_cred_common(
+    struct cred *cred, uid_t source_uid,
+    const struct ksu_root_profile_state *state, bool set_security,
+    bool strict_aux)
+{
 	struct user_struct *new_user;
-	struct root_profile *profile;
-	struct task_struct *p = current;
-	struct task_struct *t;
-	int ret = 0;
+	const struct root_profile *profile;
+	int ret;
 
-	cred = prepare_creds();
-	if (!cred) {
-		pr_warn("prepare_creds failed!\n");
-		return -ENOMEM;
-	}
-
-	if (cred->euid.val == 0) {
-		pr_warn("Already root, don't escape!\n");
-		abort_creds(cred);
+	if (!cred || !state)
+		return -EINVAL;
+	if (cred->uid.val != source_uid)
+		return -ESTALE;
+	if (!state->applied)
 		return 0;
-	}
-
-	if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
-		pr_warn(
-		    "TIF_KSU_DISABLE_ESCAPE_WITH_ROOT set, don't escape!\n");
-		abort_creds(cred);
-		return -EPERM;
-	}
-
-	profile = ksu_get_root_profile(cred->uid.val);
+	profile = &state->profile;
 
 	cred->uid.val = profile->uid;
 	cred->suid.val = profile->uid;
@@ -184,57 +193,138 @@ int escape_with_root_profile(void)
 	 * https://github.com/torvalds/linux/blob/v5.14/kernel/cred.c
 	 */
 	new_user = alloc_uid(cred->uid);
-	if (!new_user) {
-		ret = -ENOMEM;
-		goto out_abort_creds;
-	}
+	if (!new_user)
+		return -ENOMEM;
 	free_uid(cred->user);
 	cred->user = new_user;
 
-	// v5.14+ added cred->ucounts, so we must refresh it after changing
-	// uid/user:
-	// https://github.com/torvalds/linux/commit/905ae01c4ae2ae3df05bb141801b1db4b7d83c61
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
-	if (set_cred_ucounts(cred)) {
-		ret = -EAGAIN;
-		goto out_abort_creds;
-	}
+	if (set_cred_ucounts(cred))
+		return -EAGAIN;
 #endif // #if LINUX_VERSION_CODE >= KERNEL_VERSIO...
 
-	BUILD_BUG_ON(sizeof(profile->capabilities.effective) !=
-		     sizeof(kernel_cap_t));
+	ksu_restore_root_profile_caps(cred, state);
+	ret = setup_groups(profile, cred);
+	if (ret && strict_aux)
+		return ret;
+	if (set_security) {
+		ret = setup_selinux(profile->selinux_domain, cred);
+		if (ret && strict_aux)
+			return ret;
+	}
+	return 0;
+}
 
-	memcpy(&cred->cap_effective, &profile->capabilities.effective,
-	       sizeof(cred->cap_effective));
-	memcpy(&cred->cap_permitted, &profile->capabilities.effective,
-	       sizeof(cred->cap_permitted));
-	memcpy(&cred->cap_bset, &profile->capabilities.effective,
-	       sizeof(cred->cap_bset));
+int ksu_apply_root_profile_state_cred(
+    struct cred *cred, uid_t source_uid,
+    const struct ksu_root_profile_state *state)
+{
+	return ksu_apply_root_profile_state_cred_common(cred, source_uid, state,
+							true, true);
+}
 
-	setup_groups(profile, cred);
-	setup_selinux(profile->selinux_domain, cred);
+int ksu_apply_root_profile_state_cred_preserve_security(
+    struct cred *cred, uid_t source_uid,
+    const struct ksu_root_profile_state *state)
+{
+	return ksu_apply_root_profile_state_cred_common(cred, source_uid, state,
+							false, true);
+}
 
-	commit_creds(cred);
+static int
+ksu_prepare_root_profile_cred_common(struct cred *cred, uid_t source_uid,
+				     struct ksu_root_profile_state *state,
+				     bool strict_aux)
+{
+	struct root_profile *profile;
 
-	disable_seccomp();
+	if (!cred || !state)
+		return -EINVAL;
+	memset(state, 0, sizeof(*state));
+	if (cred->uid.val != source_uid)
+		return -ESTALE;
+	if (cred->euid.val == 0) {
+		pr_warn("Already root, don't escape!\n");
+		return 0;
+	}
+	if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
+		pr_warn(
+		    "TIF_KSU_DISABLE_ESCAPE_WITH_ROOT set, don't escape!\n");
+		return -EPERM;
+	}
 
-	if (profile->flags & FLAG_KSU_NO_NEW_PRIVS)
+	profile = ksu_get_root_profile(source_uid);
+	state->profile = *profile;
+	state->applied = true;
+	ksu_put_root_profile(profile);
+	return ksu_apply_root_profile_state_cred_common(cred, source_uid, state,
+							true, strict_aux);
+}
+
+int ksu_prepare_root_profile_cred(struct cred *cred, uid_t source_uid,
+				  struct ksu_root_profile_state *state)
+{
+	return ksu_prepare_root_profile_cred_common(cred, source_uid, state,
+						    false);
+}
+
+int ksu_prepare_root_profile_cred_strict(struct cred *cred, uid_t source_uid,
+					 struct ksu_root_profile_state *state)
+{
+	return ksu_prepare_root_profile_cred_common(cred, source_uid, state,
+						    true);
+}
+
+static int
+ksu_finalize_root_profile_common(const struct ksu_root_profile_state *state,
+				 bool strict)
+{
+	struct task_struct *p = current;
+	struct task_struct *t;
+
+	if (!state || !state->applied)
+		return 0;
+	if (disable_seccomp() && strict)
+		return -ENOMEM;
+	if (state->profile.flags & FLAG_KSU_NO_NEW_PRIVS)
 		set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
-
 	for_each_thread(p, t)
 	{
 		ksu_set_task_tracepoint_flag(t);
 	}
-
-	setup_mount_ns(profile->namespaces);
-
-	ksu_put_root_profile(profile);
+	setup_mount_ns(state->profile.namespaces);
 	return 0;
+}
 
-out_abort_creds:
-	ksu_put_root_profile(profile);
-	abort_creds(cred);
-	return ret;
+int ksu_finalize_root_profile(const struct ksu_root_profile_state *state)
+{
+	return ksu_finalize_root_profile_common(state, true);
+}
+
+int escape_with_root_profile(void)
+{
+	struct ksu_root_profile_state state;
+	struct cred *cred;
+	int ret;
+
+	cred = prepare_creds();
+	if (!cred) {
+		pr_warn("prepare_creds failed!\n");
+		return -ENOMEM;
+	}
+	ret = ksu_prepare_root_profile_cred(cred, cred->uid.val, &state);
+	if (ret) {
+		abort_creds(cred);
+		return ret;
+	}
+	if (!state.applied) {
+		abort_creds(cred);
+		return 0;
+	}
+
+	commit_creds(cred);
+	(void)ksu_finalize_root_profile_common(&state, false);
+	return 0;
 }
 
 void escape_to_root_for_init(void)
@@ -246,7 +336,7 @@ void escape_to_root_for_init(void)
 		return;
 	}
 
-	setup_selinux(KERNEL_SU_CONTEXT, cred);
+	(void)setup_selinux(KERNEL_SU_CONTEXT, cred);
 	commit_creds(cred);
 }
 

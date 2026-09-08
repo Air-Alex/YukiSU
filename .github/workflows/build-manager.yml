@@ -10,7 +10,6 @@ on:
       - '.github/workflows/ddk-lkm.yml'
       - '.github/workflows/ksud.yml'
       - '.github/workflows/ksuinit.yml'
-      - '.github/workflows/su.yml'
       - '.github/workflows/yukizygisk.yml'
       - 'repack_apk.py'
       - 'manager/**'
@@ -24,7 +23,6 @@ on:
       - '.github/workflows/ddk-lkm.yml'
       - '.github/workflows/ksud.yml'
       - '.github/workflows/ksuinit.yml'
-      - '.github/workflows/su.yml'
       - '.github/workflows/yukizygisk.yml'
       - 'repack_apk.py'
       - 'manager/**'
@@ -75,19 +73,13 @@ jobs:
     with:
       target: aarch64-linux-android
 
-  build-su:
-    uses: ./.github/workflows/su.yml
-    secrets: inherit
-    with:
-      target: aarch64-linux-android
-
   build-yukizygisk:
     uses: ./.github/workflows/yukizygisk.yml
     with:
       target: aarch64-linux-android
 
   build-ksud:
-    needs: [build-lkm, build-ksuinit, build-su, build-yukizygisk]
+    needs: [build-lkm, build-ksuinit, build-yukizygisk]
     uses: ./.github/workflows/ksud.yml
     secrets: inherit
     with:

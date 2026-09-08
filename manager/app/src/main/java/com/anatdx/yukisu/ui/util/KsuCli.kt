@@ -99,6 +99,7 @@ object KsuCli {
      */
     private fun checkAndInstallKsud() {
         try {
+            if (!isBundledKsudUapiCompatible()) return
             val apkKsudVersion = getApkKsudVersion()
             val integrityStatus = getKsudIntegrityStatus()
             if (integrityStatus == KsudIntegrityStatus.UNAVAILABLE) {
@@ -283,6 +284,7 @@ object KsuCli {
      * then keep the convenience applets under `/data/adb/ksu/bin` as symlinks.
      */
     private fun installOrUpdateKsudDaemon(): Boolean {
+        if (!isBundledKsudUapiCompatible()) return false
         val nativeDir = ksuApp.applicationInfo.nativeLibraryDir
         val ksudSo = File(nativeDir, "libksud.so")
         if (!ksudSo.exists()) {
@@ -300,6 +302,20 @@ object KsuCli {
             KsudIntegrity.markBundledDaemonInstalled(ksuApp)
         }
         return result
+    }
+
+    private fun isBundledKsudUapiCompatible(): Boolean {
+        val kernelUapi = runCatching { Natives.getUapiVersion() }.getOrDefault(0)
+        val bundledUapi = runCatching { Natives.getManagerUapiVersion() }.getOrDefault(0)
+        val compatible = kernelUapi > 0 && kernelUapi == bundledUapi
+        if (!compatible) {
+            Log.e(
+                TAG,
+                "Refusing to sync ksud with mismatched UAPI: " +
+                    "kernel=$kernelUapi bundled=$bundledUapi"
+            )
+        }
+        return compatible
     }
 
     private fun refreshYukiZygiskSnapshotForNextBoot() {
@@ -416,27 +432,14 @@ fun getFeatureValue(feature: Int): Boolean = Natives.isFeatureEnabled(feature)
 internal fun getFeatureValueOrNull(feature: Int): Boolean? =
     Natives.getFeature(feature).takeIf { it >= 0 }?.let { it > 0 }
 
-/** Set and persist a feature value, restoring the previous runtime value if
- *  persistence fails. ksud also brings up sulogd/msud and refreshes the
- *  YukiZygisk early snapshot for the features that need those side effects. */
-suspend fun setFeatureValue(feature: String, featureId: Int, enabled: Boolean): Boolean =
+/** Atomically set and persist a feature value. ksud restores the previous
+ *  runtime state if persistence fails and serializes coupled su mode changes. */
+suspend fun setFeatureValue(feature: String, enabled: Boolean): Boolean =
     withContext(Dispatchers.IO) {
-        val previous = getFeatureValue(featureId)
-        val changed = execKsud(
-            "feature set ${shellArg(feature)} ${if (enabled) 1 else 0}",
+        execKsud(
+            "feature set-save ${shellArg(feature)} ${if (enabled) 1 else 0}",
             true
         )
-        if (!changed) return@withContext false
-        if (execKsud("feature save", true)) return@withContext true
-
-        val rolledBack = execKsud(
-            "feature set ${shellArg(feature)} ${if (previous) 1 else 0}",
-            true
-        )
-        if (rolledBack) {
-            execKsud("feature save", true)
-        }
-        false
     }
 
 const val UTS_FIELD_SYSNAME = 1 shl 0

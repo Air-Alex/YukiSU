@@ -15,6 +15,25 @@
 // Forward declarations
 struct cred;
 
+struct ksu_root_profile_state {
+	struct root_profile profile;
+	bool applied;
+};
+
+int ksu_prepare_root_profile_cred(struct cred *cred, uid_t source_uid,
+				  struct ksu_root_profile_state *state);
+int ksu_prepare_root_profile_cred_strict(struct cred *cred, uid_t source_uid,
+					 struct ksu_root_profile_state *state);
+int ksu_apply_root_profile_state_cred(
+    struct cred *cred, uid_t source_uid,
+    const struct ksu_root_profile_state *state);
+int ksu_apply_root_profile_state_cred_preserve_security(
+    struct cred *cred, uid_t source_uid,
+    const struct ksu_root_profile_state *state);
+void ksu_restore_root_profile_caps(struct cred *cred,
+				   const struct ksu_root_profile_state *state);
+int ksu_finalize_root_profile(const struct ksu_root_profile_state *state);
+
 // Escalate current process to root with the appropriate profile
 int escape_with_root_profile(void);
 

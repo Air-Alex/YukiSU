@@ -1,4 +1,4 @@
-# Native Windows build: DDK LKMs -> ksuinit -> su -> YukiZygisk -> ksud -> Manager App
+# Native Windows build: DDK LKMs -> ksuinit -> YukiZygisk -> ksud -> Manager App
 # Signing env: YUKISU_KEYSTORE, YUKISU_KEYSTORE_PASSWORD, YUKISU_KEY_ALIAS, YUKISU_KEY_PASSWORD
 # Usage: .\scripts\build.bat [-k KMI] [--clean] [--yukizygisk|--yukizygisk-off] [--skip-lkm] [-i] [-h]
 # Without --kmi, all supported LKM targets are built and embedded in ksud.
@@ -407,7 +407,6 @@ try {
     }
 
     $ksuinitDirectory = Join-Path $script:RepoRoot 'userspace\ksuinit'
-    $suDirectory = Join-Path $script:RepoRoot 'userspace\su'
     $zygiskDirectory = Join-Path $script:RepoRoot 'userspace\zygisk\core'
     $zygiskDaemonDirectory = Join-Path $script:RepoRoot 'userspace\zygisk\daemon'
     $ksudDirectory = Join-Path $script:RepoRoot 'userspace\ksud'
@@ -429,9 +428,6 @@ try {
 
     Build-CMakeProject -Name 'ksuinit' -SourceDirectory $ksuinitDirectory
     Copy-RequiredFile -Source (Join-Path $ksuinitDirectory 'build\ksuinit') -Destination (Join-Path $assetsDirectory 'ksuinit')
-
-    Build-CMakeProject -Name 'su' -SourceDirectory $suDirectory
-    Copy-RequiredFile -Source (Join-Path $suDirectory 'build\su') -Destination (Join-Path $assetsDirectory 'su')
 
     Build-CMakeProject -Name 'YukiZygisk payload' -SourceDirectory $zygiskDirectory
     Copy-RequiredFile -Source (Join-Path $zygiskDirectory 'build\libzygisk64.so') -Destination (Join-Path $assetsDirectory 'libzygisk64.so')

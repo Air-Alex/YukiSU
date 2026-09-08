@@ -147,6 +147,9 @@
     <string name="settings_yukizygisk_toast_on">已开启，重启生效</string>
     <string name="settings_yukizygisk_toast_off">已关闭，重启生效</string>
     <string name="settings_yukizygisk_toast_failed">切换失败</string>
+    <string name="su_compact_off">关闭</string>
+    <string name="su_compact_traditional">传统</string>
+    <string name="su_compact_magisk_summary">授权弹窗</string>
     <string name="settings_uts_view">UTS 视图</string>
     <string name="settings_uts_view_summary">管理早启动、运行时全局及 denylist 作用域的内核身份。</string>
     <string name="uts_view_title">UTS 视图</string>
@@ -817,9 +820,10 @@
     <string name="su_request_allow_forever">允许并记住</string>
     <string name="su_request_allow_once">仅允许一次</string>
     <string name="su_request_deny">拒绝</string>
+    <string name="su_request_failed">Root 请求已失效或提交失败。</string>
     <string name="su_request_deny_hide">拒绝并隐藏</string>
     <string name="magisk_compat_title">Magisk 风格 su 弹窗</string>
-    <string name="magisk_compat_summary">向应用显示可见的 su，并在首次使用时弹窗请求授权，而不是对不在白名单中的应用静默拒绝。</string>
+    <string name="magisk_compat_summary">向符合条件的应用显示由 Kasumi vnode 提供的 su，并在首次使用时请求授权；开启后会同时启用 Kasumi su 兼容模式。</string>
     <string name="yukizygisk_injection_status">注入状态</string>
     <string name="yukizygisk_kernel_injection">内核注入</string>
     <string name="yukizygisk_status_active">已激活</string>

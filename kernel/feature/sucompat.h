@@ -6,6 +6,8 @@ struct pt_regs;
 
 extern bool ksu_su_compat_enabled;
 
+bool ksu_sucompat_exec_enabled(void);
+
 void ksu_sucompat_init(void);
 void ksu_sucompat_exit(void);
 
