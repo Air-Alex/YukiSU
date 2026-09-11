@@ -186,8 +186,6 @@
     <string name="home_android_version">نسخه Android</string>
     <string name="home_device_model">مدل دستگاه</string>
     <string name="su_not_allowed">اعطای دسترسی superuser به %s مجاز نیست</string>
-    <string name="settings_disable_su">غیرفعال‌سازی سازگاری su</string>
-    <string name="settings_disable_su_summary">از طریق دستور su از به دست آوردن امتیازات root از هر برنامه جلوگیری کنید. فرآیندهای root موجود تحت تأثیر قرار نمی گیرند.</string>
     <string name="settings_disable_kernel_umount">غیرفعال‌سازی umount کرنل</string>
     <string name="settings_disable_kernel_umount_summary">رفتار umount در سطح کرنل که توسط KernelSU کنترل می‌شود را غیرفعال کن</string>
     <string name="settings_enable_enhanced_security">استفاده از خط‌مشی امنیتی سخت‌گیرانه</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">مدیر پارتیشن</string>
     <string name="partition_slot_info">اطلاعات اسلات</string>
     <string name="partition_device_type">نوع دستگاه</string>
-    <string name="partition_current_slot">اسلات فعلی</string>
-    <string name="partition_other_slot">اسلات دیگر</string>
     <string name="partition_show_all">نمایش همه</string>
     <string name="partition_collapse">جمع کردن</string>
     <string name="partition_selected_count">‏%d پارتیشن انتخاب شد</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">پارتیشن‌های رایج</string>
     <string name="partition_all">همه پارتیشن‌ها</string>
     <string name="partition_dangerous_warning">پارتیشن خطرناک! عملیات نادرست ممکن است دستگاه را آجر کند</string>
-    <string name="partition_info_title">اطلاعات پارتیشن</string>
     <string name="partition_info_type">نوع</string>
     <string name="partition_type_physical">فیزیکی</string>
     <string name="partition_type_logical">منطقی</string>
     <string name="partition_info_size">اندازه</string>
     <string name="partition_info_device">دستگاه</string>
     <string name="partition_info_slot">اسلات</string>
-    <string name="partition_available_operations">عملیات در دسترس</string>
     <string name="partition_backup_to_file">پشتیبان‌گیری در فایل</string>
     <string name="partition_flash_image">فلش تصویر</string>
-    <string name="partition_dangerous_operation">عملیات خطرناک</string>
-    <string name="partition_dangerous_operation_warning">⚠️ هشدار عملیات خطرناک</string>
     <string name="partition_flash_warning">فلش پارتیشن ممکن است باعث شود دستگاه نتواند بوت شود!\n\nآیا مطمئنید که می‌خواهید پارتیشن %s را فلش کنید؟</string>
     <string name="partition_dangerous_flash_warning">⚠️ هشدار: %1$s یک پارتیشن خطرناک است!\n\nفلش این پارتیشن ممکن است باعث موارد زیر شود:\n• ناتوانی دستگاه در بوت شدن\n• از دست رفتن داده‌های مهم\n• اختلال در شبکه/Bluetooth\n\nلطفاً مطمئن شوید که می‌دانید چه کار می‌کنید!\n\nآیا مطمئنید که می‌خواهید پارتیشن %2$s را فلش کنید؟</string>
     <string name="partition_confirm_flash">تأیید فلش</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">فلش موفق بود! توصیه می‌شود بلافاصله راه‌اندازی مجدد کنید.</string>
     <string name="partition_flash_failed">فلش ناموفق بود: %s</string>
     <string name="partition_flash_failed_check_log">فلش ناموفق بود، لطفاً لاگ‌های logcat را بررسی کنید</string>
-    <string name="partition_cannot_read_file">فایل خوانده نمی‌شود</string>
     <string name="partition_load_failed">بارگذاری اطلاعات پارتیشن انجام نشد: %s</string>
     <string name="partition_ab_device">دستگاه A/B</string>
     <string name="partition_a_only_device">دستگاه فقط A</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">پشتیبان‌گیری دسته‌ای کامل شد! مجموع %1$d پارتیشن\nذخیره‌شده در: %2$s</string>
     <string name="partition_batch_backup_partial">پشتیبان‌گیری کامل شد: %1$d موفق، %2$d ناموفق\nناموفق: %3$s</string>
     <string name="partition_no_selection">هیچ پارتیشنی انتخاب نشده است</string>
-    <string name="partition_back">بازگشت</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">ابزارهای پیشرفته</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">یک بار اجازه بده</string>
     <string name="su_request_deny">رد کردن</string>
     <string name="su_request_deny_hide">رد کردن و پنهان کردن</string>
-    <string name="magisk_compat_title">درخواست su به‌سبک Magisk</string>
-    <string name="magisk_compat_summary">به‌جای اینکه su برای برنامه‌هایی که در فهرست مجاز نیستند بی‌صدا ناموفق شود، یک su قابل‌مشاهده به برنامه‌ها نشان بده و در اولین استفاده درخواست مجوز کن.</string>
 </resources>

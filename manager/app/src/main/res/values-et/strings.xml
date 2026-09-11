@@ -186,8 +186,6 @@
     <string name="home_android_version">Androidi versioon</string>
     <string name="home_device_model">Seadme mudel</string>
     <string name="su_not_allowed">Superkasutaja õiguste andmine %s-le pole lubatud</string>
-    <string name="settings_disable_su">Keela su ühilduvus</string>
-    <string name="settings_disable_su_summary">Takistage igal rakendusel root õiguste omandamist käsu su kaudu. Olemasolevaid root protsesse see ei mõjuta.</string>
     <string name="settings_disable_kernel_umount">Keela kerneli umount</string>
     <string name="settings_disable_kernel_umount_summary">Keela KernelSU poolt juhitav kernelitaseme umount-käitumine</string>
     <string name="settings_enable_enhanced_security">Kasuta ranget turbepoliitikat</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Partitsioonihaldur</string>
     <string name="partition_slot_info">Pesa teave</string>
     <string name="partition_device_type">Seadme tüüp</string>
-    <string name="partition_current_slot">Praegune pesa</string>
-    <string name="partition_other_slot">Teine pesa</string>
     <string name="partition_show_all">Näita kõiki</string>
     <string name="partition_collapse">Ahenda</string>
     <string name="partition_selected_count">%d partitsiooni valitud</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Levinud partitsioonid</string>
     <string name="partition_all">Kõik partitsioonid</string>
     <string name="partition_dangerous_warning">OHTLIK partitsioon! Vale toiming võib seadme kasutuskõlbmatuks muuta</string>
-    <string name="partition_info_title">Partitsiooni teave</string>
     <string name="partition_info_type">Tüüp</string>
     <string name="partition_type_physical">Füüsiline</string>
     <string name="partition_type_logical">Loogiline</string>
     <string name="partition_info_size">Suurus</string>
     <string name="partition_info_device">Seade</string>
     <string name="partition_info_slot">Pesa</string>
-    <string name="partition_available_operations">Saadaolevad toimingud</string>
     <string name="partition_backup_to_file">Varunda faili</string>
     <string name="partition_flash_image">Vilgu tõmmis</string>
-    <string name="partition_dangerous_operation">Ohtlik toiming</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Ohtliku toimingu hoiatus</string>
     <string name="partition_flash_warning">Partitsiooni vilkumine võib põhjustada, et seade ei käivitu!\n\nKas olete kindel, et soovite vilkuda partitsiooni %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Hoiatus: %1$s on ohtlik partitsioon!\n\nSelle partitsiooni vilkumine võib põhjustada:\n• Seade ei käivitu\n• Oluliste andmete kadu\n• Võrgu/Bluetoothi tõrkeid\n\nPalun veenduge, et teate, mida teete!\n\nKas olete kindel, et soovite vilkuda partitsiooni %2$s?</string>
     <string name="partition_confirm_flash">Kinnita vilkumine</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Vilkumine õnnestus! Soovitatav on kohe taaskäivitada.</string>
     <string name="partition_flash_failed">Vilkumine ebaõnnestus: %s</string>
     <string name="partition_flash_failed_check_log">Vilkumine ebaõnnestus, palun kontrollige logcat logisid</string>
-    <string name="partition_cannot_read_file">Faili ei saa lugeda</string>
     <string name="partition_load_failed">Partitsiooni teabe laadimine ebaõnnestus: %s</string>
     <string name="partition_ab_device">A/B seade</string>
     <string name="partition_a_only_device">Ainult A seade</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Pakettvarundus lõpetatud! Kokku %1$d partitsiooni\nSalvestatud asukohta: %2$s</string>
     <string name="partition_batch_backup_partial">Varundamine lõpetatud: %1$d õnnestus, %2$d ebaõnnestus\nEbaõnnestus: %3$s</string>
     <string name="partition_no_selection">Ühtegi partitsiooni pole valitud</string>
-    <string name="partition_back">Tagasi</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Täpsemad tööriistad</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Luba üks kord</string>
     <string name="su_request_deny">Keeldu</string>
     <string name="su_request_deny_hide">Keeldu ja peida</string>
-    <string name="magisk_compat_title">Magiski-stiilis su viip</string>
-    <string name="magisk_compat_summary">Näita rakendustele nähtavat su-d ja küsi esmakordsel kasutamisel luba, selle asemel et su vaikselt ebaõnnestuks rakenduste puhul, mida pole lubatud loendis.</string>
 </resources>

@@ -22,15 +22,15 @@
     <string name="kasumi_fs_type_title">存储文件系统</string>
     <string name="kasumi_fs_type_tmpfs">Tmpfs 分区（内存）</string>
     <string name="kasumi_general">常规</string>
-    <string name="kasumi_global_backend">挂载后端</string>
     <string name="kasumi_global_override">全局覆盖：%1$s</string>
     <string name="kasumi_hide_aggressive">激进</string>
     <string name="kasumi_hide_normal">普通</string>
     <string name="kasumi_info_active_mounts">活动挂载：</string>
     <string name="kasumi_info_kernel">内核</string>
-    <string name="kasumi_info_more_mounts">……还有 %d 个</string>
+    <plurals name="kasumi_info_more_mounts">
+        <item quantity="other">……还有 %d 个</item>
+    </plurals>
     <string name="kasumi_info_mount_base">挂载基点</string>
-    <string name="kasumi_info_selinux">SELinux</string>
     <string name="kasumi_kernel_debug">内核调试</string>
     <string name="kasumi_kernel_debug_desc">启用 Kasumi 内核调试日志</string>
     <string name="kasumi_kernel_hooks">内核钩子</string>
@@ -74,8 +74,6 @@
     <string name="kasumi_module_rules_add">添加</string>
     <string name="kasumi_module_rules_placeholder">/system 或 /vendor 下的路径</string>
     <string name="kasumi_module_rules_title">此模块的自定义规则</string>
-    <string name="kasumi_moduledir">模块目录</string>
-    <string name="kasumi_moduledir_desc">模块的基础目录（默认：/data/adb/modules）</string>
     <string name="kasumi_modules_count">模块数</string>
     <string name="kasumi_mount_config">挂载配置</string>
     <string name="kasumi_mount_filter">筛选挂载模式</string>
@@ -95,11 +93,6 @@
     <string name="kasumi_no_conflicts">未发现挂载冲突</string>
     <string name="kasumi_overlay_xattr">隐藏 OverlayFS 扩展属性</string>
     <string name="kasumi_overlay_xattr_desc">在虚拟视图中隐藏 OverlayFS 标记</string>
-    <string name="kasumi_partitions">活跃分区</string>
-    <string name="kasumi_partitions_add">添加分区</string>
-    <string name="kasumi_partitions_desc">需要扫描模块修改的分区（逗号分隔）</string>
-    <string name="kasumi_partitions_placeholder">输入分区名称（例如：mi_ext, my_stock）</string>
-    <string name="kasumi_partitions_scan">扫描分区</string>
     <string name="kasumi_quick_hide">常用隐藏路径</string>
     <string name="kasumi_retry_apply">重试应用</string>
     <string name="kasumi_rule_maps_spoof">伪装 /proc/pid/maps 的 ino/dev/pathname</string>
@@ -113,7 +106,9 @@
     <string name="kasumi_rules_clear">清除</string>
     <string name="kasumi_rules_clear_all">清空规则</string>
     <string name="kasumi_rules_clear_confirm">确定要清除所有活动的 Kasumi 规则吗？此操作将立即生效。</string>
-    <string name="kasumi_rules_count">%d 条活动规则</string>
+    <plurals name="kasumi_rules_count">
+        <item quantity="other">%d 条活动规则</item>
+    </plurals>
     <string name="kasumi_rules_empty">没有活动规则</string>
     <string name="kasumi_rules_not_available">Kasumi 内核不可用。规则页面需要 Kasumi 内核支持。</string>
     <string name="kasumi_rules_refresh">刷新</string>
@@ -121,7 +116,6 @@
     <string name="kasumi_saved_applied">已保存并应用到内核</string>
     <string name="kasumi_saved_apply_failed">已保存，但内核应用失败：%1$s</string>
     <string name="kasumi_saved_reboot">已保存，挂载后端在重启后生效</string>
-    <string name="kasumi_settings_summary">模块挂载、Kasumi 视图和规则</string>
     <string name="kasumi_statfs_spoof">Statfs 伪装</string>
     <string name="kasumi_statfs_spoof_desc">映射文件系统类型信息</string>
     <string name="kasumi_stats_kasumi">Kasumi</string>

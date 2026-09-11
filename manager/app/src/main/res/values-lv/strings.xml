@@ -188,8 +188,6 @@
     <string name="home_android_version">Android versija</string>
     <string name="home_device_model">Ierīces modelis</string>
     <string name="su_not_allowed">Superlietotāja tiesību piešķiršana %s nav atļauta</string>
-    <string name="settings_disable_su">Atspējot su saderību</string>
-    <string name="settings_disable_su_summary">Neļaujiet katrai lietotnei iegūt root privilēģijas, izmantojot komandu su. Esošie root procesi netiek ietekmēti.</string>
     <string name="settings_disable_kernel_umount">Atspējot kodola umount</string>
     <string name="settings_disable_kernel_umount_summary">Atspējot KernelSU kontrolēto kodola līmeņa umount darbību</string>
     <string name="settings_enable_enhanced_security">Izmantot stingru drošības politiku</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">Nodalījumu pārvaldnieks</string>
     <string name="partition_slot_info">Slota informācija</string>
     <string name="partition_device_type">Ierīces veids</string>
-    <string name="partition_current_slot">Pašreizējais slots</string>
-    <string name="partition_other_slot">Cits slots</string>
     <string name="partition_show_all">Rādīt visus</string>
     <string name="partition_collapse">Sakļaut</string>
     <string name="partition_selected_count">Atlasīti %d nodalījumi</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">Bieži lietotie nodalījumi</string>
     <string name="partition_all">Visi nodalījumi</string>
     <string name="partition_dangerous_warning">BĪSTAMS nodalījums! Nepareiza darbība var padarīt ierīci nelietojamu</string>
-    <string name="partition_info_title">Nodalījuma informācija</string>
     <string name="partition_info_type">Veids</string>
     <string name="partition_type_physical">Fizisks</string>
     <string name="partition_type_logical">Loģisks</string>
     <string name="partition_info_size">Izmērs</string>
     <string name="partition_info_device">Ierīce</string>
     <string name="partition_info_slot">Slots</string>
-    <string name="partition_available_operations">Pieejamās darbības</string>
     <string name="partition_backup_to_file">Dublēt failā</string>
     <string name="partition_flash_image">Ierakstīt attēlu</string>
-    <string name="partition_dangerous_operation">Bīstama darbība</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Bīstamas darbības brīdinājums</string>
     <string name="partition_flash_warning">Nodalījuma ierakstīšana var izraisīt ierīces nesāknēšanos!\n\nVai tiešām vēlaties ierakstīt nodalījumu %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Brīdinājums: %1$s ir bīstams nodalījums!\n\nŠī nodalījuma ierakstīšana var izraisīt:\n• Ierīce nesāknējas\n• Svarīgu datu zudumu\n• Tīkla/Bluetooth darbības traucējumus\n\nLūdzu, pārliecinieties, ka zināt, ko darāt!\n\nVai tiešām vēlaties ierakstīt nodalījumu %2$s?</string>
     <string name="partition_confirm_flash">Apstiprināt ierakstīšanu</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">Ierakstīšana veiksmīga! Ieteicams nekavējoties restartēt.</string>
     <string name="partition_flash_failed">Ierakstīšana neizdevās: %s</string>
     <string name="partition_flash_failed_check_log">Ierakstīšana neizdevās, lūdzu, pārbaudiet logcat žurnālus</string>
-    <string name="partition_cannot_read_file">Nevar nolasīt failu</string>
     <string name="partition_load_failed">Neizdevās ielādēt nodalījuma informāciju: %s</string>
     <string name="partition_ab_device">A/B ierīce</string>
     <string name="partition_a_only_device">Tikai A ierīce</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">Pakešu dublēšana pabeigta! Kopā %1$d nodalījumi\nSaglabāts: %2$s</string>
     <string name="partition_batch_backup_partial">Dublēšana pabeigta: %1$d veiksmīgi, %2$d neizdevās\nNeizdevās: %3$s</string>
     <string name="partition_no_selection">Nav atlasīts neviens nodalījums</string>
-    <string name="partition_back">Atpakaļ</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Papildu rīki</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">Atļaut vienreiz</string>
     <string name="su_request_deny">Noraidīt</string>
     <string name="su_request_deny_hide">Noraidīt un slēpt</string>
-    <string name="magisk_compat_title">Magisk stila su uzvedne</string>
-    <string name="magisk_compat_summary">Rādīt lietotnēm redzamu su un pirmajā lietošanas reizē pieprasīt autorizāciju, nevis ļaut su klusi neizdoties lietotnēm, kuras nav atļauto sarakstā.</string>
 </resources>

@@ -188,8 +188,6 @@
     <string name="home_android_version">Versi Android</string>
     <string name="home_device_model">Model Perangkat</string>
     <string name="su_not_allowed">Memberikan hak superuser kepada %s tidak diizinkan</string>
-    <string name="settings_disable_su">Nonaktifkan kompatibilitas SU</string>
-    <string name="settings_disable_su_summary">Cegah setiap aplikasi mendapatkan hak istimewa root melalui perintah su. Proses root yang ada tidak terpengaruh.</string>
     <string name="settings_disable_kernel_umount">Nonaktifkan pelepasan (unmount) kernel</string>
     <string name="settings_disable_kernel_umount_summary">Nonaktifkan perilaku unmount pada level kernel yang digunakan oleh KernelSU.</string>
     <string name="settings_enable_enhanced_security">Gunakan kebijakan keamanan ketat</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">Pengelola partisi</string>
     <string name="partition_slot_info">Informasi slot</string>
     <string name="partition_device_type">Jenis perangkat</string>
-    <string name="partition_current_slot">Slot saat ini</string>
-    <string name="partition_other_slot">Slot lain</string>
     <string name="partition_show_all">Tampilkan semua</string>
     <string name="partition_collapse">Ciutkan</string>
     <string name="partition_selected_count">%d partisi dipilih</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">Partisi umum</string>
     <string name="partition_all">Semua partisi</string>
     <string name="partition_dangerous_warning">Partisi BERBAHAYA! Operasi yang salah dapat merusak perangkat</string>
-    <string name="partition_info_title">Informasi partisi</string>
     <string name="partition_info_type">Jenis</string>
     <string name="partition_type_physical">Fisik</string>
     <string name="partition_type_logical">Logis</string>
     <string name="partition_info_size">Ukuran</string>
     <string name="partition_info_device">Perangkat</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Operasi yang tersedia</string>
     <string name="partition_backup_to_file">Cadangkan ke berkas</string>
     <string name="partition_flash_image">Flash image</string>
-    <string name="partition_dangerous_operation">Operasi berbahaya</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Peringatan operasi berbahaya</string>
     <string name="partition_flash_warning">Mem-flash partisi dapat menyebabkan perangkat tidak bisa boot!\n\nApakah Anda yakin ingin mem-flash partisi %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Peringatan: %1$s adalah partisi berbahaya!\n\nMem-flash partisi ini dapat menyebabkan:\n• Perangkat tidak bisa boot\n• Kehilangan data penting\n• Kerusakan fungsi jaringan/Bluetooth\n\nPastikan Anda tahu apa yang Anda lakukan!\n\nApakah Anda yakin ingin mem-flash partisi %2$s?</string>
     <string name="partition_confirm_flash">Konfirmasi flash</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">Flash berhasil! Disarankan untuk segera mulai ulang.</string>
     <string name="partition_flash_failed">Flash gagal: %s</string>
     <string name="partition_flash_failed_check_log">Flash gagal, silakan periksa log logcat</string>
-    <string name="partition_cannot_read_file">Tidak dapat membaca berkas</string>
     <string name="partition_load_failed">Gagal memuat informasi partisi: %s</string>
     <string name="partition_ab_device">Perangkat A/B</string>
     <string name="partition_a_only_device">Perangkat hanya A</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">Cadangan massal selesai! Total %1$d partisi\nDisimpan di: %2$s</string>
     <string name="partition_batch_backup_partial">Cadangan selesai: %1$d berhasil, %2$d gagal\nGagal: %3$s</string>
     <string name="partition_no_selection">Tidak ada partisi dipilih</string>
-    <string name="partition_back">Kembali</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Alat lanjutan</string>
@@ -507,8 +497,6 @@
     <string name="su_request_allow_once">Izinkan sekali</string>
     <string name="su_request_deny">Tolak</string>
     <string name="su_request_deny_hide">Tolak &amp; sembunyikan</string>
-    <string name="magisk_compat_title">Permintaan su gaya Magisk</string>
-    <string name="magisk_compat_summary">Tampilkan su yang terlihat ke aplikasi dan minta otorisasi saat pertama kali digunakan, alih-alih su gagal secara diam-diam untuk aplikasi yang tidak ada di daftar izin.</string>
     <!-- locale-only keys -->
     <string name="profile">Profil Aplikasi</string>
 </resources>

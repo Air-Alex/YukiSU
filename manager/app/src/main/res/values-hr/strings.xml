@@ -186,8 +186,6 @@
     <string name="home_android_version">Verzija Androida</string>
     <string name="home_device_model">Model uređaja</string>
     <string name="su_not_allowed">Dodjela ovlasti superkorisnika za %s nije dopuštena</string>
-    <string name="settings_disable_su">Onemogući su kompatibilnost</string>
-    <string name="settings_disable_su_summary">Spriječite da svaka aplikacija dobije root privilegije putem naredbe su. Postojeći procesi root nisu pogođeni.</string>
     <string name="settings_disable_kernel_umount">Onemogući umount jezgre</string>
     <string name="settings_disable_kernel_umount_summary">Onemogući ponašanje umount na razini jezgre koje kontrolira KernelSU</string>
     <string name="settings_enable_enhanced_security">Koristi strogu sigurnosnu politiku</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Upravitelj particija</string>
     <string name="partition_slot_info">Informacije o utoru</string>
     <string name="partition_device_type">Vrsta uređaja</string>
-    <string name="partition_current_slot">Trenutni utor</string>
-    <string name="partition_other_slot">Drugi utor</string>
     <string name="partition_show_all">Prikaži sve</string>
     <string name="partition_collapse">Sažmi</string>
     <string name="partition_selected_count">Odabrano %d particija</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Uobičajene particije</string>
     <string name="partition_all">Sve particije</string>
     <string name="partition_dangerous_warning">OPASNA particija! Nepravilna radnja može onesposobiti uređaj</string>
-    <string name="partition_info_title">Informacije o particiji</string>
     <string name="partition_info_type">Vrsta</string>
     <string name="partition_type_physical">Fizička</string>
     <string name="partition_type_logical">Logička</string>
     <string name="partition_info_size">Veličina</string>
     <string name="partition_info_device">Uređaj</string>
     <string name="partition_info_slot">Utor</string>
-    <string name="partition_available_operations">Dostupne operacije</string>
     <string name="partition_backup_to_file">Sigurnosno kopiraj u datoteku</string>
     <string name="partition_flash_image">Zapiši sliku</string>
-    <string name="partition_dangerous_operation">Opasna operacija</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Upozorenje o opasnoj operaciji</string>
     <string name="partition_flash_warning">Zapisivanje particije može uzrokovati da se uređaj ne pokrene!\n\nJeste li sigurni da želite zapisati particiju %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Upozorenje: %1$s je opasna particija!\n\nZapisivanje ove particije može uzrokovati:\n• Uređaj se ne pokreće\n• Gubitak važnih podataka\n• Kvar mreže/Bluetootha\n\nProvjerite znate li što radite!\n\nJeste li sigurni da želite zapisati particiju %2$s?</string>
     <string name="partition_confirm_flash">Potvrdi zapisivanje</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Zapisivanje uspješno! Preporučuje se odmah ponovno pokrenuti.</string>
     <string name="partition_flash_failed">Zapisivanje nije uspjelo: %s</string>
     <string name="partition_flash_failed_check_log">Zapisivanje nije uspjelo, provjerite logcat zapisnike</string>
-    <string name="partition_cannot_read_file">Datoteku nije moguće pročitati</string>
     <string name="partition_load_failed">Učitavanje informacija o particiji nije uspjelo: %s</string>
     <string name="partition_ab_device">A/B uređaj</string>
     <string name="partition_a_only_device">Samo A uređaj</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Skupna sigurnosna kopija dovršena! Ukupno %1$d particija\nSpremljeno u: %2$s</string>
     <string name="partition_batch_backup_partial">Sigurnosna kopija dovršena: %1$d uspješnih, %2$d neuspješnih\nNeuspješne: %3$s</string>
     <string name="partition_no_selection">Nijedna particija nije odabrana</string>
-    <string name="partition_back">Natrag</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Napredni alati</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Dopusti jednom</string>
     <string name="su_request_deny">Odbij</string>
     <string name="su_request_deny_hide">Odbij i sakrij</string>
-    <string name="magisk_compat_title">su upit u stilu Magisk</string>
-    <string name="magisk_compat_summary">Prikaži aplikacijama vidljiv su i pri prvoj upotrebi zatraži autorizaciju, umjesto da su tiho ne uspije za aplikacije koje nisu na popisu dopuštenih.</string>
 </resources>

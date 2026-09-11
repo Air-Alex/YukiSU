@@ -3,7 +3,6 @@ package ui.screen.moreSettings
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
-import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -257,19 +256,17 @@ private fun AppearanceSettings(
         )
 
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            SwitchSettingItem(
-                icon = Icons.Filled.ColorLens,
-                title = stringResource(R.string.dynamic_color_title),
-                summary = stringResource(R.string.dynamic_color_summary),
-                checked = state.useDynamicColor,
-                onChange = handlers::handleDynamicColorChange
-            )
-        }
+        SwitchSettingItem(
+            icon = Icons.Filled.ColorLens,
+            title = stringResource(R.string.dynamic_color_title),
+            summary = stringResource(R.string.dynamic_color_summary),
+            checked = state.useDynamicColor,
+            onChange = handlers::handleDynamicColorChange
+        )
 
 
         AnimatedVisibility(
-            visible = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !state.useDynamicColor,
+            visible = !state.useDynamicColor,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {

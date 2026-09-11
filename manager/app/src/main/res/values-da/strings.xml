@@ -186,8 +186,6 @@
     <string name="home_android_version">Android-version</string>
     <string name="home_device_model">Enhedsmodel</string>
     <string name="su_not_allowed">Det er ikke tilladt at give superbruger til %s</string>
-    <string name="settings_disable_su">Deaktiver su-kompatibilitet</string>
-    <string name="settings_disable_su_summary">Forhindrer enhver app i at få root-privilegier gennem su-kommandoen. Eksisterende root-processer påvirkes ikke.</string>
     <string name="settings_disable_kernel_umount">Deaktiver kerne-afmontering</string>
     <string name="settings_disable_kernel_umount_summary">Deaktiver afmonteringsadfærd på kerneniveau styret af KernelSU</string>
     <string name="settings_enable_enhanced_security">Brug streng sikkerhedspolitik</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Partitionsmanager</string>
     <string name="partition_slot_info">Slotinformation</string>
     <string name="partition_device_type">Enhedstype</string>
-    <string name="partition_current_slot">Nuværende slot</string>
-    <string name="partition_other_slot">Anden slot</string>
     <string name="partition_show_all">Vis alle</string>
     <string name="partition_collapse">Sammenfold</string>
     <string name="partition_selected_count">%d partitioner valgt</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Almindelige partitioner</string>
     <string name="partition_all">Alle partitioner</string>
     <string name="partition_dangerous_warning">FARLIG partition! Forkert handling kan gøre enheden ubrugelig</string>
-    <string name="partition_info_title">Partitionsoplysninger</string>
     <string name="partition_info_type">Type</string>
     <string name="partition_type_physical">Fysisk</string>
     <string name="partition_type_logical">Logisk</string>
     <string name="partition_info_size">Størrelse</string>
     <string name="partition_info_device">Enhed</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Tilgængelige handlinger</string>
     <string name="partition_backup_to_file">Sikkerhedskopiér til fil</string>
     <string name="partition_flash_image">Flash image</string>
-    <string name="partition_dangerous_operation">Farlig handling</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Advarsel om farlig handling</string>
     <string name="partition_flash_warning">Flashing af partition kan medføre, at enheden ikke kan starte op!\n\nEr du sikker på, at du vil flashe partitionen %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Advarsel: %1$s er en farlig partition!\n\nFlashing af denne partition kan medføre:\n• At enheden ikke kan starte op\n• Tab af vigtige data\n• Netværks-/Bluetooth-fejl\n\nSørg venligst for, at du ved, hvad du gør!\n\nEr du sikker på, at du vil flashe partitionen %2$s?</string>
     <string name="partition_confirm_flash">Bekræft flash</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Flash lykkedes! Anbefaler genstart med det samme.</string>
     <string name="partition_flash_failed">Flash mislykkedes: %s</string>
     <string name="partition_flash_failed_check_log">Flash mislykkedes, tjek venligst logcat-logge</string>
-    <string name="partition_cannot_read_file">Kan ikke læse fil</string>
     <string name="partition_load_failed">Kunne ikke indlæse partitionsinfo: %s</string>
     <string name="partition_ab_device">A/B-enhed</string>
     <string name="partition_a_only_device">Kun A-enhed</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Batch-sikkerhedskopiering fuldført! I alt %1$d partitioner\nGemt i: %2$s</string>
     <string name="partition_batch_backup_partial">Sikkerhedskopiering fuldført: %1$d lykkedes, %2$d mislykkedes\nMislykkedes: %3$s</string>
     <string name="partition_no_selection">Ingen partition valgt</string>
-    <string name="partition_back">Tilbage</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Avancerede værktøjer</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Tillad én gang</string>
     <string name="su_request_deny">Afvis</string>
     <string name="su_request_deny_hide">Afvis og skjul</string>
-    <string name="magisk_compat_title">Magisk-lignende su-prompt</string>
-    <string name="magisk_compat_summary">Vis en synlig su til apps og bed om autorisation ved første brug i stedet for, at su lydløst fejler for apps, der ikke er på tilladelseslisten.</string>
 </resources>

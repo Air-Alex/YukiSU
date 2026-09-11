@@ -23,16 +23,17 @@
     <string name="kasumi_fs_type_title">Storage filesystem</string>
     <string name="kasumi_fs_type_tmpfs">Tmpfs (RAM)</string>
     <string name="kasumi_general">General</string>
-    <string name="kasumi_global_backend">Mount backend</string>
     <string name="kasumi_global_override">Global override: %1$s</string>
     <string name="kasumi_hide_aggressive">Aggressive</string>
     <string name="kasumi_hide_normal">Normal</string>
     <string name="kasumi_info_active_mounts">Active Mounts:</string>
     <string name="kasumi_info_kernel">Kernel</string>
-    <string name="kasumi_info_more_mounts">... and %d more</string>
+    <plurals name="kasumi_info_more_mounts">
+        <item quantity="one">… and %d more</item>
+        <item quantity="other">… and %d more</item>
+    </plurals>
     <string name="kasumi_info_mount_base">Mount Base</string>
     <string name="kasumi_mount_base_none" translatable="false">none</string>
-    <string name="kasumi_info_selinux">SELinux</string>
     <string name="kasumi_kernel_debug">Kernel Debug</string>
     <string name="kasumi_kernel_debug_desc">Enable Kasumi kernel debug logging</string>
     <string name="kasumi_kernel_hooks">Kernel hooks</string>
@@ -76,8 +77,6 @@
     <string name="kasumi_module_rules_add">Add</string>
     <string name="kasumi_module_rules_placeholder">/path/inside/system/or/vendor</string>
     <string name="kasumi_module_rules_title">Custom rules for this module</string>
-    <string name="kasumi_moduledir">Module Directory</string>
-    <string name="kasumi_moduledir_desc">Base directory for modules (default: /data/adb/modules)</string>
     <string name="kasumi_modules_count">Modules</string>
     <string name="kasumi_mount_config">Mount config</string>
     <string name="kasumi_mount_filter">Filter mount modes</string>
@@ -97,11 +96,6 @@
     <string name="kasumi_no_conflicts">No mount conflicts found</string>
     <string name="kasumi_overlay_xattr">Hide OverlayFS xattrs</string>
     <string name="kasumi_overlay_xattr_desc">Hide OverlayFS marks from the virtual view</string>
-    <string name="kasumi_partitions">Active Partitions</string>
-    <string name="kasumi_partitions_add">Add Partition</string>
-    <string name="kasumi_partitions_desc">Partitions to scan for module modifications (comma-separated)</string>
-    <string name="kasumi_partitions_placeholder">Enter partition names (e.g., mi_ext, my_stock)</string>
-    <string name="kasumi_partitions_scan">Scan Partitions</string>
     <string name="kasumi_quick_hide">Common hide paths</string>
     <string name="kasumi_retry_apply">Retry applying</string>
     <string name="kasumi_rule_maps_spoof">Spoof /proc/pid/maps ino/dev/pathname</string>
@@ -115,7 +109,10 @@
     <string name="kasumi_rules_clear">Clear</string>
     <string name="kasumi_rules_clear_all">Clear All Rules</string>
     <string name="kasumi_rules_clear_confirm">Are you sure you want to clear all active Kasumi rules? This will take effect immediately.</string>
-    <string name="kasumi_rules_count">%d active rules</string>
+    <plurals name="kasumi_rules_count">
+        <item quantity="one">%d active rule</item>
+        <item quantity="other">%d active rules</item>
+    </plurals>
     <string name="kasumi_rules_empty">No active rules</string>
     <string name="kasumi_rules_not_available">Kasumi kernel not available. Rules tab requires Kasumi kernel support.</string>
     <string name="kasumi_rules_refresh">Refresh</string>
@@ -123,7 +120,6 @@
     <string name="kasumi_saved_applied">Saved and applied to the kernel</string>
     <string name="kasumi_saved_apply_failed">Saved, but runtime apply failed: %1$s</string>
     <string name="kasumi_saved_reboot">Saved; mount backend changes apply after reboot</string>
-    <string name="kasumi_settings_summary">Module mounts, Kasumi views and rules</string>
     <string name="kasumi_statfs_spoof">Statfs spoof</string>
     <string name="kasumi_statfs_spoof_desc">Project filesystem type information</string>
     <string name="kasumi_stats_kasumi">Kasumi</string>

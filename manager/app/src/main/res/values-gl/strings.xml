@@ -186,8 +186,6 @@
     <string name="home_android_version">Versión de Android</string>
     <string name="home_device_model">Modelo do dispositivo</string>
     <string name="su_not_allowed">Non se permite conceder superusuario a %s</string>
-    <string name="settings_disable_su">Desactivar a compatibilidade con su</string>
-    <string name="settings_disable_su_summary">Evita que todas as aplicacións obteñan privilexios root mediante o comando su. Os procesos root existentes non se ven afectados.</string>
     <string name="settings_disable_kernel_umount">Desactivar o umount do kernel</string>
     <string name="settings_disable_kernel_umount_summary">Desactivar o comportamento de umount a nivel de kernel controlado por KernelSU</string>
     <string name="settings_enable_enhanced_security">Usar unha política de seguranza estrita</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Xestor de particións</string>
     <string name="partition_slot_info">Información dos slots</string>
     <string name="partition_device_type">Tipo de dispositivo</string>
-    <string name="partition_current_slot">Slot actual</string>
-    <string name="partition_other_slot">Outro slot</string>
     <string name="partition_show_all">Amosar todo</string>
     <string name="partition_collapse">Contraer</string>
     <string name="partition_selected_count">%d particións seleccionadas</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Particións comúns</string>
     <string name="partition_all">Todas as particións</string>
     <string name="partition_dangerous_warning">Partición PERIGOSA! Unha operación incorrecta pode inutilizar o dispositivo</string>
-    <string name="partition_info_title">Información da partición</string>
     <string name="partition_info_type">Tipo</string>
     <string name="partition_type_physical">Física</string>
     <string name="partition_type_logical">Lóxica</string>
     <string name="partition_info_size">Tamaño</string>
     <string name="partition_info_device">Dispositivo</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Operacións dispoñíbeis</string>
     <string name="partition_backup_to_file">Facer copia nun ficheiro</string>
     <string name="partition_flash_image">Gravar imaxe</string>
-    <string name="partition_dangerous_operation">Operación perigosa</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Aviso de operación perigosa</string>
     <string name="partition_flash_warning">Gravar a partición pode impedir que o dispositivo arranque!\n\nSeguro que queres gravar a partición %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Aviso: %1$s é unha partición perigosa!\n\nGravar esta partición pode causar:\n• Que o dispositivo non arranque\n• Perda de datos importantes\n• Mal funcionamento de rede/Bluetooth\n\nAsegúrate de saber o que estás a facer!\n\nSeguro que queres gravar a partición %2$s?</string>
     <string name="partition_confirm_flash">Confirmar a gravación</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Gravación correcta! Recoméndase reiniciar inmediatamente.</string>
     <string name="partition_flash_failed">Erro na gravación: %s</string>
     <string name="partition_flash_failed_check_log">Erro na gravación, comproba os rexistros do logcat</string>
-    <string name="partition_cannot_read_file">Non foi posíbel ler o ficheiro</string>
     <string name="partition_load_failed">Erro ao cargar a información da partición: %s</string>
     <string name="partition_ab_device">Dispositivo A/B</string>
     <string name="partition_a_only_device">Dispositivo só A</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Copia en lote rematada! Total de %1$d particións\nGardado en: %2$s</string>
     <string name="partition_batch_backup_partial">Copia rematada: %1$d correctas, %2$d con erro\nCon erro: %3$s</string>
     <string name="partition_no_selection">Ningunha partición seleccionada</string>
-    <string name="partition_back">Volver</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Ferramentas avanzadas</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Permitir unha vez</string>
     <string name="su_request_deny">Denegar</string>
     <string name="su_request_deny_hide">Denegar e ocultar</string>
-    <string name="magisk_compat_title">Solicitude su ao estilo Magisk</string>
-    <string name="magisk_compat_summary">Amosar un su visíbel ás aplicacións e pedir autorización no primeiro uso, en vez de que o su falle silenciosamente para as aplicacións que non están na lista de permitidos.</string>
 </resources>

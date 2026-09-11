@@ -84,7 +84,7 @@ class ScreenRatioOverlayView @JvmOverloads constructor(
                 if (dragHandle == null) return false
                 dragHandle = null
                 parent?.requestDisallowInterceptTouchEvent(false)
-                settleCropSelection()
+                performClick()
                 true
             }
 
@@ -98,6 +98,12 @@ class ScreenRatioOverlayView @JvmOverloads constructor(
 
             else -> dragHandle != null
         }
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        settleCropSelection()
+        return true
     }
 
     /**

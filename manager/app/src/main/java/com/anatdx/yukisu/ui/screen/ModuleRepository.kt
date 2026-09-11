@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -814,8 +815,9 @@ private fun MmrlDirectorySection(
             item {
                 RepositoryNotice(
                     title = stringResource(R.string.repository_mmrl_directory),
-                    message = stringResource(
-                        R.string.repository_mmrl_directory_description,
+                    message = pluralStringResource(
+                        R.plurals.repository_mmrl_directory_description,
+                        state.entries.size,
                         state.entries.size,
                     ),
                     error = false,

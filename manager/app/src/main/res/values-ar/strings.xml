@@ -188,8 +188,6 @@
     <string name="home_android_version">‏إصدار Android</string>
     <string name="home_device_model">نوع الجهاز</string>
     <string name="su_not_allowed">لا يسمح بمنح المستخدم المتميز ل %s</string>
-    <string name="settings_disable_su">تعطيل توافق su</string>
-    <string name="settings_disable_su_summary">منع كل تطبيق من الحصول على امتيازات root من خلال الأمر su. لا تتأثر عمليات root الموجودة.</string>
     <string name="settings_disable_kernel_umount">تعطيل umount النواة</string>
     <string name="settings_disable_kernel_umount_summary">تعطيل سلوك umount على مستوى النواة الذي يتحكم به KernelSU</string>
     <string name="settings_enable_enhanced_security">استخدام سياسة أمان صارمة</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">مدير الأقسام</string>
     <string name="partition_slot_info">معلومات الفتحة</string>
     <string name="partition_device_type">نوع الجهاز</string>
-    <string name="partition_current_slot">الفتحة الحالية</string>
-    <string name="partition_other_slot">الفتحة الأخرى</string>
     <string name="partition_show_all">إظهار الكل</string>
     <string name="partition_collapse">طي</string>
     <string name="partition_selected_count">تم تحديد %d أقسام</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">الأقسام الشائعة</string>
     <string name="partition_all">جميع الأقسام</string>
     <string name="partition_dangerous_warning">قسم خطير! قد يؤدي التشغيل غير الصحيح إلى تعطيل الجهاز</string>
-    <string name="partition_info_title">معلومات القسم</string>
     <string name="partition_info_type">النوع</string>
     <string name="partition_type_physical">مادي</string>
     <string name="partition_type_logical">منطقي</string>
     <string name="partition_info_size">الحجم</string>
     <string name="partition_info_device">الجهاز</string>
     <string name="partition_info_slot">الفتحة</string>
-    <string name="partition_available_operations">العمليات المتاحة</string>
     <string name="partition_backup_to_file">نسخ احتياطي إلى ملف</string>
     <string name="partition_flash_image">فلاش الصورة</string>
-    <string name="partition_dangerous_operation">عملية خطيرة</string>
-    <string name="partition_dangerous_operation_warning">⚠️ تحذير عملية خطيرة</string>
     <string name="partition_flash_warning">قد يؤدي فلاش القسم إلى عدم قدرة الجهاز على الإقلاع!\n\nهل أنت متأكد من أنك تريد فلاش القسم %s؟</string>
     <string name="partition_dangerous_flash_warning">⚠️ تحذير: %1$s قسم خطير!\n\nقد يؤدي فلاش هذا القسم إلى:\n• عدم قدرة الجهاز على الإقلاع\n• فقدان بيانات مهمة\n• خلل في الشبكة/البلوتوث\n\nيرجى التأكد من أنك تعرف ما تفعله!\n\nهل أنت متأكد من أنك تريد فلاش القسم %2$s؟</string>
     <string name="partition_confirm_flash">تأكيد الفلاش</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">نجح الفلاش! يُنصح بإعادة التشغيل فوراً.</string>
     <string name="partition_flash_failed">فشل الفلاش: %s</string>
     <string name="partition_flash_failed_check_log">فشل الفلاش، يرجى التحقق من سجلات logcat</string>
-    <string name="partition_cannot_read_file">تعذّر قراءة الملف</string>
     <string name="partition_load_failed">فشل تحميل معلومات القسم: %s</string>
     <string name="partition_ab_device">جهاز A/B</string>
     <string name="partition_a_only_device">جهاز A فقط</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">اكتمل النسخ الاحتياطي الدفعي! إجمالي %1$d أقسام\nمحفوظ في: %2$s</string>
     <string name="partition_batch_backup_partial">اكتمل النسخ الاحتياطي: %1$d ناجح، %2$d فاشل\nالفاشل: %3$s</string>
     <string name="partition_no_selection">لم يتم تحديد أي قسم</string>
-    <string name="partition_back">رجوع</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">أدوات متقدمة</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">السماح مرة واحدة</string>
     <string name="su_request_deny">رفض</string>
     <string name="su_request_deny_hide">رفض وإخفاء</string>
-    <string name="magisk_compat_title">طلب su بأسلوب Magisk</string>
-    <string name="magisk_compat_summary">إظهار su مرئي للتطبيقات وطلب التفويض عند أول استخدام، بدلاً من فشل su بصمت للتطبيقات غير الموجودة في قائمة السماح.</string>
 </resources>

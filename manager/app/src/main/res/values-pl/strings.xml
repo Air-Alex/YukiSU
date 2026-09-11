@@ -188,8 +188,6 @@
     <string name="home_android_version">Wersja Androida</string>
     <string name="home_device_model">Model urządzenia</string>
     <string name="su_not_allowed">Przyznanie superużytkownika dla %s jest niedozwolone</string>
-    <string name="settings_disable_su">Wyłącz zgodność su</string>
-    <string name="settings_disable_su_summary">Uniemożliwiaj każdej aplikacji uzyskanie uprawnień root za pomocą polecenia su. Nie ma to wpływu na istniejące procesy root.</string>
     <string name="settings_disable_kernel_umount">Wyłącz umount jądra</string>
     <string name="settings_disable_kernel_umount_summary">Wyłącz zachowanie umount na poziomie jądra kontrolowane przez KernelSU</string>
     <string name="settings_enable_enhanced_security">Użyj rygorystycznej polityki bezpieczeństwa</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">Menedżer partycji</string>
     <string name="partition_slot_info">Informacje o slotach</string>
     <string name="partition_device_type">Typ urządzenia</string>
-    <string name="partition_current_slot">Bieżący slot</string>
-    <string name="partition_other_slot">Inny slot</string>
     <string name="partition_show_all">Pokaż wszystko</string>
     <string name="partition_collapse">Zwiń</string>
     <string name="partition_selected_count">Wybrano partycji: %d</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">Typowe partycje</string>
     <string name="partition_all">Wszystkie partycje</string>
     <string name="partition_dangerous_warning">NIEBEZPIECZNA partycja! Niewłaściwa operacja może uszkodzić urządzenie</string>
-    <string name="partition_info_title">Informacje o partycji</string>
     <string name="partition_info_type">Typ</string>
     <string name="partition_type_physical">Fizyczna</string>
     <string name="partition_type_logical">Logiczna</string>
     <string name="partition_info_size">Rozmiar</string>
     <string name="partition_info_device">Urządzenie</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Dostępne operacje</string>
     <string name="partition_backup_to_file">Kopia zapasowa do pliku</string>
     <string name="partition_flash_image">Flashuj obraz</string>
-    <string name="partition_dangerous_operation">Niebezpieczna operacja</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Ostrzeżenie o niebezpiecznej operacji</string>
     <string name="partition_flash_warning">Flashowanie partycji może uniemożliwić uruchomienie urządzenia!\n\nCzy na pewno chcesz sflashować partycję %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Ostrzeżenie: %1$s to niebezpieczna partycja!\n\nFlashowanie tej partycji może spowodować:\n• Brak możliwości uruchomienia urządzenia\n• Utratę ważnych danych\n• Awarię sieci/Bluetooth\n\nUpewnij się, że wiesz, co robisz!\n\nCzy na pewno chcesz sflashować partycję %2$s?</string>
     <string name="partition_confirm_flash">Potwierdź flashowanie</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">Flashowanie pomyślne! Zalecany natychmiastowy restart.</string>
     <string name="partition_flash_failed">Flashowanie nie powiodło się: %s</string>
     <string name="partition_flash_failed_check_log">Flashowanie nie powiodło się, sprawdź dzienniki logcat</string>
-    <string name="partition_cannot_read_file">Nie można odczytać pliku</string>
     <string name="partition_load_failed">Nie udało się załadować informacji o partycji: %s</string>
     <string name="partition_ab_device">Urządzenie A/B</string>
     <string name="partition_a_only_device">Urządzenie tylko A</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">Kopia zapasowa wsadowa zakończona! Łącznie %1$d partycji\nZapisano w: %2$s</string>
     <string name="partition_batch_backup_partial">Kopia zapasowa zakończona: %1$d pomyślnych, %2$d nieudanych\nNieudane: %3$s</string>
     <string name="partition_no_selection">Nie wybrano partycji</string>
-    <string name="partition_back">Wstecz</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Narzędzia zaawansowane</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">Zezwól raz</string>
     <string name="su_request_deny">Odmów</string>
     <string name="su_request_deny_hide">Odmów i ukryj</string>
-    <string name="magisk_compat_title">Monit su w stylu Magisk</string>
-    <string name="magisk_compat_summary">Pokazuj aplikacjom widoczne su i proś o autoryzację przy pierwszym użyciu, zamiast cichego niepowodzenia su dla aplikacji spoza listy dozwolonych.</string>
 </resources>

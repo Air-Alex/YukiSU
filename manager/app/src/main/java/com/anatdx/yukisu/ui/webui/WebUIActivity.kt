@@ -2,12 +2,8 @@ package com.anatdx.yukisu.ui.webui
 
 import android.annotation.SuppressLint
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,9 +37,7 @@ class WebUIActivity : ComponentActivity() {
 
         // Enable edge to edge
         enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            window.isNavigationBarContrastEnforced = false
-        }
+        window.isNavigationBarContrastEnforced = false
 
         super.onCreate(savedInstanceState)
 
@@ -61,6 +55,7 @@ class WebUIActivity : ComponentActivity() {
             setupWebView()
         }
     }
+
     private fun setupWebView() {
         val moduleId = intent.getStringExtra("id") ?: finishAndRemoveTask().let { return }
         val name = intent.getStringExtra("name") ?: finishAndRemoveTask().let { return }
@@ -84,27 +79,11 @@ class WebUIActivity : ComponentActivity() {
             )
             .build()
 
-        val webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView,
-                request: WebResourceRequest
-            ): WebResourceResponse? {
-                val url = request.url
-                // Handle ksu://icon/[packageName] to serve app icon via WebView
-                if (url.scheme.equals("ksu", ignoreCase = true) && url.host.equals("icon", ignoreCase = true)) {
-                    val packageName = url.path?.substring(1)
-                    if (!packageName.isNullOrEmpty()) {
-                        val icon = AppIconUtil.loadAppIconSync(this@WebUIActivity, packageName, 512)
-                        if (icon != null) {
-                            val stream = java.io.ByteArrayOutputStream()
-                            icon.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
-                            val inputStream = java.io.ByteArrayInputStream(stream.toByteArray())
-                            return WebResourceResponse("image/png", null, inputStream)
-                        }
-                    }
-                }
-                return webViewAssetLoader.shouldInterceptRequest(url)
+        val webViewClient = ModuleWebViewClient(this, webViewAssetLoader) { view ->
+            if (this.webView === view) {
+                this.webView = null
             }
+            finishAndRemoveTask()
         }
 
         val webView = WebView(this).apply {

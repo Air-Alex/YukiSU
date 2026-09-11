@@ -186,8 +186,6 @@
     <string name="home_android_version">Bersyon ng Android</string>
     <string name="home_device_model">Modelo ng device</string>
     <string name="su_not_allowed">Hindi pinapayagang magbigay ng superuser sa %s</string>
-    <string name="settings_disable_su">I-disable ang su compatibility</string>
-    <string name="settings_disable_su_summary">Pigilan ang bawat app na makakuha ng root mga pribilehiyo sa pamamagitan ng su na utos. Ang mga kasalukuyang proseso ng root ay hindi apektado.</string>
     <string name="settings_disable_kernel_umount">I-disable ang kernel umount</string>
     <string name="settings_disable_kernel_umount_summary">I-disable ang kernel-level na umount behavior na kinokontrol ng KernelSU</string>
     <string name="settings_enable_enhanced_security">Gumamit ng mahigpit na security policy</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Partition Manager</string>
     <string name="partition_slot_info">Impormasyon ng Slot</string>
     <string name="partition_device_type">Uri ng Device</string>
-    <string name="partition_current_slot">Kasalukuyang Slot</string>
-    <string name="partition_other_slot">Ibang Slot</string>
     <string name="partition_show_all">Ipakita Lahat</string>
     <string name="partition_collapse">I-collapse</string>
     <string name="partition_selected_count">%d na partition ang napili</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Mga Karaniwang Partition</string>
     <string name="partition_all">Lahat ng Partition</string>
     <string name="partition_dangerous_warning">MAPANGANIB na partition! Maaaring ma-brick ang device sa maling operasyon</string>
-    <string name="partition_info_title">Impormasyon ng Partition</string>
     <string name="partition_info_type">Uri</string>
     <string name="partition_type_physical">Physical</string>
     <string name="partition_type_logical">Logical</string>
     <string name="partition_info_size">Sukat</string>
     <string name="partition_info_device">Device</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Mga Available na Operasyon</string>
     <string name="partition_backup_to_file">I-backup sa File</string>
     <string name="partition_flash_image">I-flash ang Image</string>
-    <string name="partition_dangerous_operation">Mapanganib na Operasyon</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Babala sa Mapanganib na Operasyon</string>
     <string name="partition_flash_warning">Ang pag-flash ng partition ay maaaring magdulot na hindi makapag-boot ang device!\n\nSigurado ka bang gusto mong i-flash ang partition na %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Babala: ang %1$s ay mapanganib na partition!\n\nAng pag-flash ng partition na ito ay maaaring magdulot ng:\n• Hindi makapag-boot ang device\n• Pagkawala ng mahahalagang data\n• Pagkasira ng Network/Bluetooth\n\nMangyaring tiyaking alam mo ang iyong ginagawa!\n\nSigurado ka bang gusto mong i-flash ang partition na %2$s?</string>
     <string name="partition_confirm_flash">Kumpirmahin ang Flash</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Matagumpay ang flash! Inirerekomendang i-reboot kaagad.</string>
     <string name="partition_flash_failed">Nabigo ang flash: %s</string>
     <string name="partition_flash_failed_check_log">Nabigo ang flash, mangyaring tingnan ang mga logcat log</string>
-    <string name="partition_cannot_read_file">Hindi mabasa ang file</string>
     <string name="partition_load_failed">Nabigong i-load ang partition info: %s</string>
     <string name="partition_ab_device">A/B Device</string>
     <string name="partition_a_only_device">A-only na Device</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Tapos na ang batch backup! Kabuuang %1$d partition\nNaka-save sa: %2$s</string>
     <string name="partition_batch_backup_partial">Tapos na ang backup: %1$d nagtagumpay, %2$d nabigo\nNabigo: %3$s</string>
     <string name="partition_no_selection">Walang napiling partition</string>
-    <string name="partition_back">Bumalik</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Mga Advanced na Tool</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Payagan minsan</string>
     <string name="su_request_deny">Tanggihan</string>
     <string name="su_request_deny_hide">Tanggihan at itago</string>
-    <string name="magisk_compat_title">Magisk-style na su prompt</string>
-    <string name="magisk_compat_summary">Magpakita ng nakikitang su sa mga app at humingi ng awtorisasyon sa unang paggamit, sa halip na tahimik na mabigo ang su para sa mga app na wala sa allowlist.</string>
 </resources>

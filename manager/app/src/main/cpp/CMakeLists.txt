@@ -12,6 +12,8 @@ include_directories(${REPO_ROOT})
 
 project("kernelsu")
 
+include("${REPO_ROOT}/cmake/ClangTidy.cmake")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -60,3 +62,6 @@ add_library(adbroot
 )
 
 target_link_libraries(adbroot ${log-lib})
+
+yukisu_enable_clang_tidy(kernelsu)
+yukisu_enable_clang_tidy(adbroot CXX)

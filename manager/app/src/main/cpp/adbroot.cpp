@@ -6,10 +6,15 @@
 
 struct prop_info {};
 
-static struct prop_info g_adb_root_prop;
+namespace {
+struct prop_info g_adb_root_prop;
+}
+
+extern "C" int
+android_log_debuggable_override() asm("__android_log_is_debuggable");
 
 extern "C" [[gnu::visibility("default"), gnu::used]]
-int __android_log_is_debuggable() {
+int android_log_debuggable_override() {
   return 1;
 }
 

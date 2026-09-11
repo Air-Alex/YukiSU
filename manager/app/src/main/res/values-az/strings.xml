@@ -186,8 +186,6 @@
     <string name="home_android_version">Android versiyası</string>
     <string name="home_device_model">Cihaz modeli</string>
     <string name="su_not_allowed">%s üçün superistifadəçi səlahiyyəti verilməsinə icazə yoxdur</string>
-    <string name="settings_disable_su">Su uyğunluğunu deaktiv et</string>
-    <string name="settings_disable_su_summary">su əmri vasitəsilə hər bir tətbiqin root imtiyazları əldə etməsinin qarşısını alın. Mövcud root prosesləri təsirlənmir.</string>
     <string name="settings_disable_kernel_umount">Nüvə ayırmasını deaktiv et</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU tərəfindən idarə olunan nüvə səviyyəsindəki ayırma davranışını deaktiv edin</string>
     <string name="settings_enable_enhanced_security">Ciddi təhlükəsizlik siyasəti istifadə et</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Bölmə Meneceri</string>
     <string name="partition_slot_info">Slot Məlumatı</string>
     <string name="partition_device_type">Cihaz Növü</string>
-    <string name="partition_current_slot">Cari Slot</string>
-    <string name="partition_other_slot">Digər Slot</string>
     <string name="partition_show_all">Hamısını göstər</string>
     <string name="partition_collapse">Yığ</string>
     <string name="partition_selected_count">%d bölmə seçildi</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Ümumi Bölmələr</string>
     <string name="partition_all">Bütün Bölmələr</string>
     <string name="partition_dangerous_warning">TƏHLÜKƏLİ bölmə! Yanlış əməliyyat cihazı sıradan çıxara bilər</string>
-    <string name="partition_info_title">Bölmə Məlumatı</string>
     <string name="partition_info_type">Növ</string>
     <string name="partition_type_physical">Fiziki</string>
     <string name="partition_type_logical">Məntiqi</string>
     <string name="partition_info_size">Ölçü</string>
     <string name="partition_info_device">Cihaz</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Mövcud Əməliyyatlar</string>
     <string name="partition_backup_to_file">Fayla yedəklə</string>
     <string name="partition_flash_image">Görüntünü Flaş Et</string>
-    <string name="partition_dangerous_operation">Təhlükəli Əməliyyat</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Təhlükəli Əməliyyat Xəbərdarlığı</string>
     <string name="partition_flash_warning">Bölməni flaş etmək cihazın yüklənə bilməməsinə səbəb ola bilər!\n\n%s bölməsini flaş etmək istədiyinizə əminsiniz?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Xəbərdarlıq: %1$s təhlükəli bir bölmədir!\n\nBu bölməni flaş etmək aşağıdakılara səbəb ola bilər:\n• Cihazın yüklənə bilməməsi\n• Vacib məlumatların itkisi\n• Şəbəkə/Bluetooth nasazlığı\n\nZəhmət olmasa nə etdiyinizi bildiyinizə əmin olun!\n\n%2$s bölməsini flaş etmək istədiyinizə əminsiniz?</string>
     <string name="partition_confirm_flash">Flaş etməni təsdiqlə</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Flaş uğurlu oldu! Dərhal yenidən başlatma tövsiyə olunur.</string>
     <string name="partition_flash_failed">Flaş alınmadı: %s</string>
     <string name="partition_flash_failed_check_log">Flaş alınmadı, zəhmət olmasa logcat jurnallarını yoxlayın</string>
-    <string name="partition_cannot_read_file">Fayl oxuna bilmir</string>
     <string name="partition_load_failed">Bölmə məlumatı yüklənə bilmədi: %s</string>
     <string name="partition_ab_device">A/B Cihazı</string>
     <string name="partition_a_only_device">Yalnız A Cihazı</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Toplu yedəkləmə tamamlandı! Ümumi %1$d bölmə\nYadda saxlanıldığı yer: %2$s</string>
     <string name="partition_batch_backup_partial">Yedəkləmə tamamlandı: %1$d uğurlu, %2$d uğursuz\nUğursuz: %3$s</string>
     <string name="partition_no_selection">Bölmə seçilmədi</string>
-    <string name="partition_back">Geri</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Qabaqcıl Alətlər</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Bir dəfə icazə ver</string>
     <string name="su_request_deny">Rədd et</string>
     <string name="su_request_deny_hide">Rədd et və gizlət</string>
-    <string name="magisk_compat_title">Magisk tərzi su sorğusu</string>
-    <string name="magisk_compat_summary">İcazə siyahısında olmayan tətbiqlər üçün su-nun səssizcə uğursuz olması əvəzinə, tətbiqlərə görünən bir su göstər və ilk istifadədə səlahiyyət istə.</string>
 </resources>

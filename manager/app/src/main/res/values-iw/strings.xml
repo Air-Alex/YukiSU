@@ -186,8 +186,6 @@
     <string name="home_android_version">גרסת Android</string>
     <string name="home_device_model">דגם המכשיר</string>
     <string name="su_not_allowed">הענקת הרשאת משתמש-על ל-%s אינה מותרת</string>
-    <string name="settings_disable_su">השבת תאימות su</string>
-    <string name="settings_disable_su_summary">מנע מכל אפליקציה לקבל הרשאות root באמצעות הפקודה su. תהליכי root קיימים אינם מושפעים.</string>
     <string name="settings_disable_kernel_umount">השבת umount של הליבה</string>
     <string name="settings_disable_kernel_umount_summary">השבת התנהגות umount ברמת הליבה הנשלטת על ידי KernelSU</string>
     <string name="settings_enable_enhanced_security">השתמש במדיניות אבטחה קפדנית</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">מנהל מחיצות</string>
     <string name="partition_slot_info">מידע על החריץ</string>
     <string name="partition_device_type">סוג המכשיר</string>
-    <string name="partition_current_slot">החריץ הנוכחי</string>
-    <string name="partition_other_slot">חריץ אחר</string>
     <string name="partition_show_all">הצג הכל</string>
     <string name="partition_collapse">כווץ</string>
     <string name="partition_selected_count">%d מחיצות נבחרו</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">מחיצות נפוצות</string>
     <string name="partition_all">כל המחיצות</string>
     <string name="partition_dangerous_warning">מחיצה מסוכנת! פעולה לא נכונה עלולה להשבית את המכשיר</string>
-    <string name="partition_info_title">מידע על המחיצה</string>
     <string name="partition_info_type">סוג</string>
     <string name="partition_type_physical">פיזית</string>
     <string name="partition_type_logical">לוגית</string>
     <string name="partition_info_size">גודל</string>
     <string name="partition_info_device">מכשיר</string>
     <string name="partition_info_slot">חריץ</string>
-    <string name="partition_available_operations">פעולות זמינות</string>
     <string name="partition_backup_to_file">גבה לקובץ</string>
     <string name="partition_flash_image">צרוב תמונה</string>
-    <string name="partition_dangerous_operation">פעולה מסוכנת</string>
-    <string name="partition_dangerous_operation_warning">⚠️ אזהרת פעולה מסוכנת</string>
     <string name="partition_flash_warning">צריבת מחיצה עלולה לגרום לכך שהמכשיר לא יוכל לאתחל!\n\nהאם אתה בטוח שברצונך לצרוב את המחיצה %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ אזהרה: %1$s היא מחיצה מסוכנת!\n\nצריבת מחיצה זו עלולה לגרום ל:\n• המכשיר לא יוכל לאתחל\n• אובדן נתונים חשובים\n• תקלה ברשת/Bluetooth\n\nאנא ודא שאתה יודע מה אתה עושה!\n\nהאם אתה בטוח שברצונך לצרוב את המחיצה %2$s?</string>
     <string name="partition_confirm_flash">אישור צריבה</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">הצריבה הצליחה! מומלץ להפעיל מחדש מיד.</string>
     <string name="partition_flash_failed">הצריבה נכשלה: %s</string>
     <string name="partition_flash_failed_check_log">הצריבה נכשלה, אנא בדוק את יומני ה-logcat</string>
-    <string name="partition_cannot_read_file">לא ניתן לקרוא את הקובץ</string>
     <string name="partition_load_failed">טעינת מידע המחיצה נכשלה: %s</string>
     <string name="partition_ab_device">מכשיר A/B</string>
     <string name="partition_a_only_device">מכשיר A בלבד</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">גיבוי האצווה הושלם! סך הכל %1$d מחיצות\nנשמר ב: %2$s</string>
     <string name="partition_batch_backup_partial">הגיבוי הושלם: %1$d הצליחו, %2$d נכשלו\nנכשלו: %3$s</string>
     <string name="partition_no_selection">לא נבחרה מחיצה</string>
-    <string name="partition_back">חזרה</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">כלים מתקדמים</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">אפשר פעם אחת</string>
     <string name="su_request_deny">דחה</string>
     <string name="su_request_deny_hide">דחה והסתר</string>
-    <string name="magisk_compat_title">בקשת su בסגנון Magisk</string>
-    <string name="magisk_compat_summary">הצג su גלוי לאפליקציות ובקש הרשאה בשימוש הראשון, במקום שה-su ייכשל בשקט עבור אפליקציות שאינן ברשימת ההיתר.</string>
 </resources>

@@ -188,8 +188,6 @@
     <string name="home_android_version">เวอร์ชัน Android</string>
     <string name="home_device_model">รุ่นอุปกรณ์</string>
     <string name="su_not_allowed">ไม่อนุญาตให้มอบสิทธิ์ซูเปอร์ยูเซอร์แก่ %s</string>
-    <string name="settings_disable_su">ปิดใช้งานความเข้ากันได้ของ su</string>
-    <string name="settings_disable_su_summary">ป้องกันไม่ให้ทุกแอปได้รับสิทธิ์ root ผ่านคำสั่ง su กระบวนการ root ที่มีอยู่จะไม่ได้รับผลกระทบ</string>
     <string name="settings_disable_kernel_umount">ปิดใช้งาน umount ของเคอร์เนล</string>
     <string name="settings_disable_kernel_umount_summary">ปิดใช้งานพฤติกรรม umount ระดับเคอร์เนลที่ควบคุมโดย KernelSU</string>
     <string name="settings_enable_enhanced_security">ใช้นโยบายความปลอดภัยที่เข้มงวด</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">ตัวจัดการพาร์ทิชัน</string>
     <string name="partition_slot_info">ข้อมูลสล็อต</string>
     <string name="partition_device_type">ประเภทอุปกรณ์</string>
-    <string name="partition_current_slot">สล็อตปัจจุบัน</string>
-    <string name="partition_other_slot">สล็อตอื่น</string>
     <string name="partition_show_all">แสดงทั้งหมด</string>
     <string name="partition_collapse">ยุบ</string>
     <string name="partition_selected_count">เลือกแล้ว %d พาร์ทิชัน</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">พาร์ทิชันทั่วไป</string>
     <string name="partition_all">พาร์ทิชันทั้งหมด</string>
     <string name="partition_dangerous_warning">พาร์ทิชันอันตราย! การดำเนินการที่ไม่ถูกต้องอาจทำให้อุปกรณ์เสียหาย</string>
-    <string name="partition_info_title">ข้อมูลพาร์ทิชัน</string>
     <string name="partition_info_type">ประเภท</string>
     <string name="partition_type_physical">กายภาพ</string>
     <string name="partition_type_logical">ตรรกะ</string>
     <string name="partition_info_size">ขนาด</string>
     <string name="partition_info_device">อุปกรณ์</string>
     <string name="partition_info_slot">สล็อต</string>
-    <string name="partition_available_operations">การดำเนินการที่ใช้ได้</string>
     <string name="partition_backup_to_file">สำรองข้อมูลไปยังไฟล์</string>
     <string name="partition_flash_image">แฟลชอิมเมจ</string>
-    <string name="partition_dangerous_operation">การดำเนินการอันตราย</string>
-    <string name="partition_dangerous_operation_warning">⚠️ คำเตือนการดำเนินการอันตราย</string>
     <string name="partition_flash_warning">การแฟลชพาร์ทิชันอาจทำให้อุปกรณ์ไม่สามารถบูตได้!\n\nคุณแน่ใจหรือไม่ว่าต้องการแฟลชพาร์ทิชัน %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ คำเตือน: %1$s เป็นพาร์ทิชันอันตราย!\n\nการแฟลชพาร์ทิชันนี้อาจทำให้:\n• อุปกรณ์ไม่สามารถบูตได้\n• สูญเสียข้อมูลสำคัญ\n• เครือข่าย/บลูทูธทำงานผิดปกติ\n\nกรุณาตรวจสอบให้แน่ใจว่าคุณรู้ว่ากำลังทำอะไรอยู่!\n\nคุณแน่ใจหรือไม่ว่าต้องการแฟลชพาร์ทิชัน %2$s?</string>
     <string name="partition_confirm_flash">ยืนยันการแฟลช</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">แฟลชสำเร็จ! แนะนำให้รีบูตทันที</string>
     <string name="partition_flash_failed">แฟลชไม่สำเร็จ: %s</string>
     <string name="partition_flash_failed_check_log">แฟลชไม่สำเร็จ กรุณาตรวจสอบบันทึก logcat</string>
-    <string name="partition_cannot_read_file">ไม่สามารถอ่านไฟล์</string>
     <string name="partition_load_failed">โหลดข้อมูลพาร์ทิชันไม่สำเร็จ: %s</string>
     <string name="partition_ab_device">อุปกรณ์ A/B</string>
     <string name="partition_a_only_device">อุปกรณ์ A เท่านั้น</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">สำรองข้อมูลเป็นชุดเสร็จสิ้น! ทั้งหมด %1$d พาร์ทิชัน\nบันทึกไว้ใน: %2$s</string>
     <string name="partition_batch_backup_partial">สำรองข้อมูลเสร็จสิ้น: สำเร็จ %1$d รายการ, ล้มเหลว %2$d รายการ\nล้มเหลว: %3$s</string>
     <string name="partition_no_selection">ไม่ได้เลือกพาร์ทิชัน</string>
-    <string name="partition_back">กลับ</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">เครื่องมือขั้นสูง</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">อนุญาตครั้งเดียว</string>
     <string name="su_request_deny">ปฏิเสธ</string>
     <string name="su_request_deny_hide">ปฏิเสธและซ่อน</string>
-    <string name="magisk_compat_title">การแจ้ง su แบบ Magisk</string>
-    <string name="magisk_compat_summary">แสดง su ที่มองเห็นได้แก่แอปและขอการอนุญาตเมื่อใช้งานครั้งแรก แทนที่จะให้ su ล้มเหลวอย่างเงียบ ๆ สำหรับแอปที่ไม่อยู่ในรายการที่อนุญาต</string>
 </resources>

@@ -186,8 +186,6 @@
     <string name="home_android_version">Phiên bản Android</string>
     <string name="home_device_model">Mẫu thiết bị</string>
     <string name="su_not_allowed">Không thể cấp quyền Superuser cho %s</string>
-    <string name="settings_disable_su">Vô hiệu hoá lệnh SU</string>
-    <string name="settings_disable_su_summary">Ngăn chặn mọi ứng dụng nhận được đặc quyền root thông qua lệnh su. Các quy trình root hiện tại không bị ảnh hưởng.</string>
     <string name="settings_disable_kernel_umount">Vô hiệu hoá kernel umount</string>
     <string name="settings_disable_kernel_umount_summary">Vô hiệu hoá umount kernel-level được kiểm soát bởi KernelSU</string>
     <string name="settings_enable_enhanced_security">Dùng chính sách bảo mật nghiêm ngặt</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Trình quản lý phân vùng</string>
     <string name="partition_slot_info">Thông tin slot</string>
     <string name="partition_device_type">Loại thiết bị</string>
-    <string name="partition_current_slot">Slot hiện tại</string>
-    <string name="partition_other_slot">Slot khác</string>
     <string name="partition_show_all">Hiện tất cả</string>
     <string name="partition_collapse">Thu gọn</string>
     <string name="partition_selected_count">Đã chọn %d phân vùng</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Phân vùng phổ biến</string>
     <string name="partition_all">Tất cả phân vùng</string>
     <string name="partition_dangerous_warning">Phân vùng NGUY HIỂM! Thao tác sai có thể làm hỏng thiết bị</string>
-    <string name="partition_info_title">Thông tin phân vùng</string>
     <string name="partition_info_type">Loại</string>
     <string name="partition_type_physical">Vật lý</string>
     <string name="partition_type_logical">Logic</string>
     <string name="partition_info_size">Kích thước</string>
     <string name="partition_info_device">Thiết bị</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Thao tác khả dụng</string>
     <string name="partition_backup_to_file">Sao lưu ra tệp</string>
     <string name="partition_flash_image">Flash ảnh</string>
-    <string name="partition_dangerous_operation">Thao tác nguy hiểm</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Cảnh báo thao tác nguy hiểm</string>
     <string name="partition_flash_warning">Flash phân vùng có thể khiến thiết bị không khởi động được!\n\nBạn có chắc muốn flash phân vùng %s không?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Cảnh báo: %1$s là một phân vùng nguy hiểm!\n\nFlash phân vùng này có thể gây ra:\n• Thiết bị không khởi động được\n• Mất dữ liệu quan trọng\n• Lỗi mạng/Bluetooth\n\nHãy chắc chắn rằng bạn biết mình đang làm gì!\n\nBạn có chắc muốn flash phân vùng %2$s không?</string>
     <string name="partition_confirm_flash">Xác nhận flash</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Flash thành công! Khuyến nghị khởi động lại ngay.</string>
     <string name="partition_flash_failed">Flash thất bại: %s</string>
     <string name="partition_flash_failed_check_log">Flash thất bại, vui lòng kiểm tra nhật ký logcat</string>
-    <string name="partition_cannot_read_file">Không thể đọc tệp</string>
     <string name="partition_load_failed">Không thể tải thông tin phân vùng: %s</string>
     <string name="partition_ab_device">Thiết bị A/B</string>
     <string name="partition_a_only_device">Thiết bị chỉ A</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Đã hoàn tất sao lưu hàng loạt! Tổng %1$d phân vùng\nĐã lưu tại: %2$s</string>
     <string name="partition_batch_backup_partial">Sao lưu hoàn tất: %1$d thành công, %2$d thất bại\nThất bại: %3$s</string>
     <string name="partition_no_selection">Chưa chọn phân vùng</string>
-    <string name="partition_back">Quay lại</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Công cụ nâng cao</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Cho phép một lần</string>
     <string name="su_request_deny">Từ chối</string>
     <string name="su_request_deny_hide">Từ chối và ẩn</string>
-    <string name="magisk_compat_title">Hộp thoại su kiểu Magisk</string>
-    <string name="magisk_compat_summary">Hiển thị su rõ ràng cho các ứng dụng và yêu cầu cấp quyền trong lần dùng đầu tiên, thay vì để su thất bại âm thầm với các ứng dụng không có trong danh sách cho phép.</string>
 </resources>

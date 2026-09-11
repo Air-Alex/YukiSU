@@ -186,8 +186,6 @@
     <string name="home_android_version">Android versija</string>
     <string name="home_device_model">Įrenginio modelis</string>
     <string name="su_not_allowed">Supervartotojo teisių suteikimas %s neleidžiamas</string>
-    <string name="settings_disable_su">Išjungti su suderinamumą</string>
-    <string name="settings_disable_su_summary">Neleiskite kiekvienai programai įgyti root privilegijų, naudodami su komandą. Esami root procesai neturi įtakos.</string>
     <string name="settings_disable_kernel_umount">Išjungti branduolio umount</string>
     <string name="settings_disable_kernel_umount_summary">Išjungti KernelSU valdomą branduolio lygio umount elgseną</string>
     <string name="settings_enable_enhanced_security">Naudoti griežtą saugumo politiką</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Skaidinių tvarkyklė</string>
     <string name="partition_slot_info">Lizdo informacija</string>
     <string name="partition_device_type">Įrenginio tipas</string>
-    <string name="partition_current_slot">Dabartinis lizdas</string>
-    <string name="partition_other_slot">Kitas lizdas</string>
     <string name="partition_show_all">Rodyti visus</string>
     <string name="partition_collapse">Sutraukti</string>
     <string name="partition_selected_count">Pasirinkta %d skaidinių</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Dažni skaidiniai</string>
     <string name="partition_all">Visi skaidiniai</string>
     <string name="partition_dangerous_warning">PAVOJINGAS skaidinys! Netinkamas veiksmas gali sugadinti įrenginį</string>
-    <string name="partition_info_title">Skaidinio informacija</string>
     <string name="partition_info_type">Tipas</string>
     <string name="partition_type_physical">Fizinis</string>
     <string name="partition_type_logical">Loginis</string>
     <string name="partition_info_size">Dydis</string>
     <string name="partition_info_device">Įrenginys</string>
     <string name="partition_info_slot">Lizdas</string>
-    <string name="partition_available_operations">Galimos operacijos</string>
     <string name="partition_backup_to_file">Sukurti atsarginę kopiją į failą</string>
     <string name="partition_flash_image">Įrašyti vaizdą</string>
-    <string name="partition_dangerous_operation">Pavojinga operacija</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Pavojingos operacijos įspėjimas</string>
     <string name="partition_flash_warning">Skaidinio įrašymas gali lemti, kad įrenginys nepasileis!\n\nAr tikrai norite įrašyti skaidinį %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Įspėjimas: %1$s yra pavojingas skaidinys!\n\nŠio skaidinio įrašymas gali sukelti:\n• Įrenginys nepasileidžia\n• Svarbių duomenų praradimą\n• Tinklo/Bluetooth gedimą\n\nĮsitikinkite, kad žinote, ką darote!\n\nAr tikrai norite įrašyti skaidinį %2$s?</string>
     <string name="partition_confirm_flash">Patvirtinti įrašymą</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Įrašymas sėkmingas! Rekomenduojama nedelsiant paleisti iš naujo.</string>
     <string name="partition_flash_failed">Įrašymas nepavyko: %s</string>
     <string name="partition_flash_failed_check_log">Įrašymas nepavyko, patikrinkite logcat žurnalus</string>
-    <string name="partition_cannot_read_file">Nepavyksta nuskaityti failo</string>
     <string name="partition_load_failed">Nepavyko įkelti skaidinio informacijos: %s</string>
     <string name="partition_ab_device">A/B įrenginys</string>
     <string name="partition_a_only_device">Tik A įrenginys</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Paketinė atsarginė kopija baigta! Iš viso %1$d skaidinių\nIšsaugota: %2$s</string>
     <string name="partition_batch_backup_partial">Atsarginė kopija baigta: %1$d sėkmingų, %2$d nepavyko\nNepavyko: %3$s</string>
     <string name="partition_no_selection">Nepasirinktas joks skaidinys</string>
-    <string name="partition_back">Atgal</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Išplėstiniai įrankiai</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Leisti vieną kartą</string>
     <string name="su_request_deny">Atmesti</string>
     <string name="su_request_deny_hide">Atmesti ir slėpti</string>
-    <string name="magisk_compat_title">Magisk stiliaus su užklausa</string>
-    <string name="magisk_compat_summary">Rodyti programoms matomą su ir pirmą kartą naudojant prašyti autorizacijos, o ne leisti su tyliai nepavykti programoms, kurių nėra leidžiamųjų sąraše.</string>
 </resources>

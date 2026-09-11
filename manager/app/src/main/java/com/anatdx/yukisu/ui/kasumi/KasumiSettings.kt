@@ -319,7 +319,8 @@ private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarHostState) {
     ConfigSection(stringResource(R.string.kasumi_user_hide_title)) {
         Text(stringResource(R.string.kasumi_quick_hide), style = MaterialTheme.typography.bodyMedium)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("/dev/scene", "/dev/cpuset/scene-daemon", "/sdcard/Download/advanced", "/sdcard/MT2").forEach { path ->
+            val externalStorage = android.os.Environment.getExternalStorageDirectory()
+            listOf("/dev/scene", "/dev/cpuset/scene-daemon", externalStorage.resolve("Download/advanced").path, externalStorage.resolve("MT2").path).forEach { path ->
                 AssistChip(onClick = { change(path, false) }, enabled = enabled && !working && path !in paths, label = { Text(path) })
             }
         }

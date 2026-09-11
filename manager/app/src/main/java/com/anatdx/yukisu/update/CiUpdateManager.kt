@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -910,11 +909,7 @@ object CiUpdateManager {
 
     @Suppress("DEPRECATION")
     private fun getPackageInfo(packageManager: PackageManager, packageNameOrPath: String): PackageInfo? {
-        val flags = PackageManager.GET_META_DATA or if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            PackageManager.GET_SIGNING_CERTIFICATES
-        } else {
-            PackageManager.GET_SIGNATURES
-        }
+        val flags = PackageManager.GET_META_DATA or PackageManager.GET_SIGNING_CERTIFICATES
         return if (File(packageNameOrPath).isFile) {
             packageManager.getPackageArchiveInfo(packageNameOrPath, flags)
         } else {
@@ -924,11 +919,7 @@ object CiUpdateManager {
 
     @Suppress("DEPRECATION")
     private fun currentSigners(info: PackageInfo): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            info.signingInfo?.apkContentsSigners.orEmpty()
-        } else {
-            info.signatures.orEmpty()
-        }
+        val signatures = info.signingInfo?.apkContentsSigners.orEmpty()
         return signatures.mapTo(mutableSetOf()) { signature ->
             MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).toHex()
         }

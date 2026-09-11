@@ -186,8 +186,6 @@
     <string name="home_android_version">Android sürümü</string>
     <string name="home_device_model">Cihaz modeli</string>
     <string name="su_not_allowed">%s için süper kullanıcı yetkisi verilemiyor</string>
-    <string name="settings_disable_su">Su uyumluluğunu devre dışı bırak</string>
-    <string name="settings_disable_su_summary">su komutu aracılığıyla her uygulamanın root ayrıcalıkları kazanmasını önleyin. Mevcut root süreçleri etkilenmez.</string>
     <string name="settings_disable_kernel_umount">Çekirdek ayırmasını devre dışı bırak</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU tarafından kontrol edilen çekirdek seviyesindeki ayırma davranışını devre dışı bırakın</string>
     <string name="settings_enable_enhanced_security">Katı güvenlik politikası kullan</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Bölüm yöneticisi</string>
     <string name="partition_slot_info">Yuva bilgisi</string>
     <string name="partition_device_type">Aygıt türü</string>
-    <string name="partition_current_slot">Geçerli yuva</string>
-    <string name="partition_other_slot">Diğer yuva</string>
     <string name="partition_show_all">Tümünü göster</string>
     <string name="partition_collapse">Daralt</string>
     <string name="partition_selected_count">%d bölüm seçildi</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Yaygın bölümler</string>
     <string name="partition_all">Tüm bölümler</string>
     <string name="partition_dangerous_warning">TEHLİKELİ bölüm! Yanlış işlem aygıtı kullanılamaz hale getirebilir</string>
-    <string name="partition_info_title">Bölüm bilgisi</string>
     <string name="partition_info_type">Tür</string>
     <string name="partition_type_physical">Fiziksel</string>
     <string name="partition_type_logical">Mantıksal</string>
     <string name="partition_info_size">Boyut</string>
     <string name="partition_info_device">Aygıt</string>
     <string name="partition_info_slot">Yuva</string>
-    <string name="partition_available_operations">Kullanılabilir işlemler</string>
     <string name="partition_backup_to_file">Dosyaya yedekle</string>
     <string name="partition_flash_image">Görüntüyü flaşla</string>
-    <string name="partition_dangerous_operation">Tehlikeli işlem</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Tehlikeli işlem uyarısı</string>
     <string name="partition_flash_warning">Bölümü flaşlamak aygıtın başlatılamamasına neden olabilir!\n\n%s bölümünü flaşlamak istediğinizden emin misiniz?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Uyarı: %1$s tehlikeli bir bölümdür!\n\nBu bölümü flaşlamak şunlara neden olabilir:\n• Aygıtın başlatılamaması\n• Önemli verilerin kaybı\n• Ağ/Bluetooth arızası\n\nLütfen ne yaptığınızı bildiğinizden emin olun!\n\n%2$s bölümünü flaşlamak istediğinizden emin misiniz?</string>
     <string name="partition_confirm_flash">Flaşlamayı onayla</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Flaşlama başarılı! Hemen yeniden başlatmanız önerilir.</string>
     <string name="partition_flash_failed">Flaşlama başarısız: %s</string>
     <string name="partition_flash_failed_check_log">Flaşlama başarısız, lütfen logcat günlüklerini kontrol edin</string>
-    <string name="partition_cannot_read_file">Dosya okunamıyor</string>
     <string name="partition_load_failed">Bölüm bilgisi yüklenemedi: %s</string>
     <string name="partition_ab_device">A/B aygıtı</string>
     <string name="partition_a_only_device">Yalnızca A aygıtı</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Toplu yedekleme tamamlandı! Toplam %1$d bölüm\nKaydedildiği yer: %2$s</string>
     <string name="partition_batch_backup_partial">Yedekleme tamamlandı: %1$d başarılı, %2$d başarısız\nBaşarısız: %3$s</string>
     <string name="partition_no_selection">Bölüm seçilmedi</string>
-    <string name="partition_back">Geri</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Gelişmiş araçlar</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Bir kez izin ver</string>
     <string name="su_request_deny">Reddet</string>
     <string name="su_request_deny_hide">Reddet ve gizle</string>
-    <string name="magisk_compat_title">Magisk tarzı su istemi</string>
-    <string name="magisk_compat_summary">İzin listesinde olmayan uygulamalar için su\'nun sessizce başarısız olması yerine, uygulamalara görünür bir su göster ve ilk kullanımda yetkilendirme iste.</string>
 </resources>

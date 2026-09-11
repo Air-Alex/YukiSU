@@ -188,8 +188,6 @@
     <string name="home_android_version">Android バージョン</string>
     <string name="home_device_model">デバイスモデル</string>
     <string name="su_not_allowed">「%s」にスーパーユーザー権限を付与することはできません</string>
-    <string name="settings_disable_su">su の互換性を無効化する</string>
-    <string name="settings_disable_su_summary">すべてのアプリが su コマンドを通じて root 権限を取得できないようにします。既存の root プロセスは影響を受けません。</string>
     <string name="settings_disable_kernel_umount">カーネルアンマウントを無効化</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU が制御するカーネルレベルの umount 動作を無効にします</string>
     <string name="settings_enable_enhanced_security">厳格なセキュリティポリシーを使用</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">パーティションマネージャー</string>
     <string name="partition_slot_info">スロット情報</string>
     <string name="partition_device_type">デバイスの種類</string>
-    <string name="partition_current_slot">現在のスロット</string>
-    <string name="partition_other_slot">他のスロット</string>
     <string name="partition_show_all">すべて表示</string>
     <string name="partition_collapse">折りたたむ</string>
     <string name="partition_selected_count">%d 個のパーティションを選択</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">よく使うパーティション</string>
     <string name="partition_all">すべてのパーティション</string>
     <string name="partition_dangerous_warning">危険なパーティション！誤った操作はデバイスを文鎮化させる可能性があります</string>
-    <string name="partition_info_title">パーティション情報</string>
     <string name="partition_info_type">種類</string>
     <string name="partition_type_physical">物理</string>
     <string name="partition_type_logical">論理</string>
     <string name="partition_info_size">サイズ</string>
     <string name="partition_info_device">デバイス</string>
     <string name="partition_info_slot">スロット</string>
-    <string name="partition_available_operations">利用可能な操作</string>
     <string name="partition_backup_to_file">ファイルにバックアップ</string>
     <string name="partition_flash_image">イメージを書き込む</string>
-    <string name="partition_dangerous_operation">危険な操作</string>
-    <string name="partition_dangerous_operation_warning">⚠️ 危険な操作の警告</string>
     <string name="partition_flash_warning">パーティションへの書き込みはデバイスが起動できなくなる可能性があります！\n\n%s パーティションに書き込んでもよろしいですか？</string>
     <string name="partition_dangerous_flash_warning">⚠️ 警告: %1$s は危険なパーティションです！\n\nこのパーティションへの書き込みは次を引き起こす可能性があります:\n• デバイスが起動できない\n• 重要なデータの損失\n• ネットワーク／Bluetooth の不具合\n\n自分が何をしているか理解していることを確認してください！\n\n%2$s パーティションに書き込んでもよろしいですか？</string>
     <string name="partition_confirm_flash">書き込みを確認</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">書き込みに成功しました！直ちに再起動することをお勧めします。</string>
     <string name="partition_flash_failed">書き込みに失敗しました: %s</string>
     <string name="partition_flash_failed_check_log">書き込みに失敗しました。logcat ログを確認してください</string>
-    <string name="partition_cannot_read_file">ファイルを読み取れません</string>
     <string name="partition_load_failed">パーティション情報の読み込みに失敗しました: %s</string>
     <string name="partition_ab_device">A/B デバイス</string>
     <string name="partition_a_only_device">A のみのデバイス</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">一括バックアップが完了しました！合計 %1$d 個のパーティション\n保存先: %2$s</string>
     <string name="partition_batch_backup_partial">バックアップ完了: %1$d 件成功、%2$d 件失敗\n失敗: %3$s</string>
     <string name="partition_no_selection">パーティションが選択されていません</string>
-    <string name="partition_back">戻る</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">高度なツール</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">1 回だけ許可</string>
     <string name="su_request_deny">拒否</string>
     <string name="su_request_deny_hide">拒否して非表示</string>
-    <string name="magisk_compat_title">Magisk 形式の su プロンプト</string>
-    <string name="magisk_compat_summary">許可リストにないアプリに対して su を黙って失敗させる代わりに、アプリに表示される su を見せ、初回使用時に承認を求めます。</string>
 </resources>

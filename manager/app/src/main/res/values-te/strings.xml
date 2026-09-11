@@ -186,8 +186,6 @@
     <string name="home_android_version">Android వెర్షన్</string>
     <string name="home_device_model">పరికర మోడల్</string>
     <string name="su_not_allowed">%sకు సూపర్‌యూజర్ ఇవ్వడానికి అనుమతి లేదు</string>
-    <string name="settings_disable_su">su అనుకూలతను నిలిపివేయండి</string>
-    <string name="settings_disable_su_summary">su ఆదేశం ద్వారా ప్రతి యాప్ root అధికారాలను పొందకుండా నిరోధించండి. ఇప్పటికే ఉన్న root ప్రక్రియలు ప్రభావితం కావు.</string>
     <string name="settings_disable_kernel_umount">కెర్నల్ umountను నిలిపివేయండి</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU చేత నియంత్రించబడే కెర్నల్-స్థాయి umount ప్రవర్తనను నిలిపివేయండి</string>
     <string name="settings_enable_enhanced_security">కఠినమైన భద్రతా విధానాన్ని ఉపయోగించండి</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">విభజన మేనేజర్</string>
     <string name="partition_slot_info">స్లాట్ సమాచారం</string>
     <string name="partition_device_type">పరికర రకం</string>
-    <string name="partition_current_slot">ప్రస్తుత స్లాట్</string>
-    <string name="partition_other_slot">ఇతర స్లాట్</string>
     <string name="partition_show_all">అన్నీ చూపించు</string>
     <string name="partition_collapse">కుదించు</string>
     <string name="partition_selected_count">%d విభజనలు ఎంచుకోబడ్డాయి</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">సాధారణ విభజనలు</string>
     <string name="partition_all">అన్ని విభజనలు</string>
     <string name="partition_dangerous_warning">ప్రమాదకర విభజన! సరికాని ఆపరేషన్ పరికరాన్ని బ్రిక్ చేయవచ్చు</string>
-    <string name="partition_info_title">విభజన సమాచారం</string>
     <string name="partition_info_type">రకం</string>
     <string name="partition_type_physical">భౌతిక</string>
     <string name="partition_type_logical">తార్కిక</string>
     <string name="partition_info_size">పరిమాణం</string>
     <string name="partition_info_device">పరికరం</string>
     <string name="partition_info_slot">స్లాట్</string>
-    <string name="partition_available_operations">అందుబాటులో ఉన్న ఆపరేషన్‌లు</string>
     <string name="partition_backup_to_file">ఫైల్‌కు బ్యాకప్</string>
     <string name="partition_flash_image">చిత్రాన్ని ఫ్లాష్ చేయండి</string>
-    <string name="partition_dangerous_operation">ప్రమాదకర ఆపరేషన్</string>
-    <string name="partition_dangerous_operation_warning">⚠️ ప్రమాదకర ఆపరేషన్ హెచ్చరిక</string>
     <string name="partition_flash_warning">విభజనను ఫ్లాష్ చేయడం వలన పరికరం బూట్ కాకపోవచ్చు!\n\nమీరు ఖచ్చితంగా %s విభజనను ఫ్లాష్ చేయాలనుకుంటున్నారా?</string>
     <string name="partition_dangerous_flash_warning">⚠️ హెచ్చరిక: %1$s ఒక ప్రమాదకర విభజన!\n\nఈ విభజనను ఫ్లాష్ చేయడం వలన కావచ్చు:\n• పరికరం బూట్ కాకపోవడం\n• ముఖ్యమైన డేటా నష్టం\n• నెట్‌వర్క్/Bluetooth లోపం\n\nదయచేసి మీరు ఏమి చేస్తున్నారో మీకు తెలుసని నిర్ధారించుకోండి!\n\nమీరు ఖచ్చితంగా %2$s విభజనను ఫ్లాష్ చేయాలనుకుంటున్నారా?</string>
     <string name="partition_confirm_flash">ఫ్లాష్‌ను నిర్ధారించండి</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">ఫ్లాష్ విజయవంతం! వెంటనే రీబూట్ చేయడం సిఫార్సు చేయబడింది.</string>
     <string name="partition_flash_failed">ఫ్లాష్ విఫలమైంది: %s</string>
     <string name="partition_flash_failed_check_log">ఫ్లాష్ విఫలమైంది, దయచేసి logcat లాగ్‌లను తనిఖీ చేయండి</string>
-    <string name="partition_cannot_read_file">ఫైల్‌ను చదవలేరు</string>
     <string name="partition_load_failed">విభజన సమాచారాన్ని లోడ్ చేయడం విఫలమైంది: %s</string>
     <string name="partition_ab_device">A/B పరికరం</string>
     <string name="partition_a_only_device">కేవలం-A పరికరం</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">బ్యాచ్ బ్యాకప్ పూర్తయింది! మొత్తం %1$d విభజనలు\nసేవ్ చేయబడింది: %2$s</string>
     <string name="partition_batch_backup_partial">బ్యాకప్ పూర్తయింది: %1$d విజయవంతం, %2$d విఫలం\nవిఫలం: %3$s</string>
     <string name="partition_no_selection">విభజన ఎంచుకోబడలేదు</string>
-    <string name="partition_back">వెనుకకు</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">అధునాతన సాధనాలు</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">ఒకసారి అనుమతించండి</string>
     <string name="su_request_deny">తిరస్కరించండి</string>
     <string name="su_request_deny_hide">తిరస్కరించి దాచండి</string>
-    <string name="magisk_compat_title">Magisk-శైలి su ప్రాంప్ట్</string>
-    <string name="magisk_compat_summary">అనుమతి జాబితాలో లేని యాప్‌ల కోసం su నిశ్శబ్దంగా విఫలమయ్యే బదులు, యాప్‌లకు కనిపించే suను చూపించండి మరియు మొదటి వాడకంలో అధికారాన్ని అడగండి.</string>
 </resources>

@@ -186,8 +186,6 @@
     <string name="home_android_version">Android ಆವೃತ್ತಿ</string>
     <string name="home_device_model">ಸಾಧನ ಮಾದರಿ</string>
     <string name="su_not_allowed">%s ಗೆ ಸೂಪರ್‌ಯೂಸರ್ ನೀಡಲು ಅನುಮತಿಯಿಲ್ಲ</string>
-    <string name="settings_disable_su">su ಹೊಂದಾಣಿಕೆಯನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ</string>
-    <string name="settings_disable_su_summary">su ಆಜ್ಞೆಯ ಮೂಲಕ ಪ್ರತಿ ಅಪ್ಲಿಕೇಶನ್ root ಸವಲತ್ತುಗಳನ್ನು ಪಡೆಯುವುದನ್ನು ತಡೆಯಿರಿ. ಅಸ್ತಿತ್ವದಲ್ಲಿರುವ root ಪ್ರಕ್ರಿಯೆಗಳು ಪರಿಣಾಮ ಬೀರುವುದಿಲ್ಲ.</string>
     <string name="settings_disable_kernel_umount">ಕರ್ನಲ್ umount ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU ನಿಂದ ನಿಯಂತ್ರಿತ ಕರ್ನಲ್-ಮಟ್ಟದ umount ವರ್ತನೆಯನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ</string>
     <string name="settings_enable_enhanced_security">ಕಠಿಣ ಭದ್ರತಾ ನೀತಿ ಬಳಸಿ</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">ಪಾರ್ಟಿಶನ್ ನಿರ್ವಾಹಕ</string>
     <string name="partition_slot_info">ಸ್ಲಾಟ್ ಮಾಹಿತಿ</string>
     <string name="partition_device_type">ಸಾಧನ ಪ್ರಕಾರ</string>
-    <string name="partition_current_slot">ಪ್ರಸ್ತುತ ಸ್ಲಾಟ್</string>
-    <string name="partition_other_slot">ಇತರ ಸ್ಲಾಟ್</string>
     <string name="partition_show_all">ಎಲ್ಲಾ ತೋರಿಸಿ</string>
     <string name="partition_collapse">ಸಂಕುಚಿಸಿ</string>
     <string name="partition_selected_count">%d ಪಾರ್ಟಿಶನ್‌ಗಳನ್ನು ಆಯ್ಕೆಮಾಡಲಾಗಿದೆ</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">ಸಾಮಾನ್ಯ ಪಾರ್ಟಿಶನ್‌ಗಳು</string>
     <string name="partition_all">ಎಲ್ಲಾ ಪಾರ್ಟಿಶನ್‌ಗಳು</string>
     <string name="partition_dangerous_warning">ಅಪಾಯಕಾರಿ ಪಾರ್ಟಿಶನ್! ಅನುಚಿತ ಕಾರ್ಯಾಚರಣೆ ಸಾಧನವನ್ನು ಬ್ರಿಕ್ ಮಾಡಬಹುದು</string>
-    <string name="partition_info_title">ಪಾರ್ಟಿಶನ್ ಮಾಹಿತಿ</string>
     <string name="partition_info_type">ಪ್ರಕಾರ</string>
     <string name="partition_type_physical">ಭೌತಿಕ</string>
     <string name="partition_type_logical">ತಾರ್ಕಿಕ</string>
     <string name="partition_info_size">ಗಾತ್ರ</string>
     <string name="partition_info_device">ಸಾಧನ</string>
     <string name="partition_info_slot">ಸ್ಲಾಟ್</string>
-    <string name="partition_available_operations">ಲಭ್ಯವಿರುವ ಕಾರ್ಯಾಚರಣೆಗಳು</string>
     <string name="partition_backup_to_file">ಫೈಲ್‌ಗೆ ಬ್ಯಾಕಪ್</string>
     <string name="partition_flash_image">ಚಿತ್ರ ಫ್ಲ್ಯಾಶ್ ಮಾಡಿ</string>
-    <string name="partition_dangerous_operation">ಅಪಾಯಕಾರಿ ಕಾರ್ಯಾಚರಣೆ</string>
-    <string name="partition_dangerous_operation_warning">⚠️ ಅಪಾಯಕಾರಿ ಕಾರ್ಯಾಚರಣೆ ಎಚ್ಚರಿಕೆ</string>
     <string name="partition_flash_warning">ಪಾರ್ಟಿಶನ್ ಫ್ಲ್ಯಾಶ್ ಮಾಡುವುದರಿಂದ ಸಾಧನ ಬೂಟ್ ಆಗಲು ಸಾಧ್ಯವಾಗದಿರಬಹುದು!\n\nನೀವು %s ಪಾರ್ಟಿಶನ್ ಅನ್ನು ಫ್ಲ್ಯಾಶ್ ಮಾಡಲು ಬಯಸುತ್ತೀರಿ ಎಂದು ಖಚಿತವೇ?</string>
     <string name="partition_dangerous_flash_warning">⚠️ ಎಚ್ಚರಿಕೆ: %1$s ಒಂದು ಅಪಾಯಕಾರಿ ಪಾರ್ಟಿಶನ್!\n\nಈ ಪಾರ್ಟಿಶನ್ ಫ್ಲ್ಯಾಶ್ ಮಾಡುವುದರಿಂದ ಹೀಗಾಗಬಹುದು:\n• ಸಾಧನ ಬೂಟ್ ಆಗಲು ಸಾಧ್ಯವಾಗದಿರುವುದು\n• ಪ್ರಮುಖ ಡೇಟಾ ನಷ್ಟ\n• ನೆಟ್‌ವರ್ಕ್/Bluetooth ಅಸಮರ್ಪಕ ಕಾರ್ಯ\n\nದಯವಿಟ್ಟು ನೀವು ಏನು ಮಾಡುತ್ತಿದ್ದೀರಿ ಎಂದು ನಿಮಗೆ ತಿಳಿದಿದೆ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ!\n\nನೀವು %2$s ಪಾರ್ಟಿಶನ್ ಅನ್ನು ಫ್ಲ್ಯಾಶ್ ಮಾಡಲು ಬಯಸುತ್ತೀರಿ ಎಂದು ಖಚಿತವೇ?</string>
     <string name="partition_confirm_flash">ಫ್ಲ್ಯಾಶ್ ಖಚಿತಪಡಿಸಿ</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">ಫ್ಲ್ಯಾಶ್ ಯಶಸ್ವಿ! ತಕ್ಷಣ ರೀಬೂಟ್ ಮಾಡಲು ಶಿಫಾರಸು ಮಾಡಲಾಗಿದೆ.</string>
     <string name="partition_flash_failed">ಫ್ಲ್ಯಾಶ್ ವಿಫಲವಾಗಿದೆ: %s</string>
     <string name="partition_flash_failed_check_log">ಫ್ಲ್ಯಾಶ್ ವಿಫಲವಾಗಿದೆ, ದಯವಿಟ್ಟು logcat ಲಾಗ್‌ಗಳನ್ನು ಪರಿಶೀಲಿಸಿ</string>
-    <string name="partition_cannot_read_file">ಫೈಲ್ ಓದಲು ಸಾಧ್ಯವಿಲ್ಲ</string>
     <string name="partition_load_failed">ಪಾರ್ಟಿಶನ್ ಮಾಹಿತಿ ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ: %s</string>
     <string name="partition_ab_device">A/B ಸಾಧನ</string>
     <string name="partition_a_only_device">ಕೇವಲ-A ಸಾಧನ</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">ಬ್ಯಾಚ್ ಬ್ಯಾಕಪ್ ಪೂರ್ಣಗೊಂಡಿದೆ! ಒಟ್ಟು %1$d ಪಾರ್ಟಿಶನ್‌ಗಳು\nಉಳಿಸಲಾಗಿದೆ: %2$s</string>
     <string name="partition_batch_backup_partial">ಬ್ಯಾಕಪ್ ಪೂರ್ಣಗೊಂಡಿದೆ: %1$d ಯಶಸ್ವಿ, %2$d ವಿಫಲ\nವಿಫಲ: %3$s</string>
     <string name="partition_no_selection">ಯಾವುದೇ ಪಾರ್ಟಿಶನ್ ಆಯ್ಕೆಮಾಡಿಲ್ಲ</string>
-    <string name="partition_back">ಹಿಂದೆ</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">ಸುಧಾರಿತ ಸಾಧನಗಳು</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">ಒಮ್ಮೆ ಅನುಮತಿಸಿ</string>
     <string name="su_request_deny">ನಿರಾಕರಿಸಿ</string>
     <string name="su_request_deny_hide">ನಿರಾಕರಿಸಿ ಮತ್ತು ಮರೆಮಾಡಿ</string>
-    <string name="magisk_compat_title">Magisk-ಶೈಲಿಯ su ಪ್ರಾಂಪ್ಟ್</string>
-    <string name="magisk_compat_summary">ಅನುಮತಿ ಪಟ್ಟಿಯಲ್ಲಿಲ್ಲದ ಆ್ಯಪ್‌ಗಳಿಗೆ su ಮೌನವಾಗಿ ವಿಫಲವಾಗುವ ಬದಲು, ಆ್ಯಪ್‌ಗಳಿಗೆ ಗೋಚರ su ತೋರಿಸಿ ಮತ್ತು ಮೊದಲ ಬಳಕೆಯಲ್ಲಿ ಅಧಿಕಾರ ಕೇಳಿ.</string>
 </resources>

@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -445,7 +446,7 @@ internal fun StatusTab(
                 }
                 if (systemInfo.activeMounts.size > 5) {
                     Text(
-                        text = stringResource(R.string.kasumi_info_more_mounts, systemInfo.activeMounts.size - 5),
+                        text = pluralStringResource(R.plurals.kasumi_info_more_mounts, systemInfo.activeMounts.size - 5, systemInfo.activeMounts.size - 5),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -927,7 +928,7 @@ internal fun RulesTab(
         }
 
         Text(
-            text = stringResource(R.string.kasumi_rules_count, activeRules.size),
+            text = pluralStringResource(R.plurals.kasumi_rules_count, activeRules.size, activeRules.size),
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(bottom = 8.dp)
         )

@@ -186,8 +186,6 @@
     <string name="home_android_version">Версія Android</string>
     <string name="home_device_model">Модель пристрою</string>
     <string name="su_not_allowed">Надання прав суперкористувача для %s заборонено</string>
-    <string name="settings_disable_su">Вимкнути сумісність з su</string>
-    <string name="settings_disable_su_summary">Заборонити кожній програмі отримати привілеї root за допомогою команди su. Існуючі процеси root не впливають.</string>
     <string name="settings_disable_kernel_umount">Вимкнути umount ядра</string>
     <string name="settings_disable_kernel_umount_summary">Вимкнути поведінку umount на рівні ядра, керовану KernelSU</string>
     <string name="settings_enable_enhanced_security">Використовувати сувору політику безпеки</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Менеджер розділів</string>
     <string name="partition_slot_info">Інформація про слоти</string>
     <string name="partition_device_type">Тип пристрою</string>
-    <string name="partition_current_slot">Поточний слот</string>
-    <string name="partition_other_slot">Інший слот</string>
     <string name="partition_show_all">Показати все</string>
     <string name="partition_collapse">Згорнути</string>
     <string name="partition_selected_count">Вибрано розділів: %d</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Поширені розділи</string>
     <string name="partition_all">Усі розділи</string>
     <string name="partition_dangerous_warning">НЕБЕЗПЕЧНИЙ розділ! Неправильна операція може зробити пристрій непрацездатним</string>
-    <string name="partition_info_title">Інформація про розділ</string>
     <string name="partition_info_type">Тип</string>
     <string name="partition_type_physical">Фізичний</string>
     <string name="partition_type_logical">Логічний</string>
     <string name="partition_info_size">Розмір</string>
     <string name="partition_info_device">Пристрій</string>
     <string name="partition_info_slot">Слот</string>
-    <string name="partition_available_operations">Доступні операції</string>
     <string name="partition_backup_to_file">Резервна копія у файл</string>
     <string name="partition_flash_image">Прошити образ</string>
-    <string name="partition_dangerous_operation">Небезпечна операція</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Попередження про небезпечну операцію</string>
     <string name="partition_flash_warning">Прошивання розділу може призвести до неможливості завантаження пристрою!\n\nВи впевнені, що хочете прошити розділ %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Увага: %1$s — небезпечний розділ!\n\nПрошивання цього розділу може спричинити:\n• Неможливість завантаження пристрою\n• Втрату важливих даних\n• Несправність мережі/Bluetooth\n\nПереконайтеся, що ви розумієте, що робите!\n\nВи впевнені, що хочете прошити розділ %2$s?</string>
     <string name="partition_confirm_flash">Підтвердити прошивання</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Прошивання успішне! Рекомендовано негайно перезавантажити.</string>
     <string name="partition_flash_failed">Не вдалося прошити: %s</string>
     <string name="partition_flash_failed_check_log">Не вдалося прошити, перевірте журнали logcat</string>
-    <string name="partition_cannot_read_file">Не вдалося прочитати файл</string>
     <string name="partition_load_failed">Не вдалося завантажити інформацію про розділ: %s</string>
     <string name="partition_ab_device">Пристрій A/B</string>
     <string name="partition_a_only_device">Пристрій лише A</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Пакетне резервне копіювання завершено! Усього розділів: %1$d\nЗбережено в: %2$s</string>
     <string name="partition_batch_backup_partial">Резервне копіювання завершено: %1$d успішних, %2$d невдалих\nНевдалі: %3$s</string>
     <string name="partition_no_selection">Розділ не вибрано</string>
-    <string name="partition_back">Назад</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Додаткові інструменти</string>
@@ -505,8 +495,6 @@
     <string name="su_request_allow_once">Дозволити один раз</string>
     <string name="su_request_deny">Відхилити</string>
     <string name="su_request_deny_hide">Відхилити та приховати</string>
-    <string name="magisk_compat_title">Запит su у стилі Magisk</string>
-    <string name="magisk_compat_summary">Показувати застосункам видимий su й запитувати авторизацію під час першого використання, замість тихої відмови su для застосунків, яких немає у списку дозволених.</string>
     <!-- locale-only keys -->
     <string name="profile">Профіль додатку</string>
 </resources>

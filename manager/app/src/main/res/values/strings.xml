@@ -366,8 +366,6 @@
     <string name="home_android_version">Android version</string>
     <string name="home_device_model">Device model</string>
     <string name="su_not_allowed">Granting superuser to %s is not allowed</string>
-    <string name="settings_disable_su">Disable su compatibility</string>
-    <string name="settings_disable_su_summary">Disable the ability of any app to gain root privileges via the ⁠su command (existing root processes won\'t be affected)</string>
     <string name="settings_disable_kernel_umount">Disable kernel umount</string>
     <string name="settings_disable_kernel_umount_summary">Disable kernel-level umount behavior controlled by KernelSU</string>
     <string name="settings_webview_zygote_umount" tools:ignore="MissingTranslation">Unmount modules for WebView</string>
@@ -623,8 +621,6 @@
     <string name="partition_manager">Partition Manager</string>
     <string name="partition_slot_info">Slot Information</string>
     <string name="partition_device_type">Device Type</string>
-    <string name="partition_current_slot">Current Slot</string>
-    <string name="partition_other_slot">Other Slot</string>
     <string name="partition_show_all">Show All</string>
     <string name="partition_collapse">Collapse</string>
     <string name="partition_selected_count" tools:ignore="PluralsCandidate">Selected %d partitions</string>
@@ -640,14 +636,12 @@
     <string name="partition_common">Common Partitions</string>
     <string name="partition_all">All Partitions</string>
     <string name="partition_dangerous_warning">DANGEROUS partition! Improper operation may brick device</string>
-    <string name="partition_info_title">Partition Information</string>
     <string name="partition_info_type">Type</string>
     <string name="partition_type_physical">Physical</string>
     <string name="partition_type_logical">Logical</string>
     <string name="partition_info_size">Size</string>
     <string name="partition_info_device">Device</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Available Operations</string>
     <string name="partition_backup_to_file">Backup to File</string>
     <string name="partition_edit_ramdisk" tools:ignore="MissingTranslation">Edit Ramdisk</string>
     <string name="partition_flash_image">Flash Image</string>
@@ -720,8 +714,6 @@
     <string name="ramdisk_editor_fragment_type_platform" tools:ignore="MissingTranslation">Platform</string>
     <string name="ramdisk_editor_fragment_type_recovery" tools:ignore="MissingTranslation">Recovery</string>
     <string name="ramdisk_editor_fragment_type_dlkm" tools:ignore="MissingTranslation">DLKM</string>
-    <string name="partition_dangerous_operation">Dangerous Operation</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Dangerous Operation Warning</string>
     <string name="partition_flash_warning">Flashing partition may cause device unable to boot!\n\nAre you sure you want to flash %s partition?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Warning: %1$s is a dangerous partition!\n\nFlashing this partition may cause:\n• Device unable to boot\n• Loss of important data\n• Network/Bluetooth malfunction\n\nPlease make sure you know what you are doing!\n\nAre you sure you want to flash %2$s partition?</string>
     <string name="partition_confirm_flash">Confirm Flash</string>
@@ -740,7 +732,6 @@
     <string name="partition_flash_success">Flash successful! Recommend reboot immediately.</string>
     <string name="partition_flash_failed">Flash failed: %s</string>
     <string name="partition_flash_failed_check_log">Flash failed, please check logcat logs</string>
-    <string name="partition_cannot_read_file">Cannot read file</string>
     <string name="partition_load_failed">Failed to load partition info: %s</string>
     <string name="partition_ab_device">A/B Device</string>
     <string name="partition_a_only_device">A-only Device</string>
@@ -750,7 +741,6 @@
     <string name="partition_batch_backup_complete" tools:ignore="PluralsCandidate">Batch backup complete! Total %1$d partitions\nSaved in: %2$s</string>
     <string name="partition_batch_backup_partial" tools:ignore="PluralsCandidate">Backup complete: %1$d succeeded, %2$d failed\nFailed: %3$s</string>
     <string name="partition_no_selection">No partition selected</string>
-    <string name="partition_back">Back</string>
     <!-- New partition-manager strings intentionally fall back to English until each
          community locale catches up; Simplified Chinese is translated alongside them. -->
     <string name="partition_refresh" tools:ignore="MissingTranslation">Refresh partition data</string>
@@ -829,8 +819,6 @@
     <string name="su_request_deny">Deny</string>
     <string name="su_request_failed" tools:ignore="MissingTranslation">The root request expired or could not be submitted.</string>
     <string name="su_request_deny_hide">Deny &amp; hide</string>
-    <string name="magisk_compat_title">Magisk-style su prompt</string>
-    <string name="magisk_compat_summary">Expose the Kasumi vnode-backed su to eligible apps and ask for authorization on first use. Enabling this also enables Kasumi su compatibility.</string>
     <string name="yukizygisk_injection_status" tools:ignore="MissingTranslation">Injection status</string>
     <string name="yukizygisk_kernel_injection" tools:ignore="MissingTranslation">Kernel injection</string>
     <string name="yukizygisk_status_active" tools:ignore="MissingTranslation">Active</string>
@@ -929,7 +917,10 @@
     <string name="repository_missing_dependencies" tools:ignore="MissingTranslation">Missing dependencies</string>
     <string name="repository_my_sources" tools:ignore="MissingTranslation">My sources</string>
     <string name="repository_mmrl_directory" tools:ignore="MissingTranslation">MMRL</string>
-    <string name="repository_mmrl_directory_description" tools:ignore="MissingTranslation">MMRL’s central directory currently lists %1$d recognized repositories. None are added or enabled by default; explicitly add only the repositories you want as sources.</string>
+    <plurals name="repository_mmrl_directory_description" tools:ignore="MissingTranslation">
+        <item quantity="one">MMRL’s central directory currently lists %1$d recognized repository. None are added or enabled by default; explicitly add only the repositories you want as sources.</item>
+        <item quantity="other">MMRL’s central directory currently lists %1$d recognized repositories. None are added or enabled by default; explicitly add only the repositories you want as sources.</item>
+    </plurals>
     <string name="repository_mmrl_search" tools:ignore="MissingTranslation">Search MMRL repositories</string>
     <string name="repository_mmrl_no_results" tools:ignore="MissingTranslation">No matching MMRL repositories</string>
     <string name="repository_mmrl_module_count" tools:ignore="MissingTranslation,PluralsCandidate">%1$d modules</string>

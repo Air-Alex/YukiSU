@@ -5,8 +5,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
-import android.os.Build
-import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.content.FileProvider
 import com.anatdx.yukisu.R
@@ -85,16 +83,9 @@ internal fun createWallpaperCropIntent(
 
 private data class PixelSize(val width: Int, val height: Int)
 
-@Suppress("DEPRECATION")
 private fun Context.deviceScreenPixelSize(): PixelSize {
     val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val (width, height) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        windowManager.maximumWindowMetrics.bounds.let { it.width() to it.height() }
-    } else {
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getRealMetrics(metrics)
-        metrics.widthPixels to metrics.heightPixels
-    }
+    val (width, height) = windowManager.maximumWindowMetrics.bounds.let { it.width() to it.height() }
 
     return PixelSize(
         width = width.coerceAtLeast(UCrop.MIN_SIZE),

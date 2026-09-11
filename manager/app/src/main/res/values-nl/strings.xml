@@ -188,8 +188,6 @@
     <string name="home_android_version">Android-versie</string>
     <string name="home_device_model">Apparaatmodel</string>
     <string name="su_not_allowed">Supergebruiker verlenen aan %s is niet toegestaan</string>
-    <string name="settings_disable_su">su-compatibiliteit uitschakelen</string>
-    <string name="settings_disable_su_summary">Voorkom dat elke app root-rechten verkrijgt via het su-commando. Bestaande root-processen worden niet beïnvloed.</string>
     <string name="settings_disable_kernel_umount">Kernel-umount uitschakelen</string>
     <string name="settings_disable_kernel_umount_summary">Schakel het door KernelSU bestuurde umount-gedrag op kernelniveau uit</string>
     <string name="settings_enable_enhanced_security">Strikt beveiligingsbeleid gebruiken</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">Partitiebeheer</string>
     <string name="partition_slot_info">Slotinformatie</string>
     <string name="partition_device_type">Apparaattype</string>
-    <string name="partition_current_slot">Huidig slot</string>
-    <string name="partition_other_slot">Ander slot</string>
     <string name="partition_show_all">Alles tonen</string>
     <string name="partition_collapse">Samenvouwen</string>
     <string name="partition_selected_count">%d partities geselecteerd</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">Veelvoorkomende partities</string>
     <string name="partition_all">Alle partities</string>
     <string name="partition_dangerous_warning">GEVAARLIJKE partitie! Een onjuiste bewerking kan het apparaat onbruikbaar maken</string>
-    <string name="partition_info_title">Partitie-informatie</string>
     <string name="partition_info_type">Type</string>
     <string name="partition_type_physical">Fysiek</string>
     <string name="partition_type_logical">Logisch</string>
     <string name="partition_info_size">Grootte</string>
     <string name="partition_info_device">Apparaat</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Beschikbare bewerkingen</string>
     <string name="partition_backup_to_file">Back-up naar bestand</string>
     <string name="partition_flash_image">Image flashen</string>
-    <string name="partition_dangerous_operation">Gevaarlijke bewerking</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Waarschuwing voor gevaarlijke bewerking</string>
     <string name="partition_flash_warning">Het flashen van de partitie kan ervoor zorgen dat het apparaat niet meer opstart!\n\nWeet je zeker dat je de partitie %s wilt flashen?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Waarschuwing: %1$s is een gevaarlijke partitie!\n\nHet flashen van deze partitie kan veroorzaken:\n• Apparaat start niet meer op\n• Verlies van belangrijke gegevens\n• Storing in netwerk/Bluetooth\n\nZorg ervoor dat je weet wat je doet!\n\nWeet je zeker dat je de partitie %2$s wilt flashen?</string>
     <string name="partition_confirm_flash">Flashen bevestigen</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">Flashen geslaagd! Onmiddellijk herstarten aanbevolen.</string>
     <string name="partition_flash_failed">Flashen mislukt: %s</string>
     <string name="partition_flash_failed_check_log">Flashen mislukt, controleer de logcat-logboeken</string>
-    <string name="partition_cannot_read_file">Kan het bestand niet lezen</string>
     <string name="partition_load_failed">Kan de partitie-informatie niet laden: %s</string>
     <string name="partition_ab_device">A/B-apparaat</string>
     <string name="partition_a_only_device">Alleen-A-apparaat</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">Batchback-up voltooid! In totaal %1$d partities\nOpgeslagen in: %2$s</string>
     <string name="partition_batch_backup_partial">Back-up voltooid: %1$d geslaagd, %2$d mislukt\nMislukt: %3$s</string>
     <string name="partition_no_selection">Geen partitie geselecteerd</string>
-    <string name="partition_back">Terug</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Geavanceerde gereedschappen</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">Eén keer toestaan</string>
     <string name="su_request_deny">Weigeren</string>
     <string name="su_request_deny_hide">Weigeren en verbergen</string>
-    <string name="magisk_compat_title">su-prompt in Magisk-stijl</string>
-    <string name="magisk_compat_summary">Toon apps een zichtbare su en vraag bij het eerste gebruik om autorisatie, in plaats van su stilletjes te laten mislukken voor apps die niet op de toegestane lijst staan.</string>
 </resources>

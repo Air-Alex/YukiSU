@@ -188,8 +188,6 @@
     <string name="home_android_version">Versiune Android</string>
     <string name="home_device_model">Modelul dispozitivului</string>
     <string name="su_not_allowed">Acordarea privilegiilor de superutilizator pentru %s nu este permisă</string>
-    <string name="settings_disable_su">Dezactivează compatibilitatea su</string>
-    <string name="settings_disable_su_summary">Împiedicați fiecare aplicație să obțină privilegii root prin comanda su. Procesele existente root nu sunt afectate.</string>
     <string name="settings_disable_kernel_umount">Dezactivează umount-ul kernelului</string>
     <string name="settings_disable_kernel_umount_summary">Dezactivează comportamentul umount la nivel de kernel controlat de KernelSU</string>
     <string name="settings_enable_enhanced_security">Folosește o politică de securitate strictă</string>
@@ -427,8 +425,6 @@
     <string name="partition_manager">Manager de partiții</string>
     <string name="partition_slot_info">Informații despre slot</string>
     <string name="partition_device_type">Tipul dispozitivului</string>
-    <string name="partition_current_slot">Slot curent</string>
-    <string name="partition_other_slot">Alt slot</string>
     <string name="partition_show_all">Afișează toate</string>
     <string name="partition_collapse">Restrânge</string>
     <string name="partition_selected_count">%d partiții selectate</string>
@@ -444,18 +440,14 @@
     <string name="partition_common">Partiții comune</string>
     <string name="partition_all">Toate partițiile</string>
     <string name="partition_dangerous_warning">Partiție PERICULOASĂ! O operațiune incorectă poate face dispozitivul inutilizabil</string>
-    <string name="partition_info_title">Informații despre partiție</string>
     <string name="partition_info_type">Tip</string>
     <string name="partition_type_physical">Fizică</string>
     <string name="partition_type_logical">Logică</string>
     <string name="partition_info_size">Dimensiune</string>
     <string name="partition_info_device">Dispozitiv</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Operațiuni disponibile</string>
     <string name="partition_backup_to_file">Copie de rezervă într-un fișier</string>
     <string name="partition_flash_image">Flash imagine</string>
-    <string name="partition_dangerous_operation">Operațiune periculoasă</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Avertisment operațiune periculoasă</string>
     <string name="partition_flash_warning">Flash-ul partiției poate face ca dispozitivul să nu mai pornească!\n\nSigur doriți să faceți flash partiției %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Avertisment: %1$s este o partiție periculoasă!\n\nFlash-ul acestei partiții poate cauza:\n• Dispozitivul nu mai pornește\n• Pierderea datelor importante\n• Funcționare defectuoasă a rețelei/Bluetooth\n\nVă rugăm să vă asigurați că știți ce faceți!\n\nSigur doriți să faceți flash partiției %2$s?</string>
     <string name="partition_confirm_flash">Confirmă flash-ul</string>
@@ -474,7 +466,6 @@
     <string name="partition_flash_success">Flash reușit! Recomand repornirea imediată.</string>
     <string name="partition_flash_failed">Flash-ul a eșuat: %s</string>
     <string name="partition_flash_failed_check_log">Flash-ul a eșuat, vă rugăm să verificați jurnalele logcat</string>
-    <string name="partition_cannot_read_file">Fișierul nu poate fi citit</string>
     <string name="partition_load_failed">Încărcarea informațiilor despre partiție a eșuat: %s</string>
     <string name="partition_ab_device">Dispozitiv A/B</string>
     <string name="partition_a_only_device">Dispozitiv doar A</string>
@@ -484,7 +475,6 @@
     <string name="partition_batch_backup_complete">Copie de rezervă în lot finalizată! Total %1$d partiții\nSalvat în: %2$s</string>
     <string name="partition_batch_backup_partial">Copie de rezervă finalizată: %1$d reușite, %2$d eșuate\nEșuate: %3$s</string>
     <string name="partition_no_selection">Nicio partiție selectată</string>
-    <string name="partition_back">Înapoi</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Instrumente avansate</string>
@@ -507,6 +497,4 @@
     <string name="su_request_allow_once">Permite o dată</string>
     <string name="su_request_deny">Refuză</string>
     <string name="su_request_deny_hide">Refuză și ascunde</string>
-    <string name="magisk_compat_title">Solicitare su în stil Magisk</string>
-    <string name="magisk_compat_summary">Afișează un su vizibil aplicațiilor și cere autorizare la prima utilizare, în loc ca su să eșueze în tăcere pentru aplicațiile care nu sunt în lista de permisiuni.</string>
 </resources>

@@ -102,9 +102,7 @@ class MainActivity : ComponentActivity() {
             // Enable edge to edge
             enableEdgeToEdge()
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                window.isNavigationBarContrastEnforced = false
-            }
+            window.isNavigationBarContrastEnforced = false
 
             super.onCreate(savedInstanceState)
             resetTaskDescriptionToAppName()

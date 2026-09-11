@@ -188,8 +188,6 @@
     <string name="home_android_version">Версия Android</string>
     <string name="home_device_model">Модель устройства</string>
     <string name="su_not_allowed">Предоставление рут-доступа %s запрещено</string>
-    <string name="settings_disable_su">Отключить su совместимость</string>
-    <string name="settings_disable_su_summary">Запретите каждому приложению получать привилегии root с помощью команды su. Существующие процессы root не затрагиваются.</string>
     <string name="settings_disable_kernel_umount">Отключить размонтирование ядра</string>
     <string name="settings_disable_kernel_umount_summary">Отключить поведение размонтирования на уровне ядра, контролируемое KernelSU.</string>
     <string name="settings_enable_enhanced_security">Использовать строгую политику безопасности</string>
@@ -428,8 +426,6 @@
     <string name="partition_manager">Менеджер разделов</string>
     <string name="partition_slot_info">Сведения о слотах</string>
     <string name="partition_device_type">Тип устройства</string>
-    <string name="partition_current_slot">Текущий слот</string>
-    <string name="partition_other_slot">Другой слот</string>
     <string name="partition_show_all">Показать все</string>
     <string name="partition_collapse">Свернуть</string>
     <string name="partition_selected_count">Выбрано разделов: %d</string>
@@ -445,18 +441,14 @@
     <string name="partition_common">Распространённые разделы</string>
     <string name="partition_all">Все разделы</string>
     <string name="partition_dangerous_warning">ОПАСНЫЙ раздел! Неправильные действия могут вывести устройство из строя</string>
-    <string name="partition_info_title">Сведения о разделе</string>
     <string name="partition_info_type">Тип</string>
     <string name="partition_type_physical">Физический</string>
     <string name="partition_type_logical">Логический</string>
     <string name="partition_info_size">Размер</string>
     <string name="partition_info_device">Устройство</string>
     <string name="partition_info_slot">Слот</string>
-    <string name="partition_available_operations">Доступные операции</string>
     <string name="partition_backup_to_file">Резервная копия в файл</string>
     <string name="partition_flash_image">Прошить образ</string>
-    <string name="partition_dangerous_operation">Опасная операция</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Предупреждение об опасной операции</string>
     <string name="partition_flash_warning">Прошивка раздела может привести к невозможности загрузки устройства!\n\nВы уверены, что хотите прошить раздел %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Внимание: %1$s — опасный раздел!\n\nПрошивка этого раздела может привести к:\n• Невозможности загрузки устройства\n• Потере важных данных\n• Неисправности сети/Bluetooth\n\nУбедитесь, что вы понимаете, что делаете!\n\nВы уверены, что хотите прошить раздел %2$s?</string>
     <string name="partition_confirm_flash">Подтвердить прошивку</string>
@@ -475,7 +467,6 @@
     <string name="partition_flash_success">Прошивка успешна! Рекомендуется немедленная перезагрузка.</string>
     <string name="partition_flash_failed">Прошивка не удалась: %s</string>
     <string name="partition_flash_failed_check_log">Прошивка не удалась, проверьте журналы logcat</string>
-    <string name="partition_cannot_read_file">Не удалось прочитать файл</string>
     <string name="partition_load_failed">Не удалось загрузить сведения о разделе: %s</string>
     <string name="partition_ab_device">A/B-устройство</string>
     <string name="partition_a_only_device">Устройство только с A</string>
@@ -485,7 +476,6 @@
     <string name="partition_batch_backup_complete">Пакетное резервное копирование завершено! Всего разделов: %1$d\nСохранено в: %2$s</string>
     <string name="partition_batch_backup_partial">Резервное копирование завершено: успешно %1$d, не удалось %2$d\nНе удалось: %3$s</string>
     <string name="partition_no_selection">Раздел не выбран</string>
-    <string name="partition_back">Назад</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Дополнительные инструменты</string>
@@ -508,6 +498,4 @@
     <string name="su_request_allow_once">Разрешить один раз</string>
     <string name="su_request_deny">Отклонить</string>
     <string name="su_request_deny_hide">Отклонить и скрыть</string>
-    <string name="magisk_compat_title">Запрос su в стиле Magisk</string>
-    <string name="magisk_compat_summary">Показывать приложениям видимый su и запрашивать авторизацию при первом использовании, вместо тихого отказа su для приложений, которых нет в списке разрешённых.</string>
 </resources>

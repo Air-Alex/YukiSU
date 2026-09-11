@@ -186,8 +186,6 @@
     <string name="home_android_version">Različica Android</string>
     <string name="home_device_model">Model naprave</string>
     <string name="su_not_allowed">Dodelitev pravic superuporabnika za %s ni dovoljena</string>
-    <string name="settings_disable_su">Onemogoči združljivost su</string>
-    <string name="settings_disable_su_summary">Preprečite, da bi vsaka aplikacija pridobila privilegije root z ukazom su. To ne vpliva na obstoječe procese root.</string>
     <string name="settings_disable_kernel_umount">Onemogoči umount jedra</string>
     <string name="settings_disable_kernel_umount_summary">Onemogoči vedenje umount na ravni jedra, ki ga nadzoruje KernelSU</string>
     <string name="settings_enable_enhanced_security">Uporabi strogo varnostno politiko</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Upravitelj razdelkov</string>
     <string name="partition_slot_info">Informacije o reži</string>
     <string name="partition_device_type">Vrsta naprave</string>
-    <string name="partition_current_slot">Trenutna reža</string>
-    <string name="partition_other_slot">Druga reža</string>
     <string name="partition_show_all">Pokaži vse</string>
     <string name="partition_collapse">Strni</string>
     <string name="partition_selected_count">Izbranih %d razdelkov</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Pogosti razdelki</string>
     <string name="partition_all">Vsi razdelki</string>
     <string name="partition_dangerous_warning">NEVAREN razdelek! Nepravilno dejanje lahko onesposobi napravo</string>
-    <string name="partition_info_title">Informacije o razdelku</string>
     <string name="partition_info_type">Vrsta</string>
     <string name="partition_type_physical">Fizični</string>
     <string name="partition_type_logical">Logični</string>
     <string name="partition_info_size">Velikost</string>
     <string name="partition_info_device">Naprava</string>
     <string name="partition_info_slot">Reža</string>
-    <string name="partition_available_operations">Razpoložljive operacije</string>
     <string name="partition_backup_to_file">Varnostno kopiraj v datoteko</string>
     <string name="partition_flash_image">Zapiši sliko</string>
-    <string name="partition_dangerous_operation">Nevarna operacija</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Opozorilo o nevarni operaciji</string>
     <string name="partition_flash_warning">Zapisovanje razdelka lahko povzroči, da se naprava ne zažene!\n\nAli ste prepričani, da želite zapisati razdelek %s?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Opozorilo: %1$s je nevaren razdelek!\n\nZapisovanje tega razdelka lahko povzroči:\n• Naprava se ne zažene\n• Izgubo pomembnih podatkov\n• Okvaro omrežja/Bluetooth\n\nPrepričajte se, da veste, kaj počnete!\n\nAli ste prepričani, da želite zapisati razdelek %2$s?</string>
     <string name="partition_confirm_flash">Potrdi zapis</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Zapis uspešen! Priporočamo takojšen ponovni zagon.</string>
     <string name="partition_flash_failed">Zapis ni uspel: %s</string>
     <string name="partition_flash_failed_check_log">Zapis ni uspel, preverite dnevnike logcat</string>
-    <string name="partition_cannot_read_file">Datoteke ni mogoče prebrati</string>
     <string name="partition_load_failed">Informacij o razdelku ni bilo mogoče naložiti: %s</string>
     <string name="partition_ab_device">Naprava A/B</string>
     <string name="partition_a_only_device">Naprava samo A</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Paketno varnostno kopiranje dokončano! Skupaj %1$d razdelkov\nShranjeno v: %2$s</string>
     <string name="partition_batch_backup_partial">Varnostno kopiranje dokončano: %1$d uspešnih, %2$d neuspešnih\nNeuspešni: %3$s</string>
     <string name="partition_no_selection">Noben razdelek ni izbran</string>
-    <string name="partition_back">Nazaj</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Napredna orodja</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Dovoli enkrat</string>
     <string name="su_request_deny">Zavrni</string>
     <string name="su_request_deny_hide">Zavrni in skrij</string>
-    <string name="magisk_compat_title">Poziv su v slogu Magisk</string>
-    <string name="magisk_compat_summary">Aplikacijam pokaži viden su in ob prvi uporabi zahtevaj pooblastilo, namesto da su tiho ne uspe za aplikacije, ki niso na seznamu dovoljenih.</string>
 </resources>

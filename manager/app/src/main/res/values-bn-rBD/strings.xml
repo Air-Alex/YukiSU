@@ -186,8 +186,6 @@
     <string name="home_android_version">Android সংস্করণ</string>
     <string name="home_device_model">ডিভাইস মডেল</string>
     <string name="su_not_allowed">%s কে সুপারইউজার প্রদান করার অনুমতি নেই</string>
-    <string name="settings_disable_su">su সামঞ্জস্যতা নিষ্ক্রিয় করুন</string>
-    <string name="settings_disable_su_summary">প্রতিটি অ্যাপকে su কমান্ডের মাধ্যমে root সুবিধা পেতে বাধা দিন। বিদ্যমান root প্রক্রিয়াগুলি প্রভাবিত হয় না।</string>
     <string name="settings_disable_kernel_umount">কার্নেল umount নিষ্ক্রিয় করুন</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU দ্বারা নিয়ন্ত্রিত কার্নেল-স্তরের umount আচরণ নিষ্ক্রিয় করুন</string>
     <string name="settings_enable_enhanced_security">কঠোর নিরাপত্তা নীতি ব্যবহার করুন</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">পার্টিশন ম্যানেজার</string>
     <string name="partition_slot_info">স্লট তথ্য</string>
     <string name="partition_device_type">ডিভাইস প্রকার</string>
-    <string name="partition_current_slot">বর্তমান স্লট</string>
-    <string name="partition_other_slot">অন্য স্লট</string>
     <string name="partition_show_all">সব দেখান</string>
     <string name="partition_collapse">সংকুচিত করুন</string>
     <string name="partition_selected_count">%d টি পার্টিশন নির্বাচিত</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">সাধারণ পার্টিশন</string>
     <string name="partition_all">সব পার্টিশন</string>
     <string name="partition_dangerous_warning">বিপজ্জনক পার্টিশন! অনুপযুক্ত অপারেশন ডিভাইস ব্রিক করতে পারে</string>
-    <string name="partition_info_title">পার্টিশন তথ্য</string>
     <string name="partition_info_type">প্রকার</string>
     <string name="partition_type_physical">ভৌত</string>
     <string name="partition_type_logical">যৌক্তিক</string>
     <string name="partition_info_size">আকার</string>
     <string name="partition_info_device">ডিভাইস</string>
     <string name="partition_info_slot">স্লট</string>
-    <string name="partition_available_operations">উপলব্ধ অপারেশন</string>
     <string name="partition_backup_to_file">ফাইলে ব্যাকআপ</string>
     <string name="partition_flash_image">ইমেজ ফ্ল্যাশ করুন</string>
-    <string name="partition_dangerous_operation">বিপজ্জনক অপারেশন</string>
-    <string name="partition_dangerous_operation_warning">⚠️ বিপজ্জনক অপারেশন সতর্কতা</string>
     <string name="partition_flash_warning">পার্টিশন ফ্ল্যাশ করলে ডিভাইস বুট করতে অক্ষম হতে পারে!\n\nআপনি কি নিশ্চিত যে আপনি %s পার্টিশন ফ্ল্যাশ করতে চান?</string>
     <string name="partition_dangerous_flash_warning">⚠️ সতর্কতা: %1$s একটি বিপজ্জনক পার্টিশন!\n\nএই পার্টিশন ফ্ল্যাশ করলে হতে পারে:\n• ডিভাইস বুট করতে অক্ষম\n• গুরুত্বপূর্ণ ডেটা হারানো\n• নেটওয়ার্ক/Bluetooth ত্রুটি\n\nঅনুগ্রহ করে নিশ্চিত করুন যে আপনি কী করছেন তা জানেন!\n\nআপনি কি নিশ্চিত যে আপনি %2$s পার্টিশন ফ্ল্যাশ করতে চান?</string>
     <string name="partition_confirm_flash">ফ্ল্যাশ নিশ্চিত করুন</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">ফ্ল্যাশ সফল! অবিলম্বে রিবুট করার পরামর্শ দেওয়া হচ্ছে।</string>
     <string name="partition_flash_failed">ফ্ল্যাশ ব্যর্থ: %s</string>
     <string name="partition_flash_failed_check_log">ফ্ল্যাশ ব্যর্থ, অনুগ্রহ করে logcat লগ পরীক্ষা করুন</string>
-    <string name="partition_cannot_read_file">ফাইল পড়া যাচ্ছে না</string>
     <string name="partition_load_failed">পার্টিশন তথ্য লোড করতে ব্যর্থ: %s</string>
     <string name="partition_ab_device">A/B ডিভাইস</string>
     <string name="partition_a_only_device">শুধুমাত্র-A ডিভাইস</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">ব্যাচ ব্যাকআপ সম্পূর্ণ! মোট %1$d টি পার্টিশন\nসংরক্ষিত: %2$s</string>
     <string name="partition_batch_backup_partial">ব্যাকআপ সম্পূর্ণ: %1$d সফল, %2$d ব্যর্থ\nব্যর্থ: %3$s</string>
     <string name="partition_no_selection">কোনো পার্টিশন নির্বাচিত নেই</string>
-    <string name="partition_back">ফিরে যান</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">উন্নত টুল</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">একবার অনুমতি দিন</string>
     <string name="su_request_deny">প্রত্যাখ্যান করুন</string>
     <string name="su_request_deny_hide">প্রত্যাখ্যান করুন এবং লুকান</string>
-    <string name="magisk_compat_title">Magisk-শৈলীর su প্রম্পট</string>
-    <string name="magisk_compat_summary">অনুমতি তালিকায় নেই এমন অ্যাপের জন্য su নীরবে ব্যর্থ হওয়ার পরিবর্তে, অ্যাপগুলিকে একটি দৃশ্যমান su দেখান এবং প্রথম ব্যবহারে অনুমোদন চান।</string>
 </resources>

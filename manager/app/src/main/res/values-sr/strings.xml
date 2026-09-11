@@ -186,8 +186,6 @@
     <string name="home_android_version">Андроид верзија</string>
     <string name="home_device_model">Модел уређаја</string>
     <string name="su_not_allowed">Додељивање суперкорисника %s није дозвољено</string>
-    <string name="settings_disable_su">Онемогући su компатибилност</string>
-    <string name="settings_disable_su_summary">Спречите сваку апликацију да добије root привилегије преко su команде. То не утиче на постојеће root процесе.</string>
     <string name="settings_disable_kernel_umount">Онемогући демонтирање на нивоу језгра</string>
     <string name="settings_disable_kernel_umount_summary">Онемогући демонтирање на нивоу језгра којим управља KernelSU</string>
     <string name="settings_enable_enhanced_security">Користите строгу безбедносну политику</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">Управљач партицијама</string>
     <string name="partition_slot_info">Информације о слоту</string>
     <string name="partition_device_type">Тип уређаја</string>
-    <string name="partition_current_slot">Тренутни слот</string>
-    <string name="partition_other_slot">Други слот</string>
     <string name="partition_show_all">Прикажи све</string>
     <string name="partition_collapse">Сажми</string>
     <string name="partition_selected_count">Изабране %d партиције</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">Заједничке партиције</string>
     <string name="partition_all">Све партиције</string>
     <string name="partition_dangerous_warning">ОПАСНА партиција! Неправилан рад може оштетити уређај</string>
-    <string name="partition_info_title">Информације о партицији</string>
     <string name="partition_info_type">Тип</string>
     <string name="partition_type_physical">Физички</string>
     <string name="partition_type_logical">Логичка</string>
     <string name="partition_info_size">Величина</string>
     <string name="partition_info_device">Уређај</string>
     <string name="partition_info_slot">Слот</string>
-    <string name="partition_available_operations">Доступне операције</string>
     <string name="partition_backup_to_file">Резервна копија у датотеку</string>
     <string name="partition_flash_image">Фласх слика</string>
-    <string name="partition_dangerous_operation">Опасна операција</string>
-    <string name="partition_dangerous_operation_warning">⚠ Упозорење о опасној операцији</string>
     <string name="partition_flash_warning">Треперење партиције може довести до тога да уређај не може да се покрене!\n\nДа ли сте сигурни да желите да флешујете %s партицију?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Упозорење: %1$s је опасна партиција!\n\nЗаписивање ове партиције може узроковати:\n• Уређај се не покреће\n• Губитак важних података\n• Квар мреже/Bluetootha\n\nПроверите знате ли што радите!\n\nЈесте ли сигурни да желите записати партицију %2$s?</string>
     <string name="partition_confirm_flash">Потврди флешовање</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">Фласх успешно! Препоручите одмах поновно покретање.</string>
     <string name="partition_flash_failed">Фласх није успео: %s</string>
     <string name="partition_flash_failed_check_log">Фласх није успео, проверите логцат евиденције</string>
-    <string name="partition_cannot_read_file">Није могуће прочитати датотеку</string>
     <string name="partition_load_failed">Учитавање информација о партицији није успело: %s</string>
     <string name="partition_ab_device">А/B Уређај</string>
     <string name="partition_a_only_device">Уређај само за А</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">Батцх бацкуп завршен! Укупно %1$d партиције\nСачувано у: %2$s</string>
     <string name="partition_batch_backup_partial">Резервна копија завршена: %1$d успео, %2$d није успео\nНеуспео: %3$s</string>
     <string name="partition_no_selection">Ниједна партиција није изабрана</string>
-    <string name="partition_back">Назад</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Напредни алати</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">Дозволи једном</string>
     <string name="su_request_deny">Одбити</string>
     <string name="su_request_deny_hide">Одбиј и сакриј</string>
-    <string name="magisk_compat_title">Magisk-стил su промпт</string>
-    <string name="magisk_compat_summary">Прикажите видљиви su апликацијама и затражите ауторизацију при првој употреби, уместо да su тихо не успе за апликације које нису на листи дозвољених.</string>
 </resources>

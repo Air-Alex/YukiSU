@@ -186,8 +186,6 @@
     <string name="home_android_version">Android 버전</string>
     <string name="home_device_model">기기 모델</string>
     <string name="su_not_allowed">%s에 슈퍼유저 권한을 부여할 수 없습니다</string>
-    <string name="settings_disable_su">su 호환성 비활성화</string>
-    <string name="settings_disable_su_summary">모든 앱이 su 명령을 통해 루트 권한을 얻지 못하도록 합니다. 이미 실행 중인 루트 프로세스는 영향을 받지 않습니다.</string>
     <string name="settings_disable_kernel_umount">커널 umount 비활성화</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU가 제어하는 커널 수준 umount 동작을 비활성화합니다</string>
     <string name="settings_enable_enhanced_security">엄격한 보안 정책 사용</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">파티션 관리자</string>
     <string name="partition_slot_info">슬롯 정보</string>
     <string name="partition_device_type">기기 유형</string>
-    <string name="partition_current_slot">현재 슬롯</string>
-    <string name="partition_other_slot">다른 슬롯</string>
     <string name="partition_show_all">모두 표시</string>
     <string name="partition_collapse">접기</string>
     <string name="partition_selected_count">%d개의 파티션 선택됨</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">일반 파티션</string>
     <string name="partition_all">모든 파티션</string>
     <string name="partition_dangerous_warning">위험한 파티션! 잘못된 작업은 기기를 벽돌로 만들 수 있습니다</string>
-    <string name="partition_info_title">파티션 정보</string>
     <string name="partition_info_type">유형</string>
     <string name="partition_type_physical">물리적</string>
     <string name="partition_type_logical">논리적</string>
     <string name="partition_info_size">크기</string>
     <string name="partition_info_device">기기</string>
     <string name="partition_info_slot">슬롯</string>
-    <string name="partition_available_operations">사용 가능한 작업</string>
     <string name="partition_backup_to_file">파일로 백업</string>
     <string name="partition_flash_image">이미지 플래시</string>
-    <string name="partition_dangerous_operation">위험한 작업</string>
-    <string name="partition_dangerous_operation_warning">⚠️ 위험한 작업 경고</string>
     <string name="partition_flash_warning">파티션을 플래시하면 기기가 부팅되지 않을 수 있습니다!\n\n%s 파티션을 플래시하시겠습니까?</string>
     <string name="partition_dangerous_flash_warning">⚠️ 경고: %1$s은(는) 위험한 파티션입니다!\n\n이 파티션을 플래시하면 다음이 발생할 수 있습니다:\n• 기기가 부팅되지 않음\n• 중요한 데이터 손실\n• 네트워크/Bluetooth 오작동\n\n무엇을 하는지 알고 있는지 확인하세요!\n\n%2$s 파티션을 플래시하시겠습니까?</string>
     <string name="partition_confirm_flash">플래시 확인</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">플래시 성공! 즉시 재부팅하는 것이 좋습니다.</string>
     <string name="partition_flash_failed">플래시 실패: %s</string>
     <string name="partition_flash_failed_check_log">플래시 실패, logcat 로그를 확인하세요</string>
-    <string name="partition_cannot_read_file">파일을 읽을 수 없습니다</string>
     <string name="partition_load_failed">파티션 정보 로드에 실패했습니다: %s</string>
     <string name="partition_ab_device">A/B 기기</string>
     <string name="partition_a_only_device">A 전용 기기</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">일괄 백업 완료! 총 %1$d개의 파티션\n저장 위치: %2$s</string>
     <string name="partition_batch_backup_partial">백업 완료: %1$d개 성공, %2$d개 실패\n실패: %3$s</string>
     <string name="partition_no_selection">선택된 파티션 없음</string>
-    <string name="partition_back">뒤로</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">고급 도구</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">한 번 허용</string>
     <string name="su_request_deny">거부</string>
     <string name="su_request_deny_hide">거부 및 숨기기</string>
-    <string name="magisk_compat_title">Magisk 방식 su 프롬프트</string>
-    <string name="magisk_compat_summary">허용 목록에 없는 앱에 대해 su가 조용히 실패하는 대신, 앱에 표시되는 su를 보여주고 처음 사용할 때 권한을 요청합니다.</string>
 </resources>

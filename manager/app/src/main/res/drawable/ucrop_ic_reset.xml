@@ -1,7 +1,9 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:override="true"
     android:width="24dp"
     android:height="24dp"
-    android:tint="@color/ucrop_color_widget_rotate_angle"
+    android:tint="@color/crop_rotate_angle"
     android:viewportWidth="960"
     android:viewportHeight="960">
     <group android:translateY="960">

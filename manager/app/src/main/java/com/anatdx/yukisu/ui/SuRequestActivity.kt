@@ -1,7 +1,6 @@
 package com.anatdx.yukisu.ui
 
 import android.content.pm.ActivityInfo
-import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.widget.Toast
@@ -69,20 +68,13 @@ class SuRequestActivity : ComponentActivity() {
         window.requestFeature(Window.FEATURE_NO_TITLE)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                window.setHideOverlayWindows(true)
-            } catch (_: SecurityException) {
-                // Best effort on vendor frameworks.
-            }
+        try {
+            window.setHideOverlayWindows(true)
+        } catch (_: SecurityException) {
+            // Best effort on vendor frameworks.
         }
         super.onCreate(savedInstanceState)
-        val screenWidth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager.currentWindowMetrics.bounds.width()
-        } else {
-            @Suppress("DEPRECATION")
-            resources.displayMetrics.widthPixels
-        }
+        val screenWidth = windowManager.currentWindowMetrics.bounds.width()
         setFinishOnTouchOutside(false)
         onBackPressedDispatcher.addCallback(this) { onChoice(Choice.DENY) }
 

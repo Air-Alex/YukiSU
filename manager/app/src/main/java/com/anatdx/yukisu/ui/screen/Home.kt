@@ -568,7 +568,6 @@ private fun TopBar(
                             add(RebootMenuOption(R.string.reboot_soft, "soft_reboot"))
                             @Suppress("DEPRECATION")
                             if (
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
                                 pm?.isRebootingUserspaceSupported == true
                             ) {
                                 add(RebootMenuOption(R.string.reboot_userspace, "userspace"))

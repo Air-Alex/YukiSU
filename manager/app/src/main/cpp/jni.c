@@ -388,8 +388,9 @@ NativeBridgeNP(getDynamicManagers, jintArray) {
 
   jint flattened[KSU_DYNAMIC_MANAGER_MAX_APPS * 2] = {};
   for (uint32_t i = 0; i < count; i++) {
-    flattened[i * 2] = (jint)apps[i].appid;
-    flattened[i * 2 + 1] = (jint)apps[i].flags;
+    const size_t offset = (size_t)i * 2;
+    flattened[offset] = (jint)apps[i].appid;
+    flattened[offset + 1] = (jint)apps[i].flags;
   }
 
   GetEnvironment()->SetIntArrayRegion(env, array, 0, array_size, flattened);
@@ -596,7 +597,7 @@ Java_com_anatdx_yukisu_magica_AppZygotePreload_forkDontCareAndExecKsud(
     return;
   }
 
-  const char *path = (*env)->GetStringUTFChars(env, ksud_path, NULL);
+  const char *path = (*env)->GetStringUTFChars(env, ksud_path, nullptr);
   if (!path) {
     return;
   }

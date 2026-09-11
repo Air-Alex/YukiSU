@@ -519,6 +519,10 @@ android {
         }
     }
 
+    lint {
+        warningsAsErrors = true
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")

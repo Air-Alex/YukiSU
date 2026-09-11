@@ -186,8 +186,6 @@
     <string name="home_android_version">Android आवृत्ती</string>
     <string name="home_device_model">डिव्हाइस मॉडेल</string>
     <string name="su_not_allowed">%s ला सुपरयूजर देण्याची परवानगी नाही</string>
-    <string name="settings_disable_su">su सुसंगतता अक्षम करा</string>
-    <string name="settings_disable_su_summary">प्रत्येक ॲपला su कमांडद्वारे root विशेषाधिकार मिळविण्यापासून प्रतिबंधित करा. विद्यमान root प्रक्रिया प्रभावित होत नाहीत.</string>
     <string name="settings_disable_kernel_umount">कर्नल umount अक्षम करा</string>
     <string name="settings_disable_kernel_umount_summary">KernelSU द्वारे नियंत्रित कर्नल-स्तरीय umount वर्तन अक्षम करा</string>
     <string name="settings_enable_enhanced_security">कठोर सुरक्षा धोरण वापरा</string>
@@ -425,8 +423,6 @@
     <string name="partition_manager">पार्टिशन व्यवस्थापक</string>
     <string name="partition_slot_info">स्लॉट माहिती</string>
     <string name="partition_device_type">डिव्हाइस प्रकार</string>
-    <string name="partition_current_slot">सध्याचा स्लॉट</string>
-    <string name="partition_other_slot">इतर स्लॉट</string>
     <string name="partition_show_all">सर्व दाखवा</string>
     <string name="partition_collapse">संकुचित करा</string>
     <string name="partition_selected_count">%d पार्टिशन निवडले</string>
@@ -442,18 +438,14 @@
     <string name="partition_common">सामान्य पार्टिशन</string>
     <string name="partition_all">सर्व पार्टिशन</string>
     <string name="partition_dangerous_warning">धोकादायक पार्टिशन! अयोग्य ऑपरेशन डिव्हाइस ब्रिक करू शकते</string>
-    <string name="partition_info_title">पार्टिशन माहिती</string>
     <string name="partition_info_type">प्रकार</string>
     <string name="partition_type_physical">भौतिक</string>
     <string name="partition_type_logical">तार्किक</string>
     <string name="partition_info_size">आकार</string>
     <string name="partition_info_device">डिव्हाइस</string>
     <string name="partition_info_slot">स्लॉट</string>
-    <string name="partition_available_operations">उपलब्ध ऑपरेशन</string>
     <string name="partition_backup_to_file">फाइलमध्ये बॅकअप</string>
     <string name="partition_flash_image">प्रतिमा फ्लॅश करा</string>
-    <string name="partition_dangerous_operation">धोकादायक ऑपरेशन</string>
-    <string name="partition_dangerous_operation_warning">⚠️ धोकादायक ऑपरेशन चेतावणी</string>
     <string name="partition_flash_warning">पार्टिशन फ्लॅश केल्याने डिव्हाइस बूट करण्यात अक्षम होऊ शकते!\n\nआपण %s पार्टिशन फ्लॅश करू इच्छिता याची खात्री आहे का?</string>
     <string name="partition_dangerous_flash_warning">⚠️ चेतावणी: %1$s हे धोकादायक पार्टिशन आहे!\n\nहे पार्टिशन फ्लॅश केल्याने होऊ शकते:\n• डिव्हाइस बूट करण्यात अक्षम\n• महत्त्वाचा डेटा गमावणे\n• नेटवर्क/Bluetooth बिघाड\n\nकृपया आपण काय करत आहात हे आपल्याला माहीत आहे याची खात्री करा!\n\nआपण %2$s पार्टिशन फ्लॅश करू इच्छिता याची खात्री आहे का?</string>
     <string name="partition_confirm_flash">फ्लॅश निश्चित करा</string>
@@ -472,7 +464,6 @@
     <string name="partition_flash_success">फ्लॅश यशस्वी! लगेच रीबूट करण्याची शिफारस केली जाते.</string>
     <string name="partition_flash_failed">फ्लॅश अयशस्वी: %s</string>
     <string name="partition_flash_failed_check_log">फ्लॅश अयशस्वी, कृपया logcat लॉग तपासा</string>
-    <string name="partition_cannot_read_file">फाइल वाचता येत नाही</string>
     <string name="partition_load_failed">पार्टिशन माहिती लोड करण्यात अयशस्वी: %s</string>
     <string name="partition_ab_device">A/B डिव्हाइस</string>
     <string name="partition_a_only_device">केवळ-A डिव्हाइस</string>
@@ -482,7 +473,6 @@
     <string name="partition_batch_backup_complete">बॅच बॅकअप पूर्ण! एकूण %1$d पार्टिशन\nयेथे जतन केले: %2$s</string>
     <string name="partition_batch_backup_partial">बॅकअप पूर्ण: %1$d यशस्वी, %2$d अयशस्वी\nअयशस्वी: %3$s</string>
     <string name="partition_no_selection">कोणतेही पार्टिशन निवडलेले नाही</string>
-    <string name="partition_back">मागे</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">प्रगत साधने</string>
@@ -505,6 +495,4 @@
     <string name="su_request_allow_once">एकदा परवानगी द्या</string>
     <string name="su_request_deny">नाकारा</string>
     <string name="su_request_deny_hide">नाकारा आणि लपवा</string>
-    <string name="magisk_compat_title">Magisk-शैली su सूचना</string>
-    <string name="magisk_compat_summary">परवानगी यादीत नसलेल्या अॅप्ससाठी su शांतपणे अयशस्वी होण्याऐवजी, अॅप्सना दृश्यमान su दाखवा आणि पहिल्या वापरावर अधिकृतता मागा.</string>
 </resources>

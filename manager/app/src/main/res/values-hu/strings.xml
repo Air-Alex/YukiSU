@@ -186,8 +186,6 @@
     <string name="home_android_version">Android verzió</string>
     <string name="home_device_model">Eszköz modellje</string>
     <string name="su_not_allowed">A rendszergazdai jogosultság megadása nem engedélyezett ennek: %s</string>
-    <string name="settings_disable_su">Az su kompatibilitás letiltása</string>
-    <string name="settings_disable_su_summary">Megakadályozza, hogy bármely alkalmazás root jogosultságot szerezzen az su paranccsal (a már futó root folyamatokat ez nem érinti).</string>
     <string name="settings_disable_kernel_umount">Kernel umount letiltása</string>
     <string name="settings_disable_kernel_umount_summary">A KernelSU által vezérelt kernelszintű umount viselkedés letiltása</string>
     <string name="settings_enable_enhanced_security">Szigorú biztonsági szabályzat használata</string>
@@ -426,8 +424,6 @@ A</string>
     <string name="partition_manager">Partíciókezelő</string>
     <string name="partition_slot_info">Nyerőgép információ</string>
     <string name="partition_device_type">Eszköz típusa</string>
-    <string name="partition_current_slot">Jelenlegi foglalat</string>
-    <string name="partition_other_slot">Másik foglalat</string>
     <string name="partition_show_all">Összes megjelenítése</string>
     <string name="partition_collapse">Összecsukás</string>
     <string name="partition_selected_count">%d partíció kijelölve</string>
@@ -443,18 +439,14 @@ A</string>
     <string name="partition_common">Gyakori partíciók</string>
     <string name="partition_all">Összes partíció</string>
     <string name="partition_dangerous_warning">VESZÉLYES partíció! A nem megfelelő művelet tönkreteheti az eszközt</string>
-    <string name="partition_info_title">Partíció információ</string>
     <string name="partition_info_type">Típus</string>
     <string name="partition_type_physical">Fizikai</string>
     <string name="partition_type_logical">Logikai</string>
     <string name="partition_info_size">Méret</string>
     <string name="partition_info_device">Eszköz</string>
     <string name="partition_info_slot">Slot</string>
-    <string name="partition_available_operations">Elérhető műveletek</string>
     <string name="partition_backup_to_file">Mentés fájlba</string>
     <string name="partition_flash_image">Kép flashelése</string>
-    <string name="partition_dangerous_operation">Veszélyes művelet</string>
-    <string name="partition_dangerous_operation_warning">⚠️ Veszélyes művelet figyelmeztetés</string>
     <string name="partition_flash_warning">A partíció flashelése azt okozhatja, hogy az eszköz nem indul el!\n\nBiztosan flasheli a(z) %s partíciót?</string>
     <string name="partition_dangerous_flash_warning">⚠️ Figyelmeztetés: a(z) %1$s veszélyes partíció!\n\nA partíció flashelése a következőket okozhatja:\n• Az eszköz nem indul el\n• Fontos adatok elvesztése\n• Hálózati/Bluetooth hibás működés\n\nKérjük, győződjön meg róla, hogy tudja, mit csinál!\n\nBiztosan flasheli a(z) %2$s partíciót?</string>
     <string name="partition_confirm_flash">Flashelés megerősítése</string>
@@ -473,7 +465,6 @@ A</string>
     <string name="partition_flash_success">Sikeres flashelés! Ajánlott az azonnali újraindítás.</string>
     <string name="partition_flash_failed">A flashelés sikertelen: %s</string>
     <string name="partition_flash_failed_check_log">A flashelés sikertelen, kérjük, ellenőrizze a logcat naplókat</string>
-    <string name="partition_cannot_read_file">A fájl nem olvasható</string>
     <string name="partition_load_failed">Nem sikerült betölteni a partíció információit: %s</string>
     <string name="partition_ab_device">A/B eszköz</string>
     <string name="partition_a_only_device">Csak A eszköz</string>
@@ -483,7 +474,6 @@ A</string>
     <string name="partition_batch_backup_complete">A kötegelt mentés befejeződött! Összesen %1$d partíció\nMentve ide: %2$s</string>
     <string name="partition_batch_backup_partial">A mentés befejeződött: %1$d sikeres, %2$d sikertelen\nSikertelen: %3$s</string>
     <string name="partition_no_selection">Nincs partíció kijelölve</string>
-    <string name="partition_back">Vissza</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Speciális eszközök</string>
@@ -506,6 +496,4 @@ A</string>
     <string name="su_request_allow_once">Engedélyezés egyszer</string>
     <string name="su_request_deny">Elutasítás</string>
     <string name="su_request_deny_hide">Elutasítás és elrejtés</string>
-    <string name="magisk_compat_title">Magisk-stílusú su kérés</string>
-    <string name="magisk_compat_summary">Látható su megjelenítése az alkalmazásoknak, és engedélykérés az első használatkor, ahelyett, hogy az su csendben sikertelen lenne az engedélyezési listán nem szereplő alkalmazásoknál.</string>
 </resources>

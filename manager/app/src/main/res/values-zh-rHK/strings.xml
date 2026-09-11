@@ -198,8 +198,6 @@
     <string name="home_android_version">Android 版本</string>
     <string name="home_device_model">裝置型號</string>
     <string name="su_not_allowed">唔允許授予 %s 超級用戶權限</string>
-    <string name="settings_disable_su">禁用 su 兼容性</string>
-    <string name="settings_disable_su_summary">禁止任何應用透過 su 指令取得 root 權限（已執行的 root 程序不受影響）。</string>
     <string name="settings_disable_kernel_umount">關閉核心 umount</string>
     <string name="settings_disable_kernel_umount_summary">關閉 KernelSU 控制的核心級 umount 行為。</string>
     <string name="settings_enable_enhanced_security">使用嚴格安全策略</string>
@@ -440,8 +438,6 @@
     <string name="partition_manager">分割區管理器</string>
     <string name="partition_slot_info">插槽資訊</string>
     <string name="partition_device_type">裝置類型</string>
-    <string name="partition_current_slot">目前插槽</string>
-    <string name="partition_other_slot">其他插槽</string>
     <string name="partition_show_all">顯示全部</string>
     <string name="partition_collapse">收合</string>
     <string name="partition_selected_count">已選擇 %d 個分割區</string>
@@ -457,18 +453,14 @@
     <string name="partition_common">常用分割區</string>
     <string name="partition_all">所有分割區</string>
     <string name="partition_dangerous_warning">危險分割區！操作不當可能導致裝置變磚</string>
-    <string name="partition_info_title">分割區資訊</string>
     <string name="partition_info_type">類型</string>
     <string name="partition_type_physical">實體分割區</string>
     <string name="partition_type_logical">邏輯分割區</string>
     <string name="partition_info_size">大小</string>
     <string name="partition_info_device">裝置</string>
     <string name="partition_info_slot">插槽</string>
-    <string name="partition_available_operations">可用操作</string>
     <string name="partition_backup_to_file">備份到檔案</string>
     <string name="partition_flash_image">刷寫鏡像</string>
-    <string name="partition_dangerous_operation">危險操作</string>
-    <string name="partition_dangerous_operation_warning">⚠️ 危險操作警告</string>
     <string name="partition_flash_warning">刷寫分割區可能導致裝置無法開機！\n\n確定要刷寫 %s 分割區嗎？</string>
     <string name="partition_dangerous_flash_warning">⚠️ 警告：%1$s 是危險分割區！\n\n刷寫此分割區可能導致：\n• 裝置無法開機\n• 遺失重要資料\n• 網絡/藍牙功能失效\n\n請確保您知道自己喺做甚麼！\n\n確定要刷寫 %2$s 分割區嗎？</string>
     <string name="partition_confirm_flash">確定刷寫</string>
@@ -487,7 +479,6 @@
     <string name="partition_flash_success">刷寫成功！建議立即重新啟動。</string>
     <string name="partition_flash_failed">刷寫失敗：%s</string>
     <string name="partition_flash_failed_check_log">刷寫失敗，請查看 logcat 日誌</string>
-    <string name="partition_cannot_read_file">無法讀取檔案</string>
     <string name="partition_load_failed">載入分割區資訊失敗：%s</string>
     <string name="partition_ab_device">A/B 裝置</string>
     <string name="partition_a_only_device">A-only 裝置</string>
@@ -497,7 +488,6 @@
     <string name="partition_batch_backup_complete">批次備份完成！共 %1$d 個分割區\n儲存喺：%2$s</string>
     <string name="partition_batch_backup_partial">備份完成：成功 %1$d 個，失敗 %2$d 個\n失敗：%3$s</string>
     <string name="partition_no_selection">沒有選擇要備份的分割區</string>
-    <string name="partition_back">返回</string>
 
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">進階工具</string>
@@ -520,6 +510,4 @@
     <string name="su_request_allow_once">僅允許一次</string>
     <string name="su_request_deny">拒絕</string>
     <string name="su_request_deny_hide">拒絕並隱藏</string>
-    <string name="magisk_compat_title">Magisk 風格 su 彈窗</string>
-    <string name="magisk_compat_summary">向應用程式顯示可見的 su，並在首次使用時彈窗請求授權，而不是對不在白名單中的應用程式靜默拒絕。</string>
 </resources>

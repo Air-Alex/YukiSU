@@ -2,12 +2,10 @@ package com.anatdx.yukisu.ui.theme
 
 import android.content.Context
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -138,7 +136,7 @@ object ThemeManager {
 
     fun loadDynamicColorState(context: Context) {
         val enabled = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean("use_dynamic_color", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            .getBoolean("use_dynamic_color", true)
         ThemeConfig.useDynamicColor = enabled
     }
 
@@ -479,7 +477,7 @@ private fun createColorScheme(
     dynamicColor: Boolean
 ): ColorScheme {
     return when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        dynamicColor -> {
             if (darkTheme) createDynamicDarkColorScheme(context)
             else createDynamicLightColorScheme(context)
         }
@@ -511,7 +509,6 @@ private fun SystemBarController(darkMode: Boolean) {
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.S)
 @Composable
 private fun createDynamicDarkColorScheme(context: Context): ColorScheme {
     val scheme = dynamicDarkColorScheme(context)
@@ -523,7 +520,6 @@ private fun createDynamicDarkColorScheme(context: Context): ColorScheme {
     )
 }
 
-@RequiresApi(Build.VERSION_CODES.S)
 @Composable
 private fun createDynamicLightColorScheme(context: Context): ColorScheme {
     val scheme = dynamicLightColorScheme(context)
