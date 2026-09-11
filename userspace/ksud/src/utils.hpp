@@ -191,6 +191,8 @@ bool for_each_file_line(const char* path, Fn&& fn) {
 std::optional<std::string> read_file(const std::string& path);
 bool read_file_bytes(const std::filesystem::path& path, std::vector<uint8_t>* data);
 bool write_file(const std::filesystem::path& path, const std::string& content);
+// Atomically replace a private state file; the parent directory must exist.
+bool write_file_atomic(const std::filesystem::path& path, const std::string& content);
 bool write_file_bytes(const std::filesystem::path& path, const uint8_t* data, size_t size,
                       mode_t mode = 0644);
 bool copy_file_data(const std::filesystem::path& source, const std::filesystem::path& target,
@@ -215,6 +217,7 @@ struct ExecResult {
     int exit_code;
     std::string stdout_str;
     std::string stderr_str;
+    int error_number = 0;
 };
 ExecResult exec_command(const std::vector<std::string>& args);
 ExecResult exec_command(const std::vector<std::string>& args, const std::string& workdir);

@@ -375,6 +375,7 @@ set(KSUD_OUR_SOURCES
     src/defs.cpp
     src/log.cpp
     src/utils.cpp
+    src/command_exec.cpp
     src/xz_range.c
     src/kernelsu_loader.cpp
     src/dynamic_manager.cpp

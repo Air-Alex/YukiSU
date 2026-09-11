@@ -634,6 +634,43 @@ bool write_file(const std::filesystem::path& path, const std::string& content) {
     return write_file_impl(path.c_str(), content, O_TRUNC);
 }
 
+bool write_file_atomic(const std::filesystem::path& path, const std::string& content) {
+    std::string temporary = path.string() + ".tmp.XXXXXX";
+    const int fd = mkostemp(temporary.data(), O_CLOEXEC);
+    if (fd < 0)
+        return false;
+    bool ok = true;
+    size_t offset = 0;
+    while (offset < content.size()) {
+        const ssize_t n = write(fd, content.data() + offset, content.size() - offset);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0) {
+            if (n == 0)
+                errno = EIO;
+            ok = false;
+            break;
+        }
+        offset += static_cast<size_t>(n);
+    }
+    if (ok)
+        ok = fsync(fd) == 0;
+    int error = errno;
+    if (close(fd) != 0 && ok) {
+        ok = false;
+        error = errno;
+    }
+    if (ok && rename(temporary.c_str(), path.c_str()) != 0) {
+        ok = false;
+        error = errno;
+    }
+    if (!ok) {
+        unlink(temporary.c_str());
+        errno = error;
+    }
+    return ok;
+}
+
 bool write_file_bytes(const std::filesystem::path& path, const uint8_t* data, size_t size,
                       mode_t mode) {
     if (size != 0 && data == nullptr)
@@ -734,151 +771,6 @@ bool append_file(const std::filesystem::path& path, const std::string& content) 
     return write_file_impl(path.c_str(), content, O_APPEND);
 }
 
-ExecResult exec_command(const std::vector<std::string>& args) {
-    ExecResult result{-1, "", ""};
-
-    if (args.empty())
-        return result;
-
-    std::array<int, 2> stdout_pipe{};
-    std::array<int, 2> stderr_pipe{};
-    if (pipe(stdout_pipe.data()) != 0 || pipe(stderr_pipe.data()) != 0) {
-        return result;
-    }
-
-    const pid_t pid = fork();
-    if (pid < 0) {
-        close(stdout_pipe[0]);
-        close(stdout_pipe[1]);
-        close(stderr_pipe[0]);
-        close(stderr_pipe[1]);
-        return result;
-    }
-
-    if (pid == 0) {
-        // Child process
-        close(stdout_pipe[0]);
-        close(stderr_pipe[0]);
-        dup2(stdout_pipe[1], STDOUT_FILENO);
-        dup2(stderr_pipe[1], STDERR_FILENO);
-        close(stdout_pipe[1]);
-        close(stderr_pipe[1]);
-
-        std::vector<char*> c_args;
-        c_args.reserve(args.size() + 1U);
-        for (const auto& arg : args) {
-            c_args.push_back(const_cast<char*>(arg.c_str()));
-        }
-        c_args.push_back(nullptr);
-
-        execvp(c_args[0], c_args.data());
-        _exit(127);
-    }
-
-    // Parent process
-    close(stdout_pipe[1]);
-    close(stderr_pipe[1]);
-
-    // Read stdout
-    std::array<char, 1024> buf{};
-    ssize_t n;
-    while ((n = read(stdout_pipe[0], buf.data(), buf.size())) > 0) {
-        result.stdout_str.append(buf.data(), static_cast<size_t>(n));
-    }
-    close(stdout_pipe[0]);
-
-    // Read stderr
-    while ((n = read(stderr_pipe[0], buf.data(), buf.size())) > 0) {
-        result.stderr_str.append(buf.data(), static_cast<size_t>(n));
-    }
-    close(stderr_pipe[0]);
-
-    int status;
-    waitpid(pid, &status, 0);
-    if (WIFEXITED(status)) {
-        result.exit_code = WEXITSTATUS(status);
-    }
-
-    return result;
-}
-
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-ExecResult exec_command(const std::vector<std::string>& args, const std::string& workdir) {
-    ExecResult result{-1, "", ""};
-
-    if (args.empty())
-        return result;
-
-    std::array<int, 2> stdout_pipe{};
-    std::array<int, 2> stderr_pipe{};
-    if (pipe(stdout_pipe.data()) != 0 || pipe(stderr_pipe.data()) != 0) {
-        return result;
-    }
-
-    const pid_t pid = fork();
-    if (pid < 0) {
-        close(stdout_pipe[0]);
-        close(stdout_pipe[1]);
-        close(stderr_pipe[0]);
-        close(stderr_pipe[1]);
-        return result;
-    }
-
-    if (pid == 0) {
-        // Child process
-        close(stdout_pipe[0]);
-        close(stderr_pipe[0]);
-        dup2(stdout_pipe[1], STDOUT_FILENO);
-        dup2(stderr_pipe[1], STDERR_FILENO);
-        close(stdout_pipe[1]);
-        close(stderr_pipe[1]);
-
-        // Change to working directory if specified
-        if (!workdir.empty()) {
-            if (chdir(workdir.c_str()) != 0) {
-                _exit(127);
-            }
-        }
-
-        std::vector<char*> c_args;
-        c_args.reserve(args.size() + 1U);
-        for (const auto& arg : args) {
-            c_args.push_back(const_cast<char*>(arg.c_str()));
-        }
-        c_args.push_back(nullptr);
-
-        execvp(c_args[0], c_args.data());
-        _exit(127);
-    }
-
-    // Parent process
-    close(stdout_pipe[1]);
-    close(stderr_pipe[1]);
-
-    // Read stdout
-    std::array<char, 1024> buf{};
-    ssize_t n;
-    while ((n = read(stdout_pipe[0], buf.data(), buf.size())) > 0) {
-        result.stdout_str.append(buf.data(), static_cast<size_t>(n));
-    }
-    close(stdout_pipe[0]);
-
-    // Read stderr
-    while ((n = read(stderr_pipe[0], buf.data(), buf.size())) > 0) {
-        result.stderr_str.append(buf.data(), static_cast<size_t>(n));
-    }
-    close(stderr_pipe[0]);
-
-    int status;
-    waitpid(pid, &status, 0);
-    if (WIFEXITED(status)) {
-        result.exit_code = WEXITSTATUS(status);
-    }
-
-    return result;
-}
-
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 ExecResult exec_command_magiskboot(const std::string& magiskboot_path,
                                    const std::vector<std::string>& sub_args,
                                    const std::string& workdir) {
