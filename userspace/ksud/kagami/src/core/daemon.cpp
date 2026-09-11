@@ -31,13 +31,14 @@ namespace kagami {
 
 namespace fs = std::filesystem;
 
-static int print_status_json();
+namespace {
+int print_status_json();
 
-static void append_log(const std::string &message, logging::Level level = logging::Level::Info) {
+void append_log(const std::string& message, logging::Level level = logging::Level::Info) {
     logging::write(level, "daemon", message);
 }
 
-static std::string join_request(const std::vector<std::string> &args, std::size_t start) {
+std::string join_request(const std::vector<std::string>& args, std::size_t start) {
     std::ostringstream out;
     out << '[';
     for (std::size_t i = start; i < args.size(); ++i) {
@@ -50,7 +51,7 @@ static std::string join_request(const std::vector<std::string> &args, std::size_
     return out.str();
 }
 
-static std::vector<std::string> split_request(const std::string &request) {
+std::vector<std::string> split_request(const std::string& request) {
     std::vector<std::string> args;
     JsonValue root;
     std::string error;
@@ -58,7 +59,7 @@ static std::vector<std::string> split_request(const std::string &request) {
         return args;
     }
     args.reserve(root.a.size());
-    for (const auto &item : root.a) {
+    for (const auto& item : root.a) {
         if (!item.is_string() || item.s.find('\0') != std::string::npos) {
             args.clear();
             return args;
@@ -68,8 +69,8 @@ static std::vector<std::string> split_request(const std::string &request) {
     return args;
 }
 
-static std::string response_json(bool ok, int exit_code, int error_number, const std::string &out,
-                                 const std::string &err) {
+std::string response_json(bool ok, int exit_code, int error_number, const std::string& out,
+                          const std::string& err) {
     std::ostringstream json;
     json << "{"
          << "\"ok\":" << (ok ? "true" : "false") << ","
@@ -80,7 +81,7 @@ static std::string response_json(bool ok, int exit_code, int error_number, const
     return json.str();
 }
 
-static std::string status_json(bool running) {
+std::string status_json(bool running) {
     const auto pid_text = [&]() -> std::string {
         std::ifstream in(runtime_pid_file());
         std::string line;
@@ -99,8 +100,8 @@ static std::string status_json(bool running) {
     return out.str();
 }
 
-static bool write_all(int fd, const std::string &data) {
-    const char *ptr = data.data();
+bool write_all(int fd, const std::string& data) {
+    const char* ptr = data.data();
     std::size_t left = data.size();
     while (left > 0) {
         const ssize_t written = send(fd, ptr, left, MSG_NOSIGNAL);
@@ -120,7 +121,7 @@ static bool write_all(int fd, const std::string &data) {
     return true;
 }
 
-static std::string read_all(int fd, std::size_t limit) {
+std::string read_all(int fd, std::size_t limit) {
     std::string data;
     char buffer[1024] = {};
     for (;;) {
@@ -146,7 +147,7 @@ static std::string read_all(int fd, std::size_t limit) {
     return data;
 }
 
-static int open_client_socket(std::string &error) {
+int open_client_socket(std::string& error) {
     const auto path = runtime_socket_file().string();
     if (path.size() >= sizeof(sockaddr_un::sun_path)) {
         error = "socket path is too long: " + path;
@@ -162,7 +163,7 @@ static int open_client_socket(std::string &error) {
     sockaddr_un addr = {};
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
-    if (connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+    if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         error = std::strerror(errno);
         close(fd);
         return -1;
@@ -170,8 +171,8 @@ static int open_client_socket(std::string &error) {
     return fd;
 }
 
-static int send_request(const std::vector<std::string> &args, std::size_t start,
-                        std::string &response, std::string &error) {
+int send_request(const std::vector<std::string>& args, std::size_t start, std::string& response,
+                 std::string& error) {
     const int fd = open_client_socket(error);
     if (fd < 0) {
         return 1;
@@ -182,20 +183,20 @@ static int send_request(const std::vector<std::string> &args, std::size_t start,
         return 1;
     }
     shutdown(fd, SHUT_WR);
-    response = read_all(fd, 1024 * 1024);
+    response = read_all(fd, 1024UL * 1024);
     close(fd);
     return 0;
 }
 
-static bool daemon_running() {
-    std::vector<std::string> ping = {"daemon", "ping"};
+bool daemon_running() {
+    const std::vector<std::string> ping = {"daemon", "ping"};
     std::string response;
     std::string error;
     return send_request(ping, 0, response, error) == 0 &&
            response.find("\"ok\":true") != std::string::npos;
 }
 
-static int serve_foreground(int ready_fd = -1) {
+int serve_foreground(int ready_fd = -1) {
     umask(0077);
     std::string preparation_error;
     if (!prepare_runtime(preparation_error) || !logging::prepare_boot_log(preparation_error)) {
@@ -240,7 +241,7 @@ static int serve_foreground(int ready_fd = -1) {
     sockaddr_un addr = {};
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path) - 1);
-    if (bind(server_fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+    if (bind(server_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         std::cerr << "bind " << socket_path << ": " << std::strerror(errno) << "\n";
         close(server_fd);
         close(lock_fd);
@@ -284,7 +285,7 @@ static int serve_foreground(int ready_fd = -1) {
         timeout.tv_sec = 5;
         (void)setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
-        const auto request = read_all(client_fd, 64 * 1024);
+        const auto request = read_all(client_fd, 64UL * 1024);
         auto request_args = split_request(request);
         if (request_args.empty()) {
             append_log("rejected malformed or empty request", logging::Level::Warning);
@@ -335,7 +336,7 @@ static int serve_foreground(int ready_fd = -1) {
     return 0;
 }
 
-static int start_background(bool report_status) {
+int start_background(bool report_status) {
     if (daemon_running()) {
         return report_status ? print_status_json() : 0;
     }
@@ -394,8 +395,9 @@ static int start_background(bool report_status) {
     std::cerr << "kagamid did not become ready\n";
     return 1;
 }
+}  // namespace
 
-int run_via_daemon(const std::vector<std::string> &args) {
+int run_via_daemon(const std::vector<std::string>& args) {
     if (args.empty()) {
         return 1;
     }
@@ -414,9 +416,9 @@ int run_via_daemon(const std::vector<std::string> &args) {
         std::cerr << "invalid daemon response: " << error << "\n";
         return 1;
     }
-    const JsonValue *code = envelope.find("exit_code");
-    const JsonValue *out = envelope.find("stdout");
-    const JsonValue *err = envelope.find("stderr");
+    const JsonValue* code = envelope.find("exit_code");
+    const JsonValue* out = envelope.find("stdout");
+    const JsonValue* err = envelope.find("stderr");
     if (!code || !code->is_number() || !out || !out->is_string() || !err || !err->is_string()) {
         std::cerr << "invalid daemon response fields\n";
         return 1;
@@ -426,13 +428,15 @@ int run_via_daemon(const std::vector<std::string> &args) {
     return static_cast<int>(code->n);
 }
 
-static int print_status_json() {
+namespace {
+int print_status_json() {
     const bool running = daemon_running();
     std::cout << status_json(running);
     return 0;
 }
+}  // namespace
 
-int run_daemon_command(const std::vector<std::string> &args) {
+int run_daemon_command(const std::vector<std::string>& args) {
     const std::string sub = args.size() > 1 ? args[1] : "";
     if (sub == "status") {
         return print_status_json();
@@ -475,4 +479,4 @@ int run_daemon_command(const std::vector<std::string> &args) {
     return 1;
 }
 
-} // namespace kagami
+}  // namespace kagami

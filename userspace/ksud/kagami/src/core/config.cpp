@@ -5,22 +5,27 @@
 #include "core/runtime.hpp"
 #include "utils.hpp"
 
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/file.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace kagami {
 
 class ConfigFileLock {
-  public:
+public:
+    ConfigFileLock() = default;
+    ConfigFileLock(const ConfigFileLock&) = delete;
+    ConfigFileLock& operator=(const ConfigFileLock&) = delete;
+    ConfigFileLock(ConfigFileLock&&) = delete;
+    ConfigFileLock& operator=(ConfigFileLock&&) = delete;
     ~ConfigFileLock() {
         if (fd_ >= 0) {
             (void)::flock(fd_, LOCK_UN);
@@ -28,7 +33,7 @@ class ConfigFileLock {
         }
     }
 
-    bool acquire(std::string &error) {
+    bool acquire(std::string& error) {
         if (!prepare_private_directory(runtime_data_dir(), error)) {
             return false;
         }
@@ -45,7 +50,7 @@ class ConfigFileLock {
         return true;
     }
 
-  private:
+private:
     int fd_ = -1;
 };
 
@@ -76,7 +81,7 @@ std::string default_config_json() {
 )";
 }
 
-void prune_config_fields(json::Value &config) {
+void prune_config_fields(json::Value& config) {
     static const auto defaults = json::parse(default_config_json());
     for (auto it = config.o.begin(); it != config.o.end();) {
         if (!defaults.find(it->first))
@@ -86,30 +91,34 @@ void prune_config_fields(json::Value &config) {
     }
 }
 
-static bool save_config(const std::string &data, std::string &error) {
+namespace {
+bool save_config(const std::string& data, std::string& error) {
     if (ksud::write_file_atomic(runtime_config_file(), data))
         return true;
     error = "write config: " + std::string(std::strerror(errno));
     return false;
 }
+}  // namespace
 
-bool write_default_config(std::string &error) {
+bool write_default_config(std::string& error) {
     ConfigFileLock lock;
     return lock.acquire(error) && save_config(default_config_json(), error);
 }
 
-static std::vector<std::string> json_string_array_or_empty(const JsonValue *value) {
+namespace {
+std::vector<std::string> json_string_array_or_empty(const JsonValue* value) {
     std::vector<std::string> out;
     if (!value || !value->is_array()) {
         return out;
     }
-    for (const auto &item : value->a) {
+    for (const auto& item : value->a) {
         if (item.is_string()) {
             out.push_back(item.s);
         }
     }
     return out;
 }
+}  // namespace
 
 std::vector<std::string> load_user_hide_rules() {
     const auto input = ksud::read_file((runtime_data_dir() / "user_hide_rules.json").string());
@@ -122,7 +131,7 @@ std::vector<std::string> load_user_hide_rules() {
         return {};
     }
     std::vector<std::string> rules;
-    for (const auto &item : root.a) {
+    for (const auto& item : root.a) {
         if (item.is_string() && !item.s.empty() && item.s.front() == '/' &&
             item.s.find('\0') == std::string::npos)
             rules.push_back(item.s);
@@ -130,32 +139,33 @@ std::vector<std::string> load_user_hide_rules() {
     return rules;
 }
 
-bool save_user_hide_rules(const std::vector<std::string> &rules) {
+bool save_user_hide_rules(const std::vector<std::string>& rules) {
     JsonValue root;
     root.type = JsonValue::Type::Array;
-    for (const auto &rule : rules)
+    for (const auto& rule : rules)
         root.a.emplace_back(rule);
     return ksud::write_file_atomic(runtime_data_dir() / "user_hide_rules.json",
                                    stringify_json(root, 2) + "\n");
 }
 
-static bool json_bool_or(const JsonValue *root, const char *key, bool fallback) {
-    const auto *value = root ? root->find(key) : nullptr;
+namespace {
+bool json_bool_or(const JsonValue* root, const char* key, bool fallback) {
+    const auto* value = root ? root->find(key) : nullptr;
     return value ? value->bool_or(fallback) : fallback;
 }
 
-static std::string json_string_or(const JsonValue *root, const char *key,
-                                  const std::string &fallback) {
-    const auto *value = root ? root->find(key) : nullptr;
+std::string json_string_or(const JsonValue* root, const char* key, const std::string& fallback) {
+    const auto* value = root ? root->find(key) : nullptr;
     return value ? value->string_or(fallback) : fallback;
 }
 
-static int json_int_or(const JsonValue *root, const char *key, int fallback) {
-    const auto *value = root ? root->find(key) : nullptr;
+int json_int_or(const JsonValue* root, const char* key, int fallback) {
+    const auto* value = root ? root->find(key) : nullptr;
     return value ? static_cast<int>(value->u32_or(static_cast<std::uint32_t>(fallback))) : fallback;
 }
+}  // namespace
 
-bool parse_config_json(const std::string &json, Config &config, std::string &error) {
+bool parse_config_json(const std::string& json, Config& config, std::string& error) {
     JsonValue root;
     if (!parse_json(json, root, error)) {
         return false;
@@ -198,7 +208,7 @@ bool parse_config_json(const std::string &json, Config &config, std::string &err
     return true;
 }
 
-bool read_config_file(Config &config, std::string &error) {
+bool read_config_file(Config& config, std::string& error) {
     const auto input = ksud::read_file(runtime_config_file().string());
     if (!input) {
         error = "read config: " + std::string(std::strerror(errno));
@@ -207,7 +217,7 @@ bool read_config_file(Config &config, std::string &error) {
     return parse_config_json(*input, config, error);
 }
 
-bool merge_config_json(const std::string &updates, std::string &error) {
+bool merge_config_json(const std::string& updates, std::string& error) {
     JsonValue patch;
     if (!parse_json(updates, patch, error) || !patch.is_object()) {
         if (error.empty()) {
@@ -236,7 +246,7 @@ bool merge_config_json(const std::string &updates, std::string &error) {
 
     prune_config_fields(root);
     prune_config_fields(patch);
-    for (const auto &[key, value] : patch.o) {
+    for (const auto& [key, value] : patch.o) {
         root.o[key] = value;
     }
     const bool saved = save_config(stringify_json(root, 2) + "\n", error);
@@ -246,4 +256,4 @@ bool merge_config_json(const std::string &updates, std::string &error) {
     return saved;
 }
 
-} // namespace kagami
+}  // namespace kagami

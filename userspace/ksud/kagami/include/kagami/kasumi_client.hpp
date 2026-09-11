@@ -40,27 +40,27 @@ std::string hooks();
 FeatureCapabilities feature_capabilities();
 int features();
 std::vector<std::string> feature_names(int bitmask);
-std::vector<std::string> active_modules_from_rules(const std::string &rules);
+std::vector<std::string> active_modules_from_rules(const std::string& rules);
 
 bool set_enabled(bool enable);
 bool set_debug(bool enable);
 bool set_stealth(bool enable);
 bool fix_mounts();
-bool hide_overlay_xattrs(const std::string &path);
+bool hide_overlay_xattrs(const std::string& path);
 bool clear_overlay_xattr_hiding();
 bool set_mount_hide(bool enable, MountHideMode mode = MountHideMode::Normal);
 bool set_maps_spoof(bool enable);
 bool set_statfs_spoof(bool enable);
 bool clear_rules();
-bool add_rule(const std::string &target, const std::string &source, int type);
-bool add_merge_rule(const std::string &target, const std::string &source);
-bool hide_path(const std::string &path);
-bool delete_rule(const std::string &path);
+bool add_rule(const std::string& target, const std::string& source, int type);
+bool add_merge_rule(const std::string& target, const std::string& source);
+bool hide_path(const std::string& path);
+bool delete_rule(const std::string& path);
 bool add_maps_rule(unsigned long target_ino, unsigned long target_dev, unsigned long spoofed_ino,
-                   unsigned long spoofed_dev, const std::string &spoofed_path);
+                   unsigned long spoofed_dev, const std::string& spoofed_path);
 bool clear_maps_rules();
 int enabled_state();
 int process_uid();
 int process_euid();
 
-} // namespace kagami::kasumi
+}  // namespace kagami::kasumi

@@ -28,8 +28,9 @@ using ForkFn = pid_t (*)();
 using SetContextFn = int (*)(uid_t uid, bool is_system_server,
                              const char *se_info, const char *package_name);
 
-static_assert(ZYGISK_NEXT_API_VERSION == 4);
-static_assert(ZYGISK_NEXT_HYOS_API_VERSION == 1);
+#if ZYGISK_NEXT_API_VERSION != 4 || ZYGISK_NEXT_HYOS_API_VERSION != 1
+#error "Unsupported ZygiskNext protocol version"
+#endif
 static_assert(ZN_RUNTIME_HYOS == 1);
 static_assert(sizeof(ZygiskNextAPI) == 10 * sizeof(void *));
 static_assert(offsetof(ZygiskNextAPI, getRuntime) == 9 * sizeof(void *));

@@ -1,4 +1,5 @@
 #include "mount/backend.hpp"
+#include <iterator>
 
 #include "core/json.hpp"
 #include "core/runtime.hpp"
@@ -39,7 +40,8 @@ std::string backend_kind_name(BackendKind kind) {
     return "unknown";
 }
 
-static bool proc_filesystems_has(const std::string &name) {
+namespace {
+bool proc_filesystems_has(const std::string& name) {
     std::ifstream in("/proc/filesystems");
     std::string line;
     while (std::getline(in, line)) {
@@ -54,11 +56,11 @@ static bool proc_filesystems_has(const std::string &name) {
     return false;
 }
 
-static int count_committed_mounts() {
+int count_committed_mounts() {
     return static_cast<int>(magic::active_mounts(Config{}).size());
 }
 
-static bool apply_kasumi_features(const Config &config) {
+bool apply_kasumi_features(const Config& config) {
     if (!config.kasumi_enabled || !::kagami::kasumi::is_available()) {
         return true;
     }
@@ -69,34 +71,41 @@ static bool apply_kasumi_features(const Config &config) {
     fsutil::mlog("kasumi: feature apply failed: " + error, logging::Level::Error);
     return false;
 }
+}  // namespace
 
 // --- bootloop protection state ---
 constexpr int kMaxBootAttempts = 3;
 
-static fs::path recovery_attempts_file() { return runtime_data_dir() / "run" / "boot_attempts"; }
-static fs::path recovery_disabled_file() { return runtime_data_dir() / "run" / "mount_disabled"; }
-static fs::path mount_orchestrator_file() {
+namespace {
+fs::path recovery_attempts_file() {
+    return runtime_data_dir() / "run" / "boot_attempts";
+}
+fs::path recovery_disabled_file() {
+    return runtime_data_dir() / "run" / "mount_disabled";
+}
+fs::path mount_orchestrator_file() {
     return runtime_data_dir() / "run" / "mount_orchestrator_boot";
 }
 
-static bool claim_mount_orchestrator() {
+bool claim_mount_orchestrator() {
     return !marker_matches_current_boot(mount_orchestrator_file()) &&
            write_boot_marker(mount_orchestrator_file());
 }
 
-static int read_boot_attempts() {
+int read_boot_attempts() {
     std::ifstream in(recovery_attempts_file());
     int n = 0;
     in >> n;
     return n > 0 ? n : 0;
 }
 
-static void write_boot_attempts(int n) {
+void write_boot_attempts(int n) {
     std::error_code ec;
     fs::create_directories(recovery_attempts_file().parent_path(), ec);
     std::ofstream out(recovery_attempts_file(), std::ios::trunc);
     out << n << "\n";
 }
+}  // namespace
 
 std::vector<BackendStatus> backend_statuses() {
     const auto version = ::kagami::kasumi::version_info();
@@ -129,11 +138,11 @@ std::vector<ModuleEntry> enumerate_mountable_modules() {
     if (!fs::is_directory(root, ec)) {
         return out;
     }
-    for (const auto &e : fs::directory_iterator(root, ec)) {
+    for (const auto& e : fs::directory_iterator(root, ec)) {
         if (!e.is_directory(ec)) {
             continue;
         }
-        const fs::path p = e.path();
+        const fs::path& p = e.path();
         if (!fs::exists(p / "module.prop", ec)) {
             continue;
         }
@@ -145,7 +154,7 @@ std::vector<ModuleEntry> enumerate_mountable_modules() {
         out.push_back({p.filename().string(), p});
     }
     std::sort(out.begin(), out.end(),
-              [](const ModuleEntry &a, const ModuleEntry &b) { return a.id < b.id; });
+              [](const ModuleEntry& a, const ModuleEntry& b) { return a.id < b.id; });
     return out;
 }
 
@@ -158,11 +167,12 @@ ModuleModeMap load_module_modes() {
         return out;
     }
     std::stringstream buf;
-    buf << in.rdbuf();
+    std::copy(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>(),
+              std::ostreambuf_iterator<char>(buf));
     JsonValue root;
     std::string error;
     if (parse_json(buf.str(), root, error) && root.is_object()) {
-        for (const auto &[id, value] : root.o) {
+        for (const auto& [id, value] : root.o) {
             if (value.is_string()) {
                 out[id] = value.s;
             }
@@ -171,10 +181,10 @@ ModuleModeMap load_module_modes() {
     return out;
 }
 
-bool save_module_modes(const ModuleModeMap &modes) {
+bool save_module_modes(const ModuleModeMap& modes) {
     JsonValue root;
     root.type = JsonValue::Type::Object;
-    for (const auto &[id, mode] : modes)
+    for (const auto& [id, mode] : modes)
         root.o[id] = JsonValue(mode);
     return ksud::write_file_atomic(runtime_data_dir() / "module_mode.json",
                                    stringify_json(root, 2) + "\n");
@@ -187,22 +197,23 @@ ModuleRuleMap load_module_rules() {
         return out;
     }
     std::stringstream buf;
-    buf << in.rdbuf();
+    std::copy(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>(),
+              std::ostreambuf_iterator<char>(buf));
     JsonValue root;
     std::string error;
     if (!parse_json(buf.str(), root, error) || !root.is_object()) {
         return out;
     }
-    for (const auto &[id, entries] : root.o) {
+    for (const auto& [id, entries] : root.o) {
         if (!entries.is_array()) {
             continue;
         }
-        for (const auto &entry : entries.a) {
+        for (const auto& entry : entries.a) {
             if (!entry.is_object()) {
                 continue;
             }
-            const JsonValue *path = entry.find("path");
-            const JsonValue *mode = entry.find("mode");
+            const JsonValue* path = entry.find("path");
+            const JsonValue* mode = entry.find("mode");
             if (path && mode && path->is_string() && mode->is_string()) {
                 out[id].push_back({path->s, mode->s});
             }
@@ -211,13 +222,13 @@ ModuleRuleMap load_module_rules() {
     return out;
 }
 
-bool save_module_rules(const ModuleRuleMap &rules) {
+bool save_module_rules(const ModuleRuleMap& rules) {
     JsonValue root;
     root.type = JsonValue::Type::Object;
-    for (const auto &[id, entries] : rules) {
-        auto &array = root.o[id];
+    for (const auto& [id, entries] : rules) {
+        auto& array = root.o[id];
         array.type = JsonValue::Type::Array;
-        for (const auto &entry : entries) {
+        for (const auto& entry : entries) {
             JsonValue rule;
             rule.type = JsonValue::Type::Object;
             rule.o["path"] = JsonValue(entry.path);
@@ -229,14 +240,15 @@ bool save_module_rules(const ModuleRuleMap &rules) {
                                    stringify_json(root, 2) + "\n");
 }
 
-static bool dir_has_direct_files(const fs::path &dir) {
+namespace {
+bool dir_has_direct_files(const fs::path& dir) {
     std::error_code ec;
     if (!fs::is_directory(dir, ec)) {
         return false;
     }
-    for (const auto &e : fs::directory_iterator(dir, ec)) {
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
         if (!e.is_directory(ec)) {
-            return true; // a non-dir entry sits directly at this level
+            return true;  // a non-dir entry sits directly at this level
         }
     }
     return false;
@@ -245,9 +257,9 @@ static bool dir_has_direct_files(const fs::path &dir) {
 // A module needs magic mount when it places files directly at a partition root
 // (e.g. system/build.prop): overlay only stacks on leaf subdirs, never on a
 // partition root. Everything else can be overlaid.
-static std::vector<std::string> managed_partitions(const Config &config) {
-    std::vector<std::string> parts = fsutil::kManagedPartitions;
-    for (const auto &part : config.partitions) {
+std::vector<std::string> managed_partitions(const Config& config) {
+    std::vector<std::string> parts = fsutil::managed_partitions();
+    for (const auto& part : config.partitions) {
         if (!part.empty() && std::find(parts.begin(), parts.end(), part) == parts.end()) {
             parts.push_back(part);
         }
@@ -255,24 +267,20 @@ static std::vector<std::string> managed_partitions(const Config &config) {
     return parts;
 }
 
-static bool module_needs_magic(const ModuleEntry &m, const Config &config) {
+bool module_needs_magic(const ModuleEntry& m, const Config& config) {
     if (dir_has_direct_files(m.path / "system")) {
         return true;
     }
-    for (const auto &part : managed_partitions(config)) {
-        if (part == "system") {
-            continue;
-        }
-        if (dir_has_direct_files(m.path / part) || dir_has_direct_files(m.path / "system" / part)) {
-            return true;
-        }
-    }
-    return false;
+    const auto parts = managed_partitions(config);
+    return std::any_of(parts.begin(), parts.end(), [&](const auto& part) {
+        return part != "system" && (dir_has_direct_files(m.path / part) ||
+                                    dir_has_direct_files(m.path / "system" / part));
+    });
 }
 
 // True if the module has any managed-partition tree (i.e. contributes mounts).
-static bool module_has_content(const ModuleEntry &m, const Config &config) {
-    for (const auto &part : managed_partitions(config)) {
+bool module_has_content(const ModuleEntry& m, const Config& config) {
+    for (const auto& part : managed_partitions(config)) {
         std::error_code ec;
         if (fs::is_directory(m.path / part, ec)) {
             return true;
@@ -281,28 +289,29 @@ static bool module_has_content(const ModuleEntry &m, const Config &config) {
     return false;
 }
 
-static bool kasumi_usable() {
+bool kasumi_usable() {
     const auto version = ::kagami::kasumi::version_info();
     return version.status == ::kagami::kasumi::Status::Available;
 }
 
-static std::string fallback_backend(const ModuleEntry &m, const Config &config) {
+std::string fallback_backend(const ModuleEntry& m, const Config& config) {
     if (config.overlayfs_enabled && proc_filesystems_has("overlay") &&
         !module_needs_magic(m, config)) {
         return "overlay";
     }
     return config.magic_mount_enabled ? "magic" : "none";
 }
+}  // namespace
 
-std::string resolve_module_backend(const ModuleEntry &m, const Config &config,
-                                   const ModuleModeMap &modes) {
+std::string resolve_module_backend(const ModuleEntry& m, const Config& config,
+                                   const ModuleModeMap& modes) {
     if (!module_has_content(m, config)) {
-        return "none"; // no managed-partition tree → contributes no mounts
+        return "none";  // no managed-partition tree → contributes no mounts
     }
     std::string mode = "auto";
-    const std::string &global = config.mount_backend;
+    const std::string& global = config.mount_backend;
     if (!global.empty() && global != "auto") {
-        mode = global; // global override forces every module
+        mode = global;  // global override forces every module
     } else {
         const auto it = modes.find(m.id);
         if (it != modes.end() && !it->second.empty()) {
@@ -329,7 +338,7 @@ std::string resolve_module_backend(const ModuleEntry &m, const Config &config,
     return mode == "none" ? "none" : fallback_backend(m, config);
 }
 
-MountReport mount_all_enabled(const Config &config) {
+MountReport mount_all_enabled(const Config& config) {
     MountReport report;
     fsutil::mlog("mount plan begin config=" + runtime_config_file().string());
 
@@ -414,7 +423,7 @@ MountReport mount_all_enabled(const Config &config) {
     std::vector<ModuleEntry> overlay_set;
     std::vector<ModuleEntry> magic_set;
     std::vector<ModuleEntry> kasumi_set;
-    for (const auto &m : modules) {
+    for (const auto& m : modules) {
         const std::string mode = resolve_module_backend(m, config, modes);
         fsutil::mlog("selected module=" + m.id + " backend=" + mode);
         if (mode == "overlay") {
@@ -491,7 +500,7 @@ MountReport mount_all_enabled(const Config &config) {
     return report;
 }
 
-bool unmount_all(const Config &config) {
+bool unmount_all(const Config& config) {
     // Unwind the hybrid plan from its topmost backend.
     return fsutil::run_in_init_mount_ns([&]() {
         bool r = true;
@@ -503,7 +512,7 @@ bool unmount_all(const Config &config) {
     });
 }
 
-bool refresh_kasumi_modules(const Config &config) {
+bool refresh_kasumi_modules(const Config& config) {
     if (!config.kasumi_enabled) {
         if (!::kagami::kasumi::is_available()) {
             return true;
@@ -528,7 +537,7 @@ bool refresh_kasumi_modules(const Config &config) {
     const std::set<std::string> replayable_set(replayable.begin(), replayable.end());
     const auto all = enumerate_mountable_modules();
     std::vector<ModuleEntry> selected;
-    for (const auto &module : all) {
+    for (const auto& module : all) {
         if (replayable_set.count(module.id) != 0) {
             selected.push_back(module);
         }
@@ -561,7 +570,7 @@ void recovery_boot_completed() {
     if (!marker_matches_current_boot(mount_orchestrator_file()))
         return;
     std::error_code ec;
-    fs::remove(recovery_attempts_file(), ec); // boot confirmed: clear the counter
+    fs::remove(recovery_attempts_file(), ec);  // boot confirmed: clear the counter
 }
 
 void recovery_reset() {
@@ -579,4 +588,4 @@ std::string recovery_status_json() {
     return out.str();
 }
 
-} // namespace kagami::mount
+}  // namespace kagami::mount

@@ -2,13 +2,13 @@
 #include "defs.hpp"
 #include "utils.hpp"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 #if defined(__ANDROID__)
 #include <sys/xattr.h>
 #endif
@@ -18,17 +18,31 @@ namespace kagami {
 
 namespace fs = std::filesystem;
 
-fs::path runtime_data_dir() { return embedded_data_dir; }
+fs::path runtime_data_dir() {
+    return embedded_data_dir;
+}
 
-fs::path runtime_modules_dir() { return fs::path(ksud::MODULE_DIR).lexically_normal(); }
+fs::path runtime_modules_dir() {
+    return fs::path(ksud::MODULE_DIR).lexically_normal();
+}
 
-fs::path runtime_config_file() { return runtime_data_dir() / "config.json"; }
+fs::path runtime_config_file() {
+    return runtime_data_dir() / "config.json";
+}
 
-fs::path runtime_log_file() { return embedded_log_file; }
+fs::path runtime_log_file() {
+    return embedded_log_file;
+}
 
-fs::path runtime_socket_file() { return runtime_data_dir() / "kagamid.sock"; }
-fs::path runtime_pid_file() { return runtime_data_dir() / "kagamid.pid"; }
-fs::path runtime_daemon_lock_file() { return runtime_data_dir() / "kagamid.lock"; }
+fs::path runtime_socket_file() {
+    return runtime_data_dir() / "kagamid.sock";
+}
+fs::path runtime_pid_file() {
+    return runtime_data_dir() / "kagamid.pid";
+}
+fs::path runtime_daemon_lock_file() {
+    return runtime_data_dir() / "kagamid.lock";
+}
 std::string runtime_boot_id() {
     std::ifstream input("/proc/sys/kernel/random/boot_id");
     std::string id;
@@ -36,20 +50,21 @@ std::string runtime_boot_id() {
     return id;
 }
 
-bool marker_matches_current_boot(const fs::path &path) {
+bool marker_matches_current_boot(const fs::path& path) {
     const std::string boot_id = runtime_boot_id();
     std::ifstream input(path);
     std::string recorded;
     return !boot_id.empty() && std::getline(input, recorded) && recorded == boot_id;
 }
 
-bool write_boot_marker(const fs::path &path, const std::string &detail) {
+bool write_boot_marker(const fs::path& path, const std::string& detail) {
     const std::string boot_id = runtime_boot_id();
     return !boot_id.empty() &&
            ksud::write_file_atomic(path, boot_id + "\n" + (detail.empty() ? "" : detail + "\n"));
 }
 
-static bool metadata(const fs::path &path, mode_t mode, std::string &error) {
+namespace {
+bool metadata(const fs::path& path, mode_t mode, std::string& error) {
     struct stat st{};
     if (lstat(path.c_str(), &st) != 0) {
         error = "lstat " + path.string() + ": " + std::strerror(errno);
@@ -78,8 +93,9 @@ static bool metadata(const fs::path &path, mode_t mode, std::string &error) {
 #endif
     return true;
 }
+}  // namespace
 
-bool prepare_private_directory(const fs::path &path, std::string &error) {
+bool prepare_private_directory(const fs::path& path, std::string& error) {
     error.clear();
     const auto normalized = path.lexically_normal();
     if (normalized.empty() || !normalized.is_absolute() || normalized == normalized.root_path() ||
@@ -97,7 +113,7 @@ bool prepare_private_directory(const fs::path &path, std::string &error) {
     return metadata(path, 0700, error);
 }
 
-bool prepare_private_file(const fs::path &path, std::string &error) {
+bool prepare_private_file(const fs::path& path, std::string& error) {
     error.clear();
     struct stat st{};
     if (lstat(path.c_str(), &st) != 0) {
@@ -113,14 +129,14 @@ bool prepare_private_file(const fs::path &path, std::string &error) {
     return metadata(path, 0600, error);
 }
 
-bool prepare_runtime(std::string &error) {
+bool prepare_runtime(std::string& error) {
     error.clear();
     if (!prepare_private_directory(runtime_data_dir(), error) ||
         !prepare_private_directory(runtime_data_dir() / "run", error) ||
         !prepare_private_directory(runtime_log_file().parent_path(), error))
         return false;
     // These are controller records, not mounted module payloads or LKM assets.
-    for (const auto *name : {"config.json", "config.json.lock", "module_mode.json",
+    for (const auto* name : {"config.json", "config.json.lock", "module_mode.json",
                              "module_rules.json", "user_hide_rules.json", "kagamid.pid",
                              "kagamid.sock", "kagamid.lock", "mirror.img", "mirror.erofs"}) {
         if (!prepare_private_file(runtime_data_dir() / name, error))
@@ -129,4 +145,4 @@ bool prepare_runtime(std::string &error) {
     return true;
 }
 
-} // namespace kagami
+}  // namespace kagami

@@ -1,6 +1,7 @@
 #include "core/command.hpp"
 #include "kagami/embedded.hpp"
 
+#include <chrono>
 #include "core/daemon.hpp"
 #include "core/json.hpp"
 #include "core/log.hpp"
@@ -16,8 +17,8 @@
 #include "mount/storage.hpp"
 #include "uapi/kasumi.h"
 #include "utils.hpp"
-#include <chrono>
 
+#include <sys/statvfs.h>
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -31,23 +32,29 @@
 #include <set>
 #include <sstream>
 #include <string>
-#include <sys/statvfs.h>
 #include <vector>
 
 namespace kagami {
 
 namespace fs = std::filesystem;
 
-using mount::fsutil::kManagedPartitions;
+using mount::fsutil::managed_partitions;
 using mount::fsutil::partition_mount_point;
 
-static fs::path data_dir() { return runtime_data_dir(); }
+namespace {
+fs::path data_dir() {
+    return runtime_data_dir();
+}
 
-static fs::path modules_dir() { return runtime_modules_dir(); }
+fs::path modules_dir() {
+    return runtime_modules_dir();
+}
 
-static fs::path config_file() { return runtime_config_file(); }
+fs::path config_file() {
+    return runtime_config_file();
+}
 
-static void print_usage() {
+void print_usage() {
     std::cout << "Kagami " << ksud::VERSION_NAME << "\n"
               << "usage:\n"
               << "  ksud kagami version\n"
@@ -66,15 +73,17 @@ static void print_usage() {
                  "off|normal|aggressive|maps\n";
 }
 
-static std::string arg_or_default(const std::vector<std::string> &args, std::size_t index,
-                                  const std::string &fallback) {
+std::string arg_or_default(const std::vector<std::string>& args, std::size_t index,
+                           const std::string& fallback) {
     return index < args.size() ? args[index] : fallback;
 }
 
 // Magic/Overlay mounts are boot-only; post-boot controls replay Kasumi mappings only.
-static bool system_boot_completed() { return ksud::getprop("sys.boot_completed") == "1"; }
+bool system_boot_completed() {
+    return ksud::getprop("sys.boot_completed") == "1";
+}
 
-static void print_string_array(const std::vector<std::string> &values) {
+void print_string_array(const std::vector<std::string>& values) {
     std::cout << "[";
     for (std::size_t i = 0; i < values.size(); ++i) {
         if (i > 0) {
@@ -85,7 +94,7 @@ static void print_string_array(const std::vector<std::string> &values) {
     std::cout << "]";
 }
 
-static std::string read_first_line(const std::string &path) {
+std::string read_first_line(const std::string& path) {
     std::ifstream in(path);
     std::string line;
     if (std::getline(in, line)) {
@@ -94,27 +103,27 @@ static std::string read_first_line(const std::string &path) {
     return "";
 }
 
-static std::string read_file(const fs::path &path) {
+std::string read_file(const fs::path& path) {
     return ksud::read_file(path.string()).value_or("");
 }
 
-static bool is_builtin_partition(const std::string &name) {
-    return std::find(kManagedPartitions.begin(), kManagedPartitions.end(), name) !=
-           kManagedPartitions.end();
+bool is_builtin_partition(const std::string& name) {
+    return std::find(managed_partitions().begin(), managed_partitions().end(), name) !=
+           managed_partitions().end();
 }
 
-static bool valid_module_id(const std::string &id) {
+bool valid_module_id(const std::string& id) {
     return !id.empty() && std::all_of(id.begin(), id.end(), [](unsigned char c) {
         return std::isalnum(c) || c == '_' || c == '-' || c == '.';
     });
 }
 
-static bool valid_module_mode(const std::string &mode) {
+bool valid_module_mode(const std::string& mode) {
     return mode == "auto" || mode == "kasumi" || mode == "overlay" || mode == "magic" ||
            mode == "none" || mode == "hide";
 }
 
-static bool parse_unsigned_long(const std::string &value, unsigned long &out) {
+bool parse_unsigned_long(const std::string& value, unsigned long& out) {
     try {
         std::size_t parsed = 0;
         const unsigned long result = std::stoul(value, &parsed, 0);
@@ -128,8 +137,7 @@ static bool parse_unsigned_long(const std::string &value, unsigned long &out) {
     }
 }
 
-static bool module_has_partition_content(const fs::path &module_path,
-                                         const std::string &partition) {
+bool module_has_partition_content(const fs::path& module_path, const std::string& partition) {
     const fs::path root = module_path / partition;
     if (!fs::is_directory(root)) {
         return false;
@@ -141,7 +149,7 @@ static bool module_has_partition_content(const fs::path &module_path,
     }
 }
 
-static std::map<std::string, std::string> read_prop_file(const fs::path &path) {
+std::map<std::string, std::string> read_prop_file(const fs::path& path) {
     std::map<std::string, std::string> props;
     std::ifstream in(path);
     std::string line;
@@ -155,7 +163,7 @@ static std::map<std::string, std::string> read_prop_file(const fs::path &path) {
     return props;
 }
 
-static std::string kernel_release() {
+std::string kernel_release() {
     const std::string version = read_first_line("/proc/version");
     const std::string marker = "Linux version ";
     const auto start = version.find(marker);
@@ -167,8 +175,8 @@ static std::string kernel_release() {
     return version.substr(value_start, value_end - value_start);
 }
 
-static std::string format_bytes(unsigned long long bytes) {
-    const char *units[] = {"B", "K", "M", "G", "T"};
+std::string format_bytes(unsigned long long bytes) {
+    const char* units[] = {"B", "K", "M", "G", "T"};
     double value = static_cast<double>(bytes);
     std::size_t unit = 0;
     while (value >= 1024.0 && unit + 1 < std::size(units)) {
@@ -186,7 +194,7 @@ static std::string format_bytes(unsigned long long bytes) {
     return out.str();
 }
 
-static bool path_is_read_only_mount(const std::string &mount_point) {
+bool path_is_read_only_mount(const std::string& mount_point) {
     std::ifstream mounts("/proc/mounts");
     std::string line;
     while (std::getline(mounts, line)) {
@@ -202,6 +210,7 @@ static bool path_is_read_only_mount(const std::string &mount_point) {
     }
     return false;
 }
+}  // namespace
 
 struct MountEntry {
     std::string mount_point;
@@ -210,7 +219,8 @@ struct MountEntry {
 };
 
 // Parse /proc/self/mountinfo into (mount_point, fstype, source) tuples.
-static std::vector<MountEntry> read_mountinfo() {
+namespace {
+std::vector<MountEntry> read_mountinfo() {
     std::vector<MountEntry> out;
     std::ifstream in("/proc/self/mountinfo");
     std::string line;
@@ -238,14 +248,14 @@ static std::vector<MountEntry> read_mountinfo() {
     return out;
 }
 
-static Config current_config() {
+Config current_config() {
     Config config;
     std::string error;
-    read_config_file(config, error); // struct defaults on miss
+    read_config_file(config, error);  // struct defaults on miss
     return config;
 }
 
-static int print_storage_json() {
+int print_storage_json() {
     const Config config = current_config();
     const std::string mirror_base = mount::storage::current_mirror_dir(config);
 
@@ -255,7 +265,7 @@ static int print_storage_json() {
     // source, so the mirror is identified by mountpoint rather than source.
     std::string mode = "host";
     fs::path target = data_dir();
-    for (const auto &m : read_mountinfo()) {
+    for (const auto& m : read_mountinfo()) {
         if (m.mount_point == mirror_base ||
             (m.source == config.mount_source && m.mount_point == config.work_dir)) {
             mode = m.fstype;
@@ -284,10 +294,10 @@ static int print_storage_json() {
     return 0;
 }
 
-static int print_partitions_json() {
+int print_partitions_json() {
     std::cout << "[";
-    for (std::size_t i = 0; i < kManagedPartitions.size(); ++i) {
-        const auto &name = kManagedPartitions[i];
+    for (std::size_t i = 0; i < managed_partitions().size(); ++i) {
+        const auto& name = managed_partitions()[i];
         const auto mount_point = partition_mount_point(name);
         if (i > 0) {
             std::cout << ",";
@@ -305,7 +315,7 @@ static int print_partitions_json() {
     return 0;
 }
 
-static int print_features_json(int bitmask) {
+int print_features_json(int bitmask) {
     const auto names = kasumi::feature_names(bitmask);
     std::cout << "{\"bitmask\":" << bitmask << ",\"names\":";
     print_string_array(names);
@@ -313,7 +323,7 @@ static int print_features_json(int bitmask) {
     return 0;
 }
 
-static int print_kasumi_snapshot_json() {
+int print_kasumi_snapshot_json() {
     const auto version = kasumi::version_info();
     const bool available = version.status == kasumi::Status::Available;
     const int bitmask = available ? kasumi::features() : 0;
@@ -329,7 +339,7 @@ static int print_kasumi_snapshot_json() {
     return 0;
 }
 
-static int apply_config_file(bool force_enable = false) {
+int apply_config_file(bool force_enable = false) {
     Config config;
     std::string error;
     if (!read_config_file(config, error)) {
@@ -397,11 +407,11 @@ static int apply_config_file(bool force_enable = false) {
     return print_kasumi_snapshot_json();
 }
 
-static void print_backend_statuses_json() {
+void print_backend_statuses_json() {
     const auto statuses = mount::backend_statuses();
     std::cout << "[";
     for (std::size_t i = 0; i < statuses.size(); ++i) {
-        const auto &status = statuses[i];
+        const auto& status = statuses[i];
         if (i > 0) {
             std::cout << ",";
         }
@@ -415,7 +425,7 @@ static void print_backend_statuses_json() {
     std::cout << "]";
 }
 
-static int print_system_json() {
+int print_system_json() {
     const auto version = kasumi::version_info();
     const int bitmask = version.status == kasumi::Status::Available ? kasumi::features() : 0;
     const std::string hook_text =
@@ -429,7 +439,7 @@ static int print_system_json() {
     const std::set<std::string> owned(owned_paths.begin(), owned_paths.end());
     int total_mounts = 0;
     int overlay_mounts = 0;
-    for (const auto &m : read_mountinfo()) {
+    for (const auto& m : read_mountinfo()) {
         if (m.source != config.mount_source && !owned.count(m.mount_point)) {
             continue;
         }
@@ -461,7 +471,7 @@ static int print_system_json() {
     return 0;
 }
 
-static int print_meta_json(bool include_backends = true) {
+int print_meta_json(bool include_backends = true) {
     std::cout << "{"
               << "\"embedded\":true,\"native_control\":true,\"external_mount_owner\":"
               << json_quote(embedded_external_mount_owner()) << ","
@@ -481,7 +491,6 @@ static int print_meta_json(bool include_backends = true) {
     return 0;
 }
 
-namespace {
 int print_mount_status_json() {
     const Config config = current_config();
     auto owned_paths = mount::magic::active_mounts(config);
@@ -491,7 +500,7 @@ int print_mount_status_json() {
     int total = 0;
     int overlays = 0;
     std::vector<std::string> active;
-    for (const auto &mount : read_mountinfo()) {
+    for (const auto& mount : read_mountinfo()) {
         if (mount.source != config.mount_source && !owned.count(mount.mount_point))
             continue;
         ++total;
@@ -508,9 +517,8 @@ int print_mount_status_json() {
     std::cout << "}\n";
     return 0;
 }
-} // namespace
 
-static int print_kasumi_version_json() {
+int print_kasumi_version_json() {
     const auto version = kasumi::version_info();
     const std::string rules =
         version.status == kasumi::Status::Available ? kasumi::active_rules() : "";
@@ -535,7 +543,7 @@ static int print_kasumi_version_json() {
     return 0;
 }
 
-static int print_kasumi_rules_json() {
+int print_kasumi_rules_json() {
     const std::string rules = kasumi::active_rules();
     std::istringstream lines(rules);
     std::string line;
@@ -583,7 +591,7 @@ static int print_kasumi_rules_json() {
     return 0;
 }
 
-static int handle_config(const std::vector<std::string> &args) {
+int handle_config(const std::vector<std::string>& args) {
     const auto sub = arg_or_default(args, 1, "");
     if (sub == "show") {
         std::string config = read_file(config_file());
@@ -635,11 +643,11 @@ static int handle_config(const std::vector<std::string> &args) {
         std::set<std::string> partitions;
         const fs::path module_root = modules_dir();
         if (fs::is_directory(module_root)) {
-            for (const auto &module : fs::directory_iterator(module_root)) {
+            for (const auto& module : fs::directory_iterator(module_root)) {
                 if (!module.is_directory()) {
                     continue;
                 }
-                for (const auto &child : fs::directory_iterator(module.path())) {
+                for (const auto& child : fs::directory_iterator(module.path())) {
                     if (child.is_directory()) {
                         const std::string name = child.path().filename().string();
                         if (!is_builtin_partition(name) &&
@@ -653,7 +661,7 @@ static int handle_config(const std::vector<std::string> &args) {
         if (partitions.empty()) {
             std::cout << "No new partitions\n";
         } else {
-            for (const auto &partition : partitions) {
+            for (const auto& partition : partitions) {
                 std::cout << "Added partition: " << partition << "\n";
             }
         }
@@ -663,7 +671,7 @@ static int handle_config(const std::vector<std::string> &args) {
     return 1;
 }
 
-static int handle_api(const std::vector<std::string> &args) {
+int handle_api(const std::vector<std::string>& args) {
     if (args.size() == 2 && args[1] == "mounts")
         return print_mount_status_json();
     const auto sub = arg_or_default(args, 1, "");
@@ -701,7 +709,7 @@ static int handle_api(const std::vector<std::string> &args) {
     return 1;
 }
 
-static int handle_module(const std::vector<std::string> &args) {
+int handle_module(const std::vector<std::string>& args) {
     const auto sub = arg_or_default(args, 1, "");
     if (sub == "list") {
         const auto modes = mount::load_module_modes();
@@ -714,7 +722,7 @@ static int handle_module(const std::vector<std::string> &args) {
         std::cout << "{\"modules\":[";
         bool first = true;
         if (fs::is_directory(module_root)) {
-            for (const auto &entry : fs::directory_iterator(module_root)) {
+            for (const auto& entry : fs::directory_iterator(module_root)) {
                 if (!entry.is_directory()) {
                     continue;
                 }
@@ -732,9 +740,9 @@ static int handle_module(const std::vector<std::string> &args) {
                 // Only list modules that contribute mounts (have a managed
                 // partition tree); skip plain modules (zygisk, etc.).
                 bool has_mount_content = false;
-                const std::vector<std::string> &parts =
-                    cfg.partitions.empty() ? mount::fsutil::kManagedPartitions : cfg.partitions;
-                for (const auto &part : parts) {
+                const std::vector<std::string>& parts =
+                    cfg.partitions.empty() ? mount::fsutil::managed_partitions() : cfg.partitions;
+                for (const auto& part : parts) {
                     std::error_code ec;
                     if (fs::is_directory(entry.path() / part, ec)) {
                         has_mount_content = true;
@@ -826,9 +834,9 @@ static int handle_module(const std::vector<std::string> &args) {
             return 1;
         }
         auto rules = mount::load_module_rules();
-        auto &module_rules = rules[id];
+        auto& module_rules = rules[id];
         const auto existing = std::find_if(module_rules.begin(), module_rules.end(),
-                                           [&](const auto &rule) { return rule.path == path; });
+                                           [&](const auto& rule) { return rule.path == path; });
         if (existing == module_rules.end()) {
             module_rules.push_back({path, mode});
         } else {
@@ -852,9 +860,9 @@ static int handle_module(const std::vector<std::string> &args) {
         if (rules_it == rules.end()) {
             return 0;
         }
-        auto &module_rules = rules_it->second;
+        auto& module_rules = rules_it->second;
         module_rules.erase(std::remove_if(module_rules.begin(), module_rules.end(),
-                                          [&](const auto &rule) { return rule.path == path; }),
+                                          [&](const auto& rule) { return rule.path == path; }),
                            module_rules.end());
         if (module_rules.empty()) {
             rules.erase(rules_it);
@@ -914,11 +922,11 @@ static int handle_module(const std::vector<std::string> &args) {
     if (sub == "check-conflicts") {
         const Config cfg = current_config();
         const auto modules = mount::enumerate_mountable_modules();
-        const std::vector<std::string> &parts =
-            cfg.partitions.empty() ? mount::fsutil::kManagedPartitions : cfg.partitions;
+        const std::vector<std::string>& parts =
+            cfg.partitions.empty() ? mount::fsutil::managed_partitions() : cfg.partitions;
         std::map<std::string, std::vector<std::string>> owners;
-        for (const auto &module : modules) {
-            for (const auto &part : parts) {
+        for (const auto& module : modules) {
+            for (const auto& part : parts) {
                 const fs::path root = module.path / part;
                 std::error_code ec;
                 auto it = fs::recursive_directory_iterator(root, ec);
@@ -934,7 +942,7 @@ static int handle_module(const std::vector<std::string> &args) {
         }
         std::cout << "[";
         bool first = true;
-        for (const auto &[path, ids] : owners) {
+        for (const auto& [path, ids] : owners) {
             if (ids.size() < 2) {
                 continue;
             }
@@ -958,7 +966,7 @@ static int handle_module(const std::vector<std::string> &args) {
         }
         Config config;
         std::string cfg_err;
-        read_config_file(config, cfg_err); // defaults on error
+        read_config_file(config, cfg_err);  // defaults on error
         const auto report = mount::mount_all_enabled(config);
         std::cout << "{"
                   << "\"ok\":" << (report.ok ? "true" : "false") << ","
@@ -983,7 +991,7 @@ static int handle_module(const std::vector<std::string> &args) {
         // Tear down Kagami's own mounts (source-gated; never touches real partitions).
         Config config;
         std::string cfg_err;
-        read_config_file(config, cfg_err); // defaults on error
+        read_config_file(config, cfg_err);  // defaults on error
         const bool ok = mount::unmount_all(config);
         std::cout << "{\"ok\":" << (ok ? "true" : "false") << "}\n";
         return ok ? 0 : 1;
@@ -992,7 +1000,7 @@ static int handle_module(const std::vector<std::string> &args) {
     return 1;
 }
 
-static int handle_kasumi(const std::vector<std::string> &args) {
+int handle_kasumi(const std::vector<std::string>& args) {
     const auto sub = arg_or_default(args, 1, "");
     if (sub == "version") {
         return print_kasumi_version_json();
@@ -1117,7 +1125,7 @@ static int handle_kasumi(const std::vector<std::string> &args) {
     return 1;
 }
 
-static int handle_hide(const std::vector<std::string> &args) {
+int handle_hide(const std::vector<std::string>& args) {
     const auto sub = arg_or_default(args, 1, "");
     if (sub == "list") {
         const auto rules = load_user_hide_rules();
@@ -1163,7 +1171,7 @@ static int handle_hide(const std::vector<std::string> &args) {
     return 1;
 }
 
-static int handle_recovery(const std::vector<std::string> &args) {
+int handle_recovery(const std::vector<std::string>& args) {
     const auto sub = arg_or_default(args, 1, "status");
     if (sub == "reset") {
         mount::recovery_reset();
@@ -1177,8 +1185,9 @@ static int handle_recovery(const std::vector<std::string> &args) {
     std::cerr << "usage: ksud kagami recovery status|reset\n";
     return 1;
 }
+}  // namespace
 
-int run_command(const std::vector<std::string> &args) {
+int run_command(const std::vector<std::string>& args) {
     if (args.empty() || args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
         print_usage();
         return args.empty() ? 1 : 0;
@@ -1222,7 +1231,8 @@ int run_command(const std::vector<std::string> &args) {
     return 1;
 }
 
-static bool is_query(const std::vector<std::string> &args) {
+namespace {
+bool is_query(const std::vector<std::string>& args) {
     if (args.empty())
         return true;
     const auto sub = arg_or_default(args, 1, "");
@@ -1235,7 +1245,7 @@ static bool is_query(const std::vector<std::string> &args) {
            (args[0] == "recovery" && sub == "status");
 }
 
-static std::string operation_description(const std::vector<std::string> &args) {
+std::string operation_description(const std::vector<std::string>& args) {
     if (args.empty())
         return "help";
     std::string result = args[0] + (args.size() > 1 ? " " + args[1] : "");
@@ -1260,7 +1270,7 @@ static std::string operation_description(const std::vector<std::string> &args) {
                                                          "fs_type",
                                                          "mount_backend",
                                                          "mountsource"};
-            for (const auto &item : patch.o) {
+            for (const auto& item : patch.o) {
                 result += item.first;
                 if (public_values.count(item.first))
                     result += "=" + stringify_json(item.second);
@@ -1276,21 +1286,22 @@ static std::string operation_description(const std::vector<std::string> &args) {
     }
     return result;
 }
+}  // namespace
 
-CommandResult run_command_capture(const std::vector<std::string> &args) {
+CommandResult run_command_capture(const std::vector<std::string>& args) {
     const auto started = std::chrono::steady_clock::now();
     const auto operation = operation_description(args);
     const auto level = is_query(args) ? logging::Level::Debug : logging::Level::Info;
     logging::write(level, "command", "begin " + operation);
-    std::ostringstream stdout_buffer;
-    std::ostringstream stderr_buffer;
-    auto *old_stdout = std::cout.rdbuf(stdout_buffer.rdbuf());
-    auto *old_stderr = std::cerr.rdbuf(stderr_buffer.rdbuf());
+    std::stringbuf stdout_buffer;
+    std::stringbuf stderr_buffer;
+    auto* old_stdout = std::cout.rdbuf(&stdout_buffer);
+    auto* old_stderr = std::cerr.rdbuf(&stderr_buffer);
     errno = 0;
     int exit_code;
     try {
         exit_code = run_command(args);
-    } catch (const std::exception &error) {
+    } catch (const std::exception& error) {
         std::cerr << "Kagami: " << error.what() << '\n';
         errno = EIO;
         exit_code = 1;
@@ -1311,4 +1322,4 @@ CommandResult run_command_capture(const std::vector<std::string> &args) {
     return {exit_code, error_number, stdout_buffer.str(), stderr_buffer.str()};
 }
 
-} // namespace kagami
+}  // namespace kagami

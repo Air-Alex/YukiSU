@@ -12,7 +12,7 @@ struct CommandResult {
     std::string stderr_text;
 };
 
-int run_command(const std::vector<std::string> &args);
-CommandResult run_command_capture(const std::vector<std::string> &args);
+int run_command(const std::vector<std::string>& args);
+CommandResult run_command_capture(const std::vector<std::string>& args);
 
-} // namespace kagami
+}  // namespace kagami

@@ -24,11 +24,14 @@ static_assert(static_cast<std::uint32_t>(MountHideMode::Normal) == KSM_MOUNT_HID
 static_assert(static_cast<std::uint32_t>(MountHideMode::Aggressive) ==
               KSM_MOUNT_HIDE_MODE_AGGRESSIVE);
 
-extern "C" int ksu_kasumi_ioctl(unsigned long cmd, void *arg);
+extern "C" int ksu_kasumi_ioctl(unsigned long cmd, void* arg);
 
-static int execute(unsigned long cmd, void *arg) { return ksu_kasumi_ioctl(cmd, arg); }
+namespace {
+int execute(unsigned long cmd, void* arg) {
+    return ksu_kasumi_ioctl(cmd, arg);
+}
 
-static bool ioctl_arg_ok(int rc, int arg_err) {
+bool ioctl_arg_ok(int rc, int arg_err) {
     if (rc != 0) {
         return false;
     }
@@ -38,6 +41,7 @@ static bool ioctl_arg_ok(int rc, int arg_err) {
     }
     return true;
 }
+}  // namespace
 
 VersionInfo version_info() {
     VersionInfo info;
@@ -79,28 +83,30 @@ int process_euid() {
 #endif
 }
 
-bool is_available() { return version_info().status == Status::Available; }
+bool is_available() {
+    return version_info().status == Status::Available;
+}
 
 std::string active_rules() {
-    std::vector<char> buffer(64 * 1024, '\0');
+    std::vector<char> buffer(64UL * 1024, '\0');
     kasumi_syscall_list_arg arg = {};
     arg.buf = buffer.data();
     arg.size = buffer.size();
     if (execute(KSM_IOC_LIST_RULES, &arg) != 0) {
         return "";
     }
-    return std::string(buffer.data());
+    return {buffer.data()};
 }
 
 std::string hooks() {
-    std::vector<char> buffer(8 * 1024, '\0');
+    std::vector<char> buffer(8UL * 1024, '\0');
     kasumi_syscall_list_arg arg = {};
     arg.buf = buffer.data();
     arg.size = buffer.size();
     if (execute(KSM_IOC_GET_HOOKS, &arg) != 0) {
         return "";
     }
-    return std::string(buffer.data());
+    return {buffer.data()};
 }
 
 FeatureCapabilities feature_capabilities() {
@@ -115,7 +121,9 @@ FeatureCapabilities feature_capabilities() {
     return capabilities;
 }
 
-int features() { return feature_capabilities().bitmask; }
+int features() {
+    return feature_capabilities().bitmask;
+}
 
 std::vector<std::string> feature_names(int bitmask) {
     std::vector<std::string> names;
@@ -138,7 +146,7 @@ std::vector<std::string> feature_names(int bitmask) {
     return names;
 }
 
-std::vector<std::string> active_modules_from_rules(const std::string &rules) {
+std::vector<std::string> active_modules_from_rules(const std::string& rules) {
     std::set<std::string> modules;
     std::istringstream lines(rules);
     std::string line;
@@ -146,7 +154,7 @@ std::vector<std::string> active_modules_from_rules(const std::string &rules) {
         const std::vector<std::string> prefixes = {
             "/data/adb/modules/",
         };
-        for (const auto &prefix : prefixes) {
+        for (const auto& prefix : prefixes) {
             std::size_t pos = line.find(prefix);
             while (pos != std::string::npos) {
                 const std::size_t start = pos + prefix.size();
@@ -176,9 +184,11 @@ bool set_stealth(bool enable) {
     return execute(KSM_IOC_SET_STEALTH, &value) == 0;
 }
 
-bool fix_mounts() { return execute(KSM_IOC_REORDER_MNT_ID, nullptr) == 0; }
+bool fix_mounts() {
+    return execute(KSM_IOC_REORDER_MNT_ID, nullptr) == 0;
+}
 
-bool hide_overlay_xattrs(const std::string &path) {
+bool hide_overlay_xattrs(const std::string& path) {
     kasumi_syscall_arg arg = {};
     arg.src = path.c_str();
     return execute(KSM_IOC_HIDE_OVERLAY_XATTRS, &arg) == 0;
@@ -223,9 +233,11 @@ bool set_statfs_spoof(bool enable) {
     return ioctl_arg_ok(rc, arg.err);
 }
 
-bool clear_rules() { return execute(KSM_IOC_CLEAR_ALL, nullptr) == 0; }
+bool clear_rules() {
+    return execute(KSM_IOC_CLEAR_ALL, nullptr) == 0;
+}
 
-bool add_rule(const std::string &target, const std::string &source, int type) {
+bool add_rule(const std::string& target, const std::string& source, int type) {
     kasumi_syscall_arg arg = {};
     arg.src = target.c_str();
     arg.target = source.c_str();
@@ -233,27 +245,27 @@ bool add_rule(const std::string &target, const std::string &source, int type) {
     return execute(KSM_IOC_ADD_RULE, &arg) == 0;
 }
 
-bool add_merge_rule(const std::string &target, const std::string &source) {
+bool add_merge_rule(const std::string& target, const std::string& source) {
     kasumi_syscall_arg arg = {};
     arg.src = target.c_str();
     arg.target = source.c_str();
     return execute(KSM_IOC_ADD_MERGE_RULE, &arg) == 0;
 }
 
-bool hide_path(const std::string &path) {
+bool hide_path(const std::string& path) {
     kasumi_syscall_arg arg = {};
     arg.src = path.c_str();
     return execute(KSM_IOC_HIDE_RULE, &arg) == 0;
 }
 
-bool delete_rule(const std::string &path) {
+bool delete_rule(const std::string& path) {
     kasumi_syscall_arg arg = {};
     arg.src = path.c_str();
     return execute(KSM_IOC_DEL_RULE, &arg) == 0;
 }
 
 bool add_maps_rule(unsigned long target_ino, unsigned long target_dev, unsigned long spoofed_ino,
-                   unsigned long spoofed_dev, const std::string &spoofed_path) {
+                   unsigned long spoofed_dev, const std::string& spoofed_path) {
     kasumi_maps_rule arg = {};
     arg.target_ino = target_ino;
     arg.target_dev = target_dev;
@@ -264,11 +276,13 @@ bool add_maps_rule(unsigned long target_ino, unsigned long target_dev, unsigned 
     return ioctl_arg_ok(rc, arg.err);
 }
 
-bool clear_maps_rules() { return execute(KSM_IOC_CLEAR_MAPS_RULES, nullptr) == 0; }
+bool clear_maps_rules() {
+    return execute(KSM_IOC_CLEAR_MAPS_RULES, nullptr) == 0;
+}
 
 int enabled_state() {
     int enabled = 0;
     return execute(KSM_IOC_GET_ENABLED, &enabled) == 0 ? enabled : -1;
 }
 
-} // namespace kagami::kasumi
+}  // namespace kagami::kasumi

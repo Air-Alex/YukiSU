@@ -1,4 +1,7 @@
 #include "kagami/embedded.hpp"
+#include <unistd.h>
+#include <filesystem>
+#include <iostream>
 #include "core/command.hpp"
 #include "core/daemon.hpp"
 #include "core/ksucalls.hpp"
@@ -7,12 +10,9 @@
 #include "kagami/config.hpp"
 #include "module/metamodule.hpp"
 #include "mount/backend.hpp"
-#include <filesystem>
-#include <iostream>
-#include <unistd.h>
 
 namespace kagami {
-int embedded_command(const std::vector<std::string> &args) try {
+int embedded_command(const std::vector<std::string>& args) try {
     if (geteuid() != 0) {
         std::cerr << "ksud kagami requires root\n";
         return 1;
@@ -21,7 +21,7 @@ int embedded_command(const std::vector<std::string> &args) try {
         args[0] == "version" || args[0] == "--version" || args[0] == "daemon")
         return run_command(args);
     return run_via_daemon(args);
-} catch (const std::exception &error) {
+} catch (const std::exception& error) {
     std::cerr << "Kagami: " << error.what() << '\n';
     return 1;
 }
@@ -48,7 +48,7 @@ int embedded_mount() try {
     logging::write(logging::Level::Info, "boot",
                    "starting built-in mount plan; no external LKM lookup");
     return run_via_daemon({"module", "mount-all"});
-} catch (const std::exception &error) {
+} catch (const std::exception& error) {
     std::cerr << "Kagami mount: " << error.what() << '\n';
     return 1;
 }
@@ -68,24 +68,26 @@ void embedded_post_fs_data() {
                    "post-fs-data; state=" + runtime_data_dir().string());
 }
 
-void embedded_mount_skipped(const std::string &reason) {
+void embedded_mount_skipped(const std::string& reason) {
     logging::write(logging::Level::Info, "boot", "built-in mount skipped: " + reason);
 }
 
-bool embedded_register_umount(const std::string &path) {
+bool embedded_register_umount(const std::string& path) {
     const bool ok = ksud::umount_list_add(path, 0) == 0;
     if (!ok)
         logging::write(logging::Level::Error, "mount", "failed to register unmount path " + path);
     return ok;
 }
 
-bool embedded_unregister_umount(const std::string &path) {
+bool embedded_unregister_umount(const std::string& path) {
     return ksud::umount_list_del(path) == 0;
 }
 
-std::string embedded_external_mount_owner() { return ksud::metamodule_mount_owner(); }
-} // namespace kagami
+std::string embedded_external_mount_owner() {
+    return ksud::metamodule_mount_owner();
+}
+}  // namespace kagami
 
-extern "C" int ksu_kasumi_ioctl(unsigned long cmd, void *arg) {
+extern "C" int ksu_kasumi_ioctl(unsigned long cmd, void* arg) {
     return ksud::ksuctl(static_cast<int>(cmd), arg);
 }

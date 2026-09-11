@@ -8,3 +8,4 @@ set(KAGAMI_SOURCES
 add_library(ksud_kagami_objs OBJECT ${KAGAMI_SOURCES})
 target_include_directories(ksud_kagami_objs BEFORE PRIVATE include src ../src ../../..)
 target_compile_options(ksud_kagami_objs PRIVATE -fexceptions)
+yukisu_enable_clang_tidy(ksud_kagami_objs CXX)

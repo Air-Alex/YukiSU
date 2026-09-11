@@ -44,8 +44,8 @@ using ModuleRuleMap = std::map<std::string, std::vector<ModuleRule>>;
 
 struct MountReport {
     bool ok = false;
-    int modules = 0; // enabled modules processed
-    int mounts = 0;  // committed partition mount points
+    int modules = 0;  // enabled modules processed
+    int mounts = 0;   // committed partition mount points
     std::string backend;
     std::string detail;
 };
@@ -55,26 +55,26 @@ struct MountReport {
 std::vector<ModuleEntry> enumerate_mountable_modules();
 
 ModuleModeMap load_module_modes();
-bool save_module_modes(const ModuleModeMap &modes);
+bool save_module_modes(const ModuleModeMap& modes);
 ModuleRuleMap load_module_rules();
-bool save_module_rules(const ModuleRuleMap &rules);
+bool save_module_rules(const ModuleRuleMap& rules);
 
 // Resolve a module's effective backend ("overlay"|"magic"|"kasumi"|"none") from
 // its configured mode (modes[id], the global override config.mount_backend, or
 // the auto fallback). Used by the orchestrator and to report a module's actual
 // mount method. `modes` is the parsed module_mode.json (id -> mode).
-std::string resolve_module_backend(const ModuleEntry &module, const Config &config,
-                                   const ModuleModeMap &modes);
+std::string resolve_module_backend(const ModuleEntry& module, const Config& config,
+                                   const ModuleModeMap& modes);
 
 // Rebuild only Kasumi mappings in the init namespace. This is safe to expose
 // post-boot for the Kasumi hot-mount controls; Overlay/Magic remain boot-only.
-bool refresh_kasumi_modules(const Config &config);
+bool refresh_kasumi_modules(const Config& config);
 
 // Apply the boot-only module mount plan inside the init mount namespace.
-MountReport mount_all_enabled(const Config &config);
+MountReport mount_all_enabled(const Config& config);
 
 // Tear down everything Kagami mounted (enters the init mount ns).
-bool unmount_all(const Config &config);
+bool unmount_all(const Config& config);
 
 // Bootloop protection: mount_all_enabled() bumps an unconfirmed-boot counter and
 // refuses once it exceeds the limit. recovery_boot_completed() clears it once a
@@ -83,4 +83,4 @@ void recovery_boot_completed();
 void recovery_reset();
 std::string recovery_status_json();
 
-} // namespace kagami::mount
+}  // namespace kagami::mount

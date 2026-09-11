@@ -259,8 +259,9 @@ std::vector<std::pair<std::string, fs::path>> collect_active_module_roots() {
 std::vector<NativeModule> scan_early_native_modules() {
     std::vector<NativeModule> out;
 
-    for (const auto& [module_id, base] : collect_active_module_roots()) {
-        const std::string base_path = base.string();
+    for (const auto& active_module : collect_active_module_roots()) {
+        const auto& module_id = active_module.first;
+        const std::string base_path = active_module.second.string();
         const auto manifest = read_file(base_path + "/zn_modules.txt");
         if (!manifest)
             continue;
@@ -286,8 +287,9 @@ std::vector<NativeModule> scan_early_native_modules() {
 }
 
 bool has_native_abi32_target() {
-    for (const auto& [module_id, base] : collect_active_module_roots()) {
-        const std::string base_path = base.string();
+    for (const auto& active_module : collect_active_module_roots()) {
+        const auto& module_id = active_module.first;
+        const std::string base_path = active_module.second.string();
         const auto manifest = read_file(base_path + "/zn_modules.txt");
         if (!manifest)
             continue;

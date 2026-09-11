@@ -418,10 +418,9 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
         const size_t bytes_read = static_cast<size_t>(read_result);
 
         if (verify_hash &&
-            mbedtls_sha256_update(
-                &source_hash_context,
-                reinterpret_cast<const unsigned char*>(buffer.data()),
-                bytes_read) != 0) {
+            mbedtls_sha256_update(&source_hash_context,
+                                  reinterpret_cast<const unsigned char*>(buffer.data()),
+                                  bytes_read) != 0) {
             LOGE("Failed to update source SHA256");
             success = false;
             break;
@@ -453,8 +452,7 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
                 static_cast<size_t>(std::min<uint64_t>(zero_buffer.size(), remaining));
             size_t written = 0;
             while (written < requested) {
-                const ssize_t result =
-                    write(fd, zero_buffer.data() + written, requested - written);
+                const ssize_t result = write(fd, zero_buffer.data() + written, requested - written);
                 if (result <= 0) {
                     LOGE("Failed to zero partition tail: %s", strerror(errno));
                     success = false;
@@ -476,8 +474,7 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
     close(fd);
     close(input_fd);
 
-    if (verify_hash &&
-        mbedtls_sha256_finish(&source_hash_context, source_digest.data()) != 0) {
+    if (verify_hash && mbedtls_sha256_finish(&source_hash_context, source_digest.data()) != 0) {
         LOGE("Failed to finish source SHA256");
         success = false;
     }
@@ -515,18 +512,16 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
 
     uint64_t remaining = image_size;
     while (remaining > 0) {
-        const size_t requested =
-            static_cast<size_t>(std::min<uint64_t>(buffer.size(), remaining));
+        const size_t requested = static_cast<size_t>(std::min<uint64_t>(buffer.size(), remaining));
         const ssize_t bytes_read = read(verify_fd, buffer.data(), requested);
         if (bytes_read <= 0) {
             LOGE("Failed to read flashed data for verification: %s", strerror(errno));
             success = false;
             break;
         }
-        if (mbedtls_sha256_update(
-                &target_hash_context,
-                reinterpret_cast<const unsigned char*>(buffer.data()),
-                static_cast<size_t>(bytes_read)) != 0) {
+        if (mbedtls_sha256_update(&target_hash_context,
+                                  reinterpret_cast<const unsigned char*>(buffer.data()),
+                                  static_cast<size_t>(bytes_read)) != 0) {
             LOGE("Failed to update target SHA256");
             success = false;
             break;
@@ -535,8 +530,7 @@ std::string flash_physical_partition(const std::string& image_path, const std::s
     }
     close(verify_fd);
 
-    if (success &&
-        mbedtls_sha256_finish(&target_hash_context, target_digest.data()) != 0) {
+    if (success && mbedtls_sha256_finish(&target_hash_context, target_digest.data()) != 0) {
         LOGE("Failed to finish target SHA256");
         success = false;
     }

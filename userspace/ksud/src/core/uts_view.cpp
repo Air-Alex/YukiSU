@@ -156,8 +156,7 @@ bool status_valid(const ksu_uts_view_status& status) {
 }
 
 bool release_snapshot_valid(const ksu_uts_view_status& status) {
-    return status_valid(status) &&
-           (status.original.field_mask & KSU_UTS_FIELD_RELEASE) != 0 &&
+    return status_valid(status) && (status.original.field_mask & KSU_UTS_FIELD_RELEASE) != 0 &&
            (status.effective_global.field_mask & KSU_UTS_FIELD_RELEASE) != 0 &&
            status.original.release[0] != '\0' && status.effective_global.release[0] != '\0' &&
            field_terminated(status.original.release) &&

@@ -34,12 +34,12 @@ struct Config {
 };
 
 std::vector<std::string> load_user_hide_rules();
-bool save_user_hide_rules(const std::vector<std::string> &rules);
+bool save_user_hide_rules(const std::vector<std::string>& rules);
 std::string default_config_json();
-void prune_config_fields(json::Value &config);
-bool write_default_config(std::string &error);
-bool parse_config_json(const std::string &json, Config &config, std::string &error);
-bool read_config_file(Config &config, std::string &error);
-bool merge_config_json(const std::string &updates, std::string &error);
+void prune_config_fields(json::Value& config);
+bool write_default_config(std::string& error);
+bool parse_config_json(const std::string& json, Config& config, std::string& error);
+bool read_config_file(Config& config, std::string& error);
+bool merge_config_json(const std::string& updates, std::string& error);
 
-} // namespace kagami
+}  // namespace kagami

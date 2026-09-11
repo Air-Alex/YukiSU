@@ -1,4 +1,5 @@
 #include "feature.hpp"
+#include "../../kagami/include/kagami/kasumi_client.hpp"
 #include "../defs.hpp"
 #include "../log.hpp"
 #include "../magisk_compat/msud.hpp"
@@ -8,7 +9,6 @@
 #include "../utils.hpp"
 #include "../yukizygisk_snapshot.hpp"
 #include "ksucalls.hpp"
-#include "../../kagami/include/kagami/kasumi_client.hpp"
 
 #include <unistd.h>
 #include <cerrno>
