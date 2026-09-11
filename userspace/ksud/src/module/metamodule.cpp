@@ -1,4 +1,5 @@
 #include "metamodule.hpp"
+#include "../../kagami/include/kagami/embedded.hpp"
 #include "../defs.hpp"
 #include "../log.hpp"
 #include "module.hpp"
@@ -69,10 +70,15 @@ int metamodule_exec_mount_script() {
         get_enabled_metamodule_script_path(METAMODULE_MOUNT_SCRIPT, &module_id);
 
     if (!file_exists(script)) {
-        return 0;
+        LOGI("Using built-in Kagami mount backend");
+        const int ret = kagami::embedded_mount();
+        if (ret != 0)
+            LOGE("Built-in Kagami mount failed: %d", ret);
+        return ret;
     }
 
     LOGI("External metamodule found, executing metamount.sh: %s", script.c_str());
+    kagami::embedded_mount_skipped("external metamodule " + module_id);
     const int ret = run_script(script, true, module_id, "MODULE_DIR", MODULE_DIR);
 
     if (ret == 0) {
@@ -82,6 +88,12 @@ int metamodule_exec_mount_script() {
     }
 
     return ret;
+}
+
+std::string metamodule_mount_owner() {
+    std::string module_id;
+    const auto script = get_enabled_metamodule_script_path(METAMODULE_MOUNT_SCRIPT, &module_id);
+    return script.empty() ? std::string{} : module_id;
 }
 
 int metamodule_exec_uninstall_script(const std::string& module_id) {

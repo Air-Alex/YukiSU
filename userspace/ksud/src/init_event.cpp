@@ -1,4 +1,5 @@
 #include "init_event.hpp"
+#include "../kagami/include/kagami/embedded.hpp"
 #include "assets.hpp"
 #include "core/feature.hpp"
 #include "core/hide_bootloader.hpp"
@@ -392,10 +393,12 @@ void ensure_zygiskd_running_if_enabled() {
 
 int on_post_data_fs() {
     LOGI("post-fs-data triggered");
+    kagami::embedded_post_fs_data();
     (void)prepare_yukizygisk_diagnostics(false);
 
     if (!ensure_uapi_version_matched()) {
         LOGE("Skip post-fs-data due to UAPI version mismatch");
+        kagami::embedded_mount_skipped("UAPI version mismatch");
         return 0;
     }
 
@@ -429,6 +432,7 @@ int on_post_data_fs() {
     // Check for Magisk (like Rust version)
     if (has_magisk()) {
         LOGW("Magisk detected, skip post-fs-data!");
+        kagami::embedded_mount_skipped("Magisk owns boot handling");
         return 0;
     }
 
@@ -456,6 +460,7 @@ int on_post_data_fs() {
     // if we are in safe mode, we should disable all modules
     if (safe_mode) {
         LOGW("safe mode, skip post-fs-data scripts and disable all modules!");
+        kagami::embedded_mount_skipped("safe mode");
         disable_all_modules();
         return 0;
     }
@@ -556,6 +561,7 @@ void on_boot_completed() {
 
     // Report to kernel
     report_boot_complete();
+    kagami::embedded_boot_completed();
 
     ensure_msud_running_if_enabled();
 

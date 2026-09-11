@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "../kagami/include/kagami/embedded.hpp"
 #include "assets.hpp"
 #include "boot/boot_patch.hpp"
 #include "boot/boot_patch_v2.hpp"
@@ -156,6 +157,7 @@ void print_usage() {
     printf("  sepolicy       SELinux policy patch tool\n");
     printf("  profile        Manage app profiles\n");
     printf("  feature        Manage kernel features\n");
+    printf("  kagami         Manage built-in Kasumi and module mounts\n");
     printf("  uts-view       Manage UTS identity views\n");
     printf("  yzctl          Control YukiZygisk and read kernel state\n");
     printf("  dynamic        Manage dynamic manager signatures\n");
@@ -993,6 +995,8 @@ int cli_run(int argc, char** argv) {
         return cmd_profile(args);
     } else if (cmd == "feature") {
         return cmd_feature(args);
+    } else if (cmd == "kagami") {
+        return kagami::embedded_command(args);
     } else if (cmd == "uts-view") {
         return uts_view_command(args);
     } else if (cmd == "yzctl" || cmd == "yukizygisk") {

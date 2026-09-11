@@ -8,6 +8,7 @@
 #include "../utils.hpp"
 #include "../yukizygisk_snapshot.hpp"
 #include "ksucalls.hpp"
+#include "../../kagami/include/kagami/kasumi_client.hpp"
 
 #include <unistd.h>
 #include <cerrno>
@@ -44,6 +45,7 @@ const std::map<std::string, uint32_t>& get_feature_map() {
         {"yukizygisk", KSU_FEATURE_YUKIZYGISK},
         {"hide_bootloader", KSU_FEATURE_HIDE_BOOTLOADER},
         {"kasumi_sucompat", KSU_FEATURE_KASUMI_SUCOMPAT},
+        {"kasumi", KSU_FEATURE_KASUMI},
     };
     return map;
 }
@@ -82,6 +84,9 @@ const std::map<uint32_t, const char*>& get_feature_descriptions() {
          "Kasumi su compatibility - exposes su through dirhijack and vnode instead of legacy "
          "stat syscall interception; mutually exclusive with classic su compatibility (off by "
          "default)"},
+        {KSU_FEATURE_KASUMI,
+         "Kasumi - initializes the embedded VFS engine on demand; required for all Kasumi "
+         "functions. Disabling takes effect after reboot (off by default)"},
     };
     return desc;
 }
@@ -136,6 +141,16 @@ void settle_sucompat_values(std::map<uint32_t, uint64_t>& features) {
 }
 
 int apply_sucompat_config(std::map<uint32_t, uint64_t>& features) {
+    if (get_feature(KSU_FEATURE_KASUMI).second && !kagami::kasumi::is_available() &&
+        ((features.count(KSU_FEATURE_KASUMI_SUCOMPAT) &&
+          features.at(KSU_FEATURE_KASUMI_SUCOMPAT) != 0) ||
+         (features.count(KSU_FEATURE_MAGISK_COMPAT) &&
+          features.at(KSU_FEATURE_MAGISK_COMPAT) != 0))) {
+        features[KSU_FEATURE_KASUMI_SUCOMPAT] = 0;
+        features[KSU_FEATURE_MAGISK_COMPAT] = 0;
+        features[KSU_FEATURE_SU_COMPAT] = 1;
+        LOGW("Kasumi was not initialized; restoring classic su_compat");
+    }
     const auto classic = features.find(KSU_FEATURE_SU_COMPAT);
     const auto magisk = features.find(KSU_FEATURE_MAGISK_COMPAT);
     const auto kasumi = features.find(KSU_FEATURE_KASUMI_SUCOMPAT);
@@ -331,6 +346,12 @@ int feature_save_config_locked() {
 }
 
 int feature_set_impl(const std::string& id, uint32_t feature_id, uint64_t value) {
+    if (value != 0 &&
+        (feature_id == KSU_FEATURE_MAGISK_COMPAT || feature_id == KSU_FEATURE_KASUMI_SUCOMPAT) &&
+        get_feature(KSU_FEATURE_KASUMI).second && !kagami::kasumi::is_available()) {
+        LOGE("Kasumi is not initialized; enable the kasumi feature first");
+        return 1;
+    }
     if (feature_id == KSU_FEATURE_MAGISK_COMPAT && value != 0 &&
         ensure_msud_running_locked() != 0) {
         const auto [current, supported] = get_feature(KSU_FEATURE_MAGISK_COMPAT);
@@ -401,7 +422,7 @@ int feature_set(const std::string& id, uint64_t value) {
         return 1;
     }
 
-    if (!is_sucompat_feature_id(feature_id)) {
+    if (!is_sucompat_feature_id(feature_id) && feature_id != KSU_FEATURE_KASUMI) {
         return feature_set_impl(id, feature_id, value);
     }
 

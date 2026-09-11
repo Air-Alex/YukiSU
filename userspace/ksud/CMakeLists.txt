@@ -545,10 +545,12 @@ if(MAGISKBOOT_ALONE_AVAILABLE)
 endif()
 
 # Executable: link object libs
+add_subdirectory(kagami)
 add_executable(ksud
     $<TARGET_OBJECTS:ksud_our_objs>
     $<TARGET_OBJECTS:ksud_generated_objs>
     $<TARGET_OBJECTS:ksud_thirdparty_objs>
+    $<TARGET_OBJECTS:ksud_kagami_objs>
 )
 
 target_compile_definitions(ksud PRIVATE ${KSUD_DEFINES})
