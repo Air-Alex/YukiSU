@@ -34,6 +34,7 @@
 #include "feature/sucompat_exec.h"
 #include "feature/sucompat_prompt.h"
 #include "feature/sucompat_vfs.h"
+#include "kasumi_bootstrap.h"
 
 #define SU_PATH "/system/bin/su"
 
@@ -42,6 +43,7 @@ static bool magisk_compat_enabled __read_mostly;
 static const char su_path[] = SU_PATH;
 static bool kasumi_sucompat_feature_registered;
 static bool magisk_compat_feature_registered;
+static bool kasumi_sucompat_started;
 
 static int kasumi_sucompat_feature_set(u64 value);
 
@@ -63,6 +65,8 @@ static int magisk_compat_feature_set(u64 value)
 	int ret;
 
 	if (enable) {
+		if (!kasumi_is_ready())
+			return -EOPNOTSUPP;
 		ret = ksu_sucompat_prompt_set_gate(true);
 		if (ret)
 			return ret;
@@ -215,7 +219,7 @@ static int kasumi_sucompat_feature_set(u64 value)
 
 	WRITE_ONCE(ksu_su_compat_enabled, false);
 	ksu_set_sucompat_legacy_path_hooks(false);
-	pr_info("kasumi_sucompat: enabled; classic sucompat disabled\n");
+	pr_info("kasumi: sucompat: enabled; classic sucompat disabled\n");
 	return 0;
 }
 
@@ -580,37 +584,50 @@ long ksu_handle_execveat_sucompat(const char __user **filename_user,
 // sucompat: permitted process can execute 'su' to gain root access.
 void ksu_sucompat_init(void)
 {
-	int ret;
-
-	ksu_sucompat_prompt_init();
 	if (ksu_register_feature_handler(&su_compat_handler))
 		pr_err("Failed to register su_compat feature handler\n");
-	ret = ksu_sucompat_vfs_init();
-	if (ret) {
-		pr_warn("kasumi_sucompat: VFS provider unavailable: %d\n", ret);
-	} else if ((ret = ksu_sucompat_exec_init())) {
-		pr_warn("kasumi_sucompat: native exec hooks unavailable: %d\n",
-			ret);
-		ksu_sucompat_vfs_exit();
-	} else if (ksu_register_feature_handler(&kasumi_sucompat_handler)) {
-		pr_err("kasumi_sucompat: failed to register feature handler\n");
-		ksu_sucompat_exec_exit();
-		ksu_sucompat_vfs_exit();
+	if (ksu_register_feature_handler(&kasumi_sucompat_handler)) {
+		pr_err(
+		    "kasumi: sucompat: failed to register feature handler\n");
 	} else {
 		kasumi_sucompat_feature_registered = true;
 	}
 	ksu_magisk_compat_init();
 }
 
+int ksu_sucompat_ksm_init(void)
+{
+	int ret = ksu_sucompat_vfs_init();
+
+	if (ret)
+		return ret;
+	ret = ksu_sucompat_exec_init();
+	if (ret) {
+		ksu_sucompat_vfs_exit();
+		return ret;
+	}
+	ksu_sucompat_prompt_init();
+	kasumi_sucompat_started = true;
+	return 0;
+}
+
+void ksu_sucompat_ksm_exit(void)
+{
+	if (kasumi_sucompat_started) {
+		ksu_sucompat_prompt_exit();
+		ksu_sucompat_exec_exit();
+		ksu_sucompat_vfs_exit();
+		kasumi_sucompat_started = false;
+	}
+}
+
 void ksu_sucompat_exit(void)
 {
-	ksu_sucompat_prompt_exit();
+	ksu_sucompat_ksm_exit();
 	ksu_magisk_compat_exit();
 	if (kasumi_sucompat_feature_registered) {
 		ksu_unregister_feature_handler(KSU_FEATURE_KASUMI_SUCOMPAT);
 		kasumi_sucompat_feature_registered = false;
-		ksu_sucompat_vfs_exit();
-		ksu_sucompat_exec_exit();
 	}
 	ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
 }

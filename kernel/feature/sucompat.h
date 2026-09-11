@@ -10,6 +10,8 @@ bool ksu_sucompat_exec_enabled(void);
 
 void ksu_sucompat_init(void);
 void ksu_sucompat_exit(void);
+int ksu_sucompat_ksm_init(void);
+void ksu_sucompat_ksm_exit(void);
 
 // Handler functions exported for hook_manager
 long ksu_handle_faccessat_sucompat(int orig_nr, const struct pt_regs *regs);

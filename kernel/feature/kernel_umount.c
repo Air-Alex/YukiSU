@@ -1,3 +1,4 @@
+#include "infra/mount_policy.h"
 #include <linux/cred.h>
 #include <linux/compiler.h>
 #include <linux/dcache.h>
@@ -125,67 +126,6 @@ struct ksu_umount_target {
 	dev_t dev;
 	unsigned int order;
 };
-
-static bool ksu_path_has_prefix(const char *path, const char *prefix)
-{
-	size_t len = strlen(prefix);
-
-	return !strncmp(path, prefix, len) &&
-	       (path[len] == '\0' || path[len] == '/');
-}
-
-static bool ksu_path_is_child_of(const char *path, const char *parent)
-{
-	size_t len = strlen(parent);
-
-	return !strncmp(path, parent, len) && path[len] == '/';
-}
-
-static bool ksu_mount_is_module(const char *root, const char *target,
-				const char *source, const char *super)
-{
-	/* Every magic-mounted module file carries this root wherever it lands.
-	 */
-	if (ksu_path_has_prefix(root, "/adb/modules"))
-		return true;
-	/* The root solution's private dir: modules, storage tmpfs, workdirs. */
-	if (ksu_path_is_child_of(target, "/data/adb"))
-		return true;
-	/* named module / overlay sources */
-	if (!strcmp(source, "KSU") || !strcmp(source, "magisk") ||
-	    !strcmp(source, "APatch"))
-		return true;
-	/* overlay lowerdir/upperdir/workdir pointing into the module store */
-	if (super &&
-	    (strstr(super, "/adb/modules") || strstr(super, "/data/adb/")))
-		return true;
-	return false;
-}
-
-static bool ksu_mountinfo_unescape(char *value)
-{
-	char *src = value;
-	char *dst = value;
-
-	while (*src) {
-		if (src[0] == '\\' && src[1] >= '0' && src[1] <= '7' &&
-		    src[2] >= '0' && src[2] <= '7' && src[3] >= '0' &&
-		    src[3] <= '7') {
-			unsigned int decoded = ((src[1] - '0') << 6) |
-					       ((src[2] - '0') << 3) |
-					       (src[3] - '0');
-
-			if (!decoded || decoded > 0xff)
-				return false;
-			*dst++ = decoded;
-			src += 4;
-			continue;
-		}
-		*dst++ = *src++;
-	}
-	*dst = '\0';
-	return true;
-}
 
 /* Parse one mountinfo line in place (strsep NUL-terminates the fields):
  *   id parent maj:min ROOT TARGET opts [optional…] - fstype SOURCE super */
@@ -340,15 +280,27 @@ static int ksu_umount_scan_mountinfo(struct file *f, bool *signature_mismatch)
 		if (!*line)
 			continue;
 		if (!ksu_parse_mountinfo(line, &dev, &root, &target, &fstype,
-					 &source, &super) ||
-		    !ksu_mountinfo_unescape(root) ||
-		    !ksu_mountinfo_unescape(target) ||
-		    !ksu_mountinfo_unescape(source) ||
-		    (super && !ksu_mountinfo_unescape(super))) {
+					 &source, &super)) {
 			ret = -EINVAL;
 			goto out;
 		}
-		if (!ksu_mount_is_module(root, target, source, super))
+		struct ksu_mount_fields fields = {
+		    .dev = {dev, strlen(dev)},
+		    .root = {root, strlen(root)},
+		    .target = {target, strlen(target)},
+		    .fstype = {fstype, strlen(fstype)},
+		    .source = {source, strlen(source)},
+		    .super = {super, super ? strlen(super) : 0},
+		    .escaped = true,
+		};
+		bool module_mount = ksu_mount_is_module(&fields);
+		if (!ksu_mount_unescape(root) || !ksu_mount_unescape(target) ||
+		    !ksu_mount_unescape(source) ||
+		    (super && !ksu_mount_unescape(super))) {
+			ret = -EINVAL;
+			goto out;
+		}
+		if (!module_mount)
 			continue;
 		if (nt == KSU_UMOUNT_MAX_TARGETS) {
 			ret = -E2BIG;

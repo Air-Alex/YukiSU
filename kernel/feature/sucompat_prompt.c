@@ -19,6 +19,7 @@
 
 #include "feature/sucompat_prompt.h"
 #include "feature/sucompat_vfs.h"
+#include "kasumi_bootstrap.h"
 #include "policy/allowlist.h"
 #include "uapi/supercall.h"
 
@@ -280,6 +281,10 @@ int ksu_sucompat_prompt_install_fd(void)
 	int fd;
 
 	mutex_lock(&prompt_lock);
+	if (!kasumi_is_ready()) {
+		fd = -EOPNOTSUPP;
+		goto out;
+	}
 	if (prompt_consumer_active) {
 		fd = -EBUSY;
 		goto out;

@@ -1,3 +1,4 @@
+#include "infra/mount_policy.h"
 #include <asm/unistd.h>
 #include <linux/anon_inodes.h>
 #include <linux/capability.h>
@@ -458,6 +459,8 @@ void ksu_supercalls_init(void)
 
 void ksu_supercalls_exit(void)
 {
+	ksu_mount_policy_reset();
+	rcu_barrier();
 	unregister_kprobe(&reboot_kp);
 #ifdef CONFIG_KSU_SUPERKEY
 	if (prctl_hook_registered) {

@@ -57,6 +57,7 @@ int kernelsu_init(void);
 #include "feature/yukizygisk/api.h"
 #endif // #ifdef CONFIG_KSU_YUKIZYGISK
 #include "infra/file_wrapper.h"
+#include "kasumi_bootstrap.h"
 #include "hook/lsm_hook.h"
 #include "infra/symbol_resolver.h"
 #include "klog.h" // IWYU pragma: keep
@@ -237,8 +238,14 @@ int __init kernelsu_init(void)
 		ksu_allowlist_init();
 		ksu_load_allow_list();
 
-		ksu_hook_init();
+	} else {
+		ksu_allowlist_init();
+	}
 
+	ksu_kasumi_init();
+	ksu_hook_init();
+
+	if (ksu_late_loaded) {
 		ksu_throne_tracker_init();
 		ksu_observer_init();
 		ksu_file_wrapper_init();
@@ -246,8 +253,6 @@ int __init kernelsu_init(void)
 		ksu_boot_completed = true;
 		track_throne(false);
 	} else {
-		ksu_hook_init();
-		ksu_allowlist_init();
 		ksu_throne_tracker_init();
 		ksu_ksud_init();
 		ksu_file_wrapper_init();
@@ -265,6 +270,7 @@ static void kernelsu_exit(void)
 {
 	// Phase 1: Stop hooks first to prevent new callbacks
 	ksu_hook_exit();
+	ksu_kasumi_exit();
 	ksu_supercalls_exit();
 
 	if (!ksu_late_loaded)

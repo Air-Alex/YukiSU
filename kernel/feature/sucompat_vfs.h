@@ -11,13 +11,15 @@ int ksu_sucompat_vfs_init(void);
 void ksu_sucompat_vfs_exit(void);
 
 int ksu_sucompat_vfs_set_enabled(bool enabled);
+int ksu_sucompat_vfs_refresh(void);
 int ksu_sucompat_vfs_set_prompt_enabled(bool enabled);
-/* enabled() is the lookup/exec gate; active() also covers pending retirement.
- */
+/* The su gate is independent of the shared Kasumi engine's lifetime. */
 bool ksu_sucompat_vfs_enabled(void);
 bool ksu_sucompat_vfs_active(void);
 bool ksu_sucompat_vfs_prompt_enabled(void);
 bool ksu_sucompat_vfs_prompt_visible(void);
+bool ksu_sucompat_vfs_visible(void);
+int ksu_sucompat_vfs_setup_inode(struct inode *inode);
 
 bool ksu_sucompat_vfs_is_inode(const struct inode *inode);
 bool ksu_sucompat_vfs_is_path(const struct path *path);

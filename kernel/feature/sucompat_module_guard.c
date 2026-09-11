@@ -28,7 +28,8 @@ static int sucompat_module_notify(struct notifier_block *nb,
 	    !READ_ONCE(kasumi_blocked))
 		return NOTIFY_DONE;
 
-	pr_warn("sucompact: refusing kasumi_lkm while KSM owns the VFS view\n");
+	pr_warn("kasumi: sucompact: refusing kasumi_lkm while KSM owns the VFS "
+		"view\n");
 	return notifier_from_errno(-EBUSY);
 }
 
@@ -50,7 +51,8 @@ int ksu_sucompat_module_guard_acquire(void)
 	/* Include UNFORMED and GOING modules: both can still race VFS setup. */
 	list_for_each_entry (mod, loaded_modules, list) {
 		if (!strcmp(mod->name, KSU_CONFLICTING_MODULE)) {
-			pr_warn("sucompact: kasumi_lkm must be unloaded before "
+			pr_warn("kasumi: sucompact: kasumi_lkm must be "
+				"unloaded before "
 				"enabling KSM\n");
 			ret = -EBUSY;
 			goto out;

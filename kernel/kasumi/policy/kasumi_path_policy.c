@@ -1,0 +1,827 @@
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/kallsyms.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0) &&                           \
+    !defined(arch_ftrace_get_regs)
+#define arch_ftrace_get_regs(fregs) (NULL)
+#endif
+#include <linux/kprobes.h>
+#include <linux/errno.h>
+#include <linux/string.h>
+#include <linux/slab.h>
+#include <linux/vmalloc.h>
+#include <linux/jhash.h>
+#include <linux/file.h>
+#include <linux/fs.h>
+#include <linux/fdtable.h>
+#include <linux/namei.h>
+#include <linux/path.h>
+#include <linux/uaccess.h>
+#include <linux/cred.h>
+#include <linux/uidgid.h>
+#include <linux/sched/task.h>
+#include <linux/fs_struct.h>
+#include <linux/dirent.h>
+#include <linux/stat.h>
+#include <linux/time.h>
+#include <linux/anon_inodes.h>
+#include <linux/fcntl.h>
+#include <linux/percpu.h>
+#include <linux/smp.h>
+#include <linux/mount.h>
+#include <linux/xattr.h>
+#include <linux/seq_file.h>
+#include <linux/rcupdate.h>
+#include <linux/sched.h>
+#include <linux/xarray.h>
+#include <uapi/linux/magic.h>
+#ifndef EROFS_SUPER_MAGIC
+#define EROFS_SUPER_MAGIC 0xe0f5e1e2
+#endif
+#include <asm/unistd.h>
+#include "kasumi_runtime.h"
+#include "kasumi_store.h"
+#include "kasumi_path_policy.h"
+#include "kasumi_dirhijack.h"
+#include "policy/allowlist.h"
+/* ======================================================================
+ * Part 11: Core Logic - Privileged Check / Allowlist
+ * ====================================================================== */
+
+bool kasumi_is_privileged_process(void)
+{
+	return uid_eq(current_uid(), GLOBAL_ROOT_UID);
+}
+
+static enum kasumi_policy_scope kasumi_policy_scope_for_uid(uid_t uid)
+{
+	if (is_isolated_process(uid) ||
+	    (uid % PER_USER_RANGE >= 90000 &&
+	     uid % PER_USER_RANGE < FIRST_ISOLATED_UID))
+		return KASUMI_POLICY_SCOPE_SPOOF;
+	if (!is_appuid(uid))
+		return KASUMI_POLICY_SCOPE_VIEW;
+	return ksu_uid_should_umount(uid) ? KASUMI_POLICY_SCOPE_SPOOF
+					  : KASUMI_POLICY_SCOPE_VIEW;
+}
+
+enum kasumi_policy_scope kasumi_policy_current_scope(void)
+{
+	if (!smp_load_acquire(&kasumi_enabled))
+		return KASUMI_POLICY_SCOPE_NONE;
+	return kasumi_policy_scope_for_uid(__kuid_val(task_uid(current)));
+}
+
+bool kasumi_policy_current_is_view_target(void)
+{
+	return kasumi_policy_current_scope() == KASUMI_POLICY_SCOPE_VIEW;
+}
+
+bool kasumi_policy_current_is_spoof_target(void)
+{
+	return kasumi_policy_current_scope() == KASUMI_POLICY_SCOPE_SPOOF;
+}
+
+bool kasumi_policy_current_is_isolated(void)
+{
+	uid_t appid = __kuid_val(task_uid(current)) % PER_USER_RANGE;
+
+	return appid >= 90000 && appid <= LAST_ISOLATED_UID;
+}
+
+#define KASUMI_SYMLINK_LIMIT 40
+
+static bool kasumi_relative_path_safe(const char *path)
+{
+	const char *component = path;
+
+	while (component && *component) {
+		const char *slash = strchr(component, '/');
+		size_t length =
+		    slash ? (size_t)(slash - component) : strlen(component);
+
+		if ((length == 1 && component[0] == '.') ||
+		    (length == 2 && component[0] == '.' && component[1] == '.'))
+			return false;
+		component = slash ? slash + 1 : NULL;
+	}
+	return true;
+}
+
+static bool KASUMI_NOCFI kasumi_rule_get_source_flags_depth(
+    const char *pathname, unsigned int lookup_flags,
+    struct kasumi_rule_source *source, unsigned int symlink_depth);
+
+void kasumi_project_visible_stat(struct kstat *result,
+				 const struct kstat *source_stat,
+				 const struct kstat *visible_template,
+				 bool preserve_visible_metadata,
+				 unsigned long visible_ino,
+				 unsigned long visible_dev)
+{
+	if (!result || !source_stat)
+		return;
+	if (preserve_visible_metadata && visible_template) {
+		*result = *visible_template;
+		result->mode = (source_stat->mode & S_IFMT) |
+			       (visible_template->mode & ~S_IFMT);
+		result->rdev = source_stat->rdev;
+		result->size = source_stat->size;
+		result->blocks = source_stat->blocks;
+		result->blksize = source_stat->blksize;
+		result->result_mask |=
+		    source_stat->result_mask &
+		    (STATX_TYPE | STATX_MODE | STATX_SIZE | STATX_BLOCKS);
+	} else {
+		*result = *source_stat;
+	}
+	result->ino = visible_ino;
+	result->dev = visible_dev;
+}
+
+static bool kasumi_rule_refresh_exact_source(struct kasumi_rule_source *source)
+{
+	struct kstat source_stat;
+	int ret;
+
+	if (!source || !source->path.dentry || !source->path.mnt)
+		return false;
+	memset(&source_stat, 0, sizeof(source_stat));
+	ret = kasumi_vfs_getattr_unprojected(&source->path, &source_stat,
+					     STATX_BASIC_STATS | STATX_BTIME,
+					     AT_STATX_SYNC_AS_STAT);
+	if (ret) {
+		path_put(&source->path);
+		source->stat_valid = false;
+		source->error = ret;
+		return false;
+	}
+	/* The pinned path fixes object identity across rename/unlink, but
+	 * mutable inode metadata must retain ordinary VFS behaviour after rule
+	 * install. */
+	source->source_mode = source_stat.mode;
+	kasumi_project_visible_stat(&source->stat, &source_stat, &source->stat,
+				    source->preserve_visible_metadata,
+				    source->visible_ino, source->visible_dev);
+	source->stat_valid = true;
+	return true;
+}
+
+static bool kasumi_rule_source_from_path(struct path *resolved,
+					 struct kasumi_rule_source *source)
+{
+	struct inode *inode;
+	struct kstat stat;
+	int ret;
+
+	inode = resolved && resolved->dentry ? d_inode(resolved->dentry) : NULL;
+	if (!inode) {
+		path_put(resolved);
+		source->error = -ENOENT;
+		return false;
+	}
+	memset(&stat, 0, sizeof(stat));
+	ret = kasumi_vfs_getattr_unprojected(resolved, &stat,
+					     STATX_BASIC_STATS | STATX_BTIME,
+					     AT_STATX_SYNC_AS_STAT);
+	if (ret) {
+		path_put(resolved);
+		source->error = ret;
+		return false;
+	}
+	source->path = *resolved;
+	source->stat = stat;
+	source->visible_ino = kasumi_vnode_source_ino(
+	    inode->i_sb ? inode->i_sb->s_dev : 0, inode->i_ino);
+	/* Scheme A: dynamic (directory/merge) sources have no cached visible
+	 * dev. Publish the captured /system dev — a real device and the correct
+	 * one for the common /system masquerade — rather than the anonymous
+	 * vnode minor. */
+	source->visible_dev =
+	    kasumi_system_dev ? kasumi_system_dev : kasumi_vnode_device();
+	source->stat.ino = source->visible_ino;
+	source->stat.dev = source->visible_dev;
+	source->source_mode = stat.mode;
+	source->stat_valid = true;
+	source->preserve_visible_metadata = false;
+	return true;
+}
+
+static KASUMI_NOCFI int kasumi_read_link_target(const struct path *link,
+						char *target,
+						size_t target_size)
+{
+	struct delayed_call done = {};
+	const char *value;
+	size_t length;
+	int ret = 0;
+
+	if (!link || !link->dentry || !target || target_size < 2)
+		return -EOPNOTSUPP;
+	value = vfs_get_link(link->dentry, &done);
+	if (IS_ERR(value)) {
+		ret = PTR_ERR(value);
+		goto out;
+	}
+	if (!value) {
+		ret = -EIO;
+		goto out;
+	}
+	length = strnlen(value, target_size);
+	if (length >= target_size) {
+		ret = -ENAMETOOLONG;
+		goto out;
+	}
+	memcpy(target, value, length + 1);
+out:
+	do_delayed_call(&done);
+	return ret;
+}
+
+static bool KASUMI_NOCFI kasumi_follow_absolute_link(
+    const char *target, const char *remaining, unsigned int lookup_flags,
+    struct kasumi_rule_source *source, unsigned int symlink_depth)
+{
+	struct path resolved;
+	char *next;
+	size_t target_len;
+	size_t remaining_len;
+	int ret;
+
+	if (lookup_flags & LOOKUP_BENEATH) {
+		source->error = -EXDEV;
+		return false;
+	}
+	if (symlink_depth >= KASUMI_SYMLINK_LIMIT) {
+		source->error = -ELOOP;
+		return false;
+	}
+	target_len = strlen(target);
+	remaining_len = remaining ? strlen(remaining) : 0;
+	if (target_len + remaining_len + 1 > KSM_MAX_LEN_PATHNAME) {
+		source->error = -ENAMETOOLONG;
+		return false;
+	}
+	next = kmalloc(target_len + remaining_len + 1, GFP_KERNEL);
+	if (!next) {
+		source->error = -ENOMEM;
+		return false;
+	}
+	memcpy(next, target, target_len);
+	if (remaining_len) {
+		if (next[target_len - 1] == '/' && remaining[0] == '/') {
+			memcpy(next + target_len, remaining + 1, remaining_len);
+		} else {
+			memcpy(next + target_len, remaining, remaining_len + 1);
+		}
+	} else {
+		next[target_len] = '\0';
+	}
+	if (kasumi_rule_get_source_flags_depth(next, lookup_flags, source,
+					       symlink_depth + 1)) {
+		kfree(next);
+		return true;
+	}
+	if (source->error) {
+		kfree(next);
+		return false;
+	}
+	if (kasumi_should_hide(next)) {
+		source->error = -ENOENT;
+		kfree(next);
+		return false;
+	}
+	ret = kern_path(next, lookup_flags, &resolved);
+	kfree(next);
+	if (ret) {
+		source->error = ret;
+		return false;
+	}
+	return kasumi_rule_source_from_path(&resolved, source);
+}
+
+static bool KASUMI_NOCFI kasumi_directory_rule_source(
+    const char *pathname, size_t path_len, unsigned int lookup_flags,
+    struct kasumi_rule_source *source, unsigned int symlink_depth)
+{
+	struct kasumi_entry *entry;
+	struct path directory = {};
+	struct path resolved;
+	char *relative;
+	char *cursor;
+	size_t prefix_len = path_len;
+	bool pinned = false;
+	int ret;
+
+	while (prefix_len > 1) {
+		size_t slash = prefix_len;
+		u32 hash;
+
+		while (slash > 0 && pathname[slash - 1] != '/')
+			slash--;
+		if (slash <= 1)
+			break;
+		prefix_len = slash - 1;
+		if (!kasumi_relative_path_safe(pathname + prefix_len + 1))
+			return false;
+		if (!test_bit(jhash(pathname, (u32)prefix_len, 0) &
+				  (KASUMI_BLOOM_SIZE - 1),
+			      kasumi_path_bloom) ||
+		    !test_bit(jhash(pathname, (u32)prefix_len, 1) &
+				  (KASUMI_BLOOM_SIZE - 1),
+			      kasumi_path_bloom))
+			continue;
+		hash = full_name_hash(NULL, pathname, prefix_len);
+		rcu_read_lock();
+		hlist_for_each_entry_rcu(
+		    entry, &kasumi_paths[hash_min(hash, KASUMI_HASH_BITS)],
+		    node)
+		{
+			if (entry->src_hash != hash ||
+			    strlen(entry->src) != prefix_len ||
+			    memcmp(entry->src, pathname, prefix_len) != 0 ||
+			    !entry->source_path_valid ||
+			    !S_ISDIR(entry->source_mode))
+				continue;
+			directory = entry->source_path;
+			path_get(&directory);
+			pinned = true;
+			break;
+		}
+		rcu_read_unlock();
+		if (pinned)
+			break;
+	}
+	if (!pinned)
+		return false;
+	relative = kstrdup(pathname + prefix_len + 1, GFP_KERNEL);
+	if (!relative) {
+		path_put(&directory);
+		source->error = -ENOMEM;
+		return false;
+	}
+	ret = vfs_path_lookup(directory.dentry, directory.mnt, relative,
+			      lookup_flags | LOOKUP_NO_SYMLINKS, &resolved);
+	if (!ret) {
+		path_put(&directory);
+		kfree(relative);
+		return kasumi_rule_source_from_path(&resolved, source);
+	}
+	if (ret != -ELOOP || (lookup_flags & LOOKUP_NO_SYMLINKS)) {
+		source->error = ret;
+		goto out_relative;
+	}
+	{
+		cursor = relative;
+		while (*cursor) {
+			struct path probe;
+			char target[KSM_MAX_LEN_PATHNAME];
+			char *slash = strchr(cursor, '/');
+			bool final = !slash;
+			char saved = '\0';
+
+			if (slash) {
+				saved = *slash;
+				*slash = '\0';
+			}
+			ret = vfs_path_lookup(
+			    directory.dentry, directory.mnt, relative,
+			    lookup_flags &
+				~(LOOKUP_FOLLOW | LOOKUP_NO_SYMLINKS),
+			    &probe);
+			if (slash)
+				*slash = saved;
+			if (ret) {
+				source->error = ret;
+				goto out_relative;
+			}
+			if (d_is_symlink(probe.dentry)) {
+				if (lookup_flags & LOOKUP_NO_SYMLINKS) {
+					path_put(&probe);
+					source->error = -ELOOP;
+					goto out_relative;
+				}
+				if (!(final &&
+				      !(lookup_flags & LOOKUP_FOLLOW))) {
+					if (lookup_flags & LOOKUP_CACHED) {
+						path_put(&probe);
+						source->error = -EAGAIN;
+						goto out_relative;
+					}
+					ret = kasumi_read_link_target(
+					    &probe, target, sizeof(target));
+					if (ret) {
+						path_put(&probe);
+						if (lookup_flags &
+						    LOOKUP_NO_MAGICLINKS) {
+							source->error = -ELOOP;
+							goto out_relative;
+						}
+						goto lookup_full;
+					}
+					if (target[0] == '/' &&
+					    !(lookup_flags & LOOKUP_IN_ROOT)) {
+						const char *remaining =
+						    slash ? slash : "";
+
+						bool found;
+
+						path_put(&probe);
+						path_put(&directory);
+						found =
+						    kasumi_follow_absolute_link(
+							target, remaining,
+							lookup_flags, source,
+							symlink_depth);
+						kfree(relative);
+						return found;
+					}
+				}
+			}
+			path_put(&probe);
+			if (!slash)
+				break;
+			cursor = slash + 1;
+		}
+	}
+lookup_full:
+	ret = vfs_path_lookup(directory.dentry, directory.mnt, relative,
+			      lookup_flags, &resolved);
+	if (ret) {
+		source->error = ret;
+		goto out_relative;
+	}
+	path_put(&directory);
+	kfree(relative);
+	return kasumi_rule_source_from_path(&resolved, source);
+
+out_relative:
+	path_put(&directory);
+	kfree(relative);
+	return false;
+}
+
+static bool KASUMI_NOCFI kasumi_rule_get_source_flags_depth(
+    const char *pathname, unsigned int lookup_flags,
+    struct kasumi_rule_source *source, unsigned int symlink_depth)
+{
+	struct kasumi_entry *entry;
+	struct path exact_link = {};
+	size_t path_len;
+	u32 hash;
+	pid_t pid;
+	bool found = false;
+	bool followed_exact_link = false;
+
+	if (unlikely(!kasumi_enabled || !pathname || !source ||
+		     !kasumi_policy_current_is_view_target()))
+		return false;
+	pid = task_tgid_vnr(current);
+	if (atomic_long_read(&kasumi_ioctl_tgid) > 0 &&
+	    pid == atomic_long_read(&kasumi_ioctl_tgid))
+		return false;
+	if (atomic_read(&kasumi_rule_count) == 0)
+		return false;
+	if (symlink_depth >= KASUMI_SYMLINK_LIMIT) {
+		source->error = -ELOOP;
+		return false;
+	}
+
+	path_len = strlen(pathname);
+	if (test_bit(jhash(pathname, (u32)path_len, 0) &
+			 (KASUMI_BLOOM_SIZE - 1),
+		     kasumi_path_bloom) &&
+	    test_bit(jhash(pathname, (u32)path_len, 1) &
+			 (KASUMI_BLOOM_SIZE - 1),
+		     kasumi_path_bloom)) {
+		hash = full_name_hash(NULL, pathname, path_len);
+		rcu_read_lock();
+		hlist_for_each_entry_rcu(
+		    entry, &kasumi_paths[hash_min(hash, KASUMI_HASH_BITS)],
+		    node)
+		{
+			if (entry->src_hash != hash ||
+			    strcmp(entry->src, pathname) != 0)
+				continue;
+			if (entry->source_path_valid &&
+			    entry->source_path.dentry &&
+			    entry->source_path.mnt) {
+				if (!(lookup_flags & LOOKUP_FOLLOW) &&
+				    entry->source_nofollow_path_valid) {
+					source->path =
+					    entry->source_nofollow_path;
+					source->stat =
+					    entry->source_nofollow_stat;
+					source->source_mode =
+					    entry->source_nofollow_mode;
+					source->visible_ino =
+					    entry->nofollow_visible_ino;
+					source->visible_dev =
+					    entry->nofollow_visible_dev;
+					source->stat_valid =
+					    entry->source_nofollow_stat_valid;
+					source->preserve_visible_metadata =
+					    false;
+				} else {
+					if ((lookup_flags &
+					     LOOKUP_NO_SYMLINKS) &&
+					    entry->source_nofollow_path_valid) {
+						source->error = -ELOOP;
+						break;
+					}
+					source->path = entry->source_path;
+					source->stat = entry->visible_stat;
+					source->source_mode =
+					    entry->source_mode;
+					source->visible_ino =
+					    entry->visible_ino;
+					source->visible_dev =
+					    entry->visible_dev;
+					source->stat_valid =
+					    entry->visible_stat_valid;
+					source->preserve_visible_metadata =
+					    entry->preserve_visible_metadata;
+					if (entry->source_nofollow_path_valid) {
+						exact_link =
+						    entry->source_nofollow_path;
+						path_get(&exact_link);
+						followed_exact_link = true;
+					}
+				}
+				path_get(&source->path);
+				found = true;
+			}
+			break;
+		}
+		rcu_read_unlock();
+	}
+	if (found && !kasumi_rule_refresh_exact_source(source)) {
+		if (followed_exact_link)
+			path_put(&exact_link);
+		return false;
+	}
+	if (found && followed_exact_link) {
+		char target[KSM_MAX_LEN_PATHNAME];
+		int ret = kasumi_read_link_target(&exact_link, target,
+						  sizeof(target));
+
+		path_put(&exact_link);
+		if (ret) {
+			if (lookup_flags & LOOKUP_NO_MAGICLINKS) {
+				path_put(&source->path);
+				source->error = -ELOOP;
+				return false;
+			}
+			return true;
+		}
+		if (target[0] == '/' && !(lookup_flags & LOOKUP_IN_ROOT)) {
+			struct kasumi_rule_source redirected = {};
+
+			if (kasumi_follow_absolute_link(
+				target, "", lookup_flags, &redirected,
+				symlink_depth)) {
+				path_put(&source->path);
+				*source = redirected;
+				return true;
+			}
+			if (redirected.error) {
+				path_put(&source->path);
+				source->error = redirected.error;
+				return false;
+			}
+		}
+	}
+	if (found || source->error)
+		return found;
+	return kasumi_directory_rule_source(pathname, path_len, lookup_flags,
+					    source, symlink_depth);
+}
+
+bool KASUMI_NOCFI
+kasumi_rule_get_source_flags(const char *pathname, unsigned int lookup_flags,
+			     struct kasumi_rule_source *source)
+{
+	if (source) {
+		source->error = 0;
+		source->preserve_visible_metadata = false;
+	}
+	return kasumi_rule_get_source_flags_depth(pathname, lookup_flags,
+						  source, 0);
+}
+
+/* ---- Slice 4c-v2: pure-virtual directory topology rule-table queries ----- */
+
+int KASUMI_NOCFI kasumi_rule_vpath_child(const char *dir, const char *child,
+					 struct path *leaf_src,
+					 umode_t *leaf_mode,
+					 unsigned long *leaf_ino)
+{
+	struct kasumi_entry *entry;
+	char *full;
+	size_t dlen, clen, full_len;
+	int kind = KASUMI_VPATH_NONE;
+	int bkt;
+
+	if (!dir || !child || !*child)
+		return KASUMI_VPATH_NONE;
+	dlen = strlen(dir);
+	clen = strlen(child);
+	full = kmalloc(dlen + 1 + clen + 1, GFP_KERNEL);
+	if (!full)
+		return KASUMI_VPATH_NONE;
+	memcpy(full, dir, dlen);
+	full[dlen] = '/';
+	memcpy(full + dlen + 1, child, clen);
+	full[dlen + 1 + clen] = '\0';
+	full_len = dlen + 1 + clen;
+
+	rcu_read_lock();
+	/* Exact rule at dir/child -> a leaf redirect. */
+	hash_for_each_rcu(kasumi_paths, bkt, entry, node)
+	{
+		if (!entry->src || !entry->source_path_valid ||
+		    strcmp(entry->src, full) != 0)
+			continue;
+		if (entry->source_nofollow_path_valid) {
+			if (leaf_src) {
+				*leaf_src = entry->source_nofollow_path;
+				path_get(leaf_src);
+			}
+			if (leaf_mode)
+				*leaf_mode = entry->source_nofollow_mode;
+			if (leaf_ino)
+				*leaf_ino = entry->nofollow_visible_ino;
+		} else {
+			if (leaf_src) {
+				*leaf_src = entry->source_path;
+				path_get(leaf_src);
+			}
+			if (leaf_mode)
+				*leaf_mode = entry->source_mode;
+			if (leaf_ino)
+				*leaf_ino = entry->visible_ino;
+		}
+		kind = KASUMI_VPATH_LEAF;
+		break;
+	}
+	/* Otherwise, a prefix of some rule -> a deeper virtual directory. */
+	if (kind == KASUMI_VPATH_NONE) {
+		hash_for_each_rcu(kasumi_paths, bkt, entry, node)
+		{
+			if (!entry->src)
+				continue;
+			if (strncmp(entry->src, full, full_len) == 0 &&
+			    entry->src[full_len] == '/') {
+				kind = KASUMI_VPATH_VDIR;
+				break;
+			}
+		}
+	}
+	rcu_read_unlock();
+	kfree(full);
+	return kind;
+}
+
+int KASUMI_NOCFI kasumi_rule_vpath_emit(const char *dir, struct list_head *out)
+{
+	struct kasumi_entry *entry;
+	size_t dlen;
+	int count = 0;
+	int bkt;
+
+	if (!dir || !out)
+		return 0;
+	dlen = strlen(dir);
+
+	rcu_read_lock();
+	hash_for_each_rcu(kasumi_paths, bkt, entry, node)
+	{
+		const char *rest;
+		const char *slash;
+		size_t seg_len;
+		bool is_leaf;
+		bool dup = false;
+		struct kasumi_name_list *item, *ex;
+		umode_t m;
+
+		if (!entry->src)
+			continue;
+		if (strncmp(entry->src, dir, dlen) != 0 ||
+		    entry->src[dlen] != '/')
+			continue;
+		rest = entry->src + dlen + 1;
+		if (!*rest)
+			continue;
+		slash = strchr(rest, '/');
+		seg_len = slash ? (size_t)(slash - rest) : strlen(rest);
+		if (!seg_len)
+			continue;
+		is_leaf = (slash == NULL);
+		list_for_each_entry (ex, out, list) {
+			if (strlen(ex->name) == seg_len &&
+			    memcmp(ex->name, rest, seg_len) == 0) {
+				dup = true;
+				break;
+			}
+		}
+		if (dup)
+			continue;
+		item = kmalloc(sizeof(*item), GFP_ATOMIC);
+		if (!item)
+			continue;
+		item->name = kmalloc(seg_len + 1, GFP_ATOMIC);
+		if (!item->name) {
+			kfree(item);
+			continue;
+		}
+		memcpy(item->name, rest, seg_len);
+		item->name[seg_len] = '\0';
+		if (is_leaf) {
+			m = entry->source_nofollow_path_valid
+				? entry->source_nofollow_mode
+				: entry->source_mode;
+			item->type = (unsigned char)((m & S_IFMT) >> 12);
+			item->ino = entry->source_nofollow_path_valid
+					? entry->nofollow_visible_ino
+					: entry->visible_ino;
+		} else {
+			char *vpath =
+			    kmalloc(dlen + 1 + seg_len + 1, GFP_ATOMIC);
+
+			item->type = DT_DIR;
+			if (vpath) {
+				memcpy(vpath, dir, dlen);
+				vpath[dlen] = '/';
+				memcpy(vpath + dlen + 1, rest, seg_len);
+				vpath[dlen + 1 + seg_len] = '\0';
+				item->ino = kasumi_vnode_vpath_ino(vpath);
+				kfree(vpath);
+			} else {
+				item->ino = 0;
+			}
+		}
+		list_add_tail(&item->list, out);
+		count++;
+	}
+	rcu_read_unlock();
+	return count;
+}
+
+/* ======================================================================
+ * Part 14: Hide Logic
+ * ====================================================================== */
+
+static bool kasumi_hide_rule_matches(const char *pathname)
+{
+	struct kasumi_hide_entry *he;
+	u32 hash;
+	size_t len;
+
+	if (!pathname || !*pathname)
+		return false;
+	if (atomic_read(&kasumi_hide_count) == 0)
+		return false;
+
+	len = strlen(pathname);
+	{
+		unsigned long bh1 =
+		    jhash(pathname, (u32)len, 0) & (KASUMI_BLOOM_SIZE - 1);
+		unsigned long bh2 =
+		    jhash(pathname, (u32)len, 1) & (KASUMI_BLOOM_SIZE - 1);
+
+		if (!test_bit(bh1, kasumi_hide_bloom) ||
+		    !test_bit(bh2, kasumi_hide_bloom))
+			return false;
+	}
+
+	hash = full_name_hash(NULL, pathname, len);
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(
+	    he, &kasumi_hide_paths[hash_min(hash, KASUMI_HASH_BITS)], node)
+	{
+		if (he->path_hash == hash && strcmp(he->path, pathname) == 0) {
+			rcu_read_unlock();
+			return true;
+		}
+	}
+	rcu_read_unlock();
+	return false;
+}
+
+bool kasumi_should_hide(const char *pathname)
+{
+	pid_t pid;
+
+	if (unlikely(!kasumi_enabled || !pathname || !*pathname))
+		return false;
+	pid = task_tgid_vnr(current);
+	if (atomic_long_read(&kasumi_ioctl_tgid) > 0 &&
+	    pid == atomic_long_read(&kasumi_ioctl_tgid))
+		return false;
+	if (unlikely(kasumi_is_privileged_process()))
+		return false;
+	if (!kasumi_policy_current_is_view_target())
+		return false;
+	return kasumi_hide_rule_matches(pathname);
+}

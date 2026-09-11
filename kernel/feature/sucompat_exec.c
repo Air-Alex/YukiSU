@@ -361,7 +361,7 @@ static void __nocfi ksu_su_bprm_committing_creds(ksu_su_commit_bprm_t *bprm)
 	}
 	fd = ksu_install_su_fd();
 	if (fd < 0) {
-		pr_err("kasumi_sucompat: install su session fd failed: %d\n",
+		pr_err("kasumi: sucompat: install su session fd failed: %d\n",
 		       fd);
 		ksu_su_exec_emit_log(ctx, fd);
 		force_sig(SIGKILL);
@@ -369,7 +369,7 @@ static void __nocfi ksu_su_bprm_committing_creds(ksu_su_commit_bprm_t *bprm)
 	}
 	ctx->stage = KSU_SU_EXEC_COMMITTED;
 	ksu_su_exec_emit_log(ctx, 0);
-	pr_info("kasumi_sucompat: native exec uid=%u fd=%d\n", ctx->uid, fd);
+	pr_info("kasumi: sucompat: native exec uid=%u fd=%d\n", ctx->uid, fd);
 }
 
 bool ksu_sucompat_exec_ready(void)
@@ -434,7 +434,7 @@ int ksu_sucompat_exec_init(void)
 		return ret;
 	}
 	WRITE_ONCE(ksu_su_exec_hooks_ready, true);
-	pr_info("kasumi_sucompat: native exec LSM hooks ready\n");
+	pr_info("kasumi: sucompat: native exec LSM hooks ready\n");
 	return 0;
 }
 

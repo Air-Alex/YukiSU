@@ -1,3 +1,6 @@
+#include <linux/rculist.h>
+#include "infra/mount_policy.h"
+#include "kasumi_entrypoints.h"
 #include <asm/unistd.h>
 #include <linux/anon_inodes.h>
 #include <linux/capability.h>
@@ -744,20 +747,9 @@ static int add_try_umount(void __user *arg)
 		return -EFAULT;
 
 	switch (cmd.mode) {
-	case KSU_UMOUNT_WIPE: {
-		struct mount_entry *entry, *tmp;
-		down_write(&mount_list_lock);
-		list_for_each_entry_safe (entry, tmp, &mount_list, list) {
-			pr_info("wipe_umount_list: removing entry: %s\n",
-				entry->umountable);
-			list_del(&entry->list);
-			kfree(entry->umountable);
-			kfree(entry);
-		}
-		up_write(&mount_list_lock);
-
+	case KSU_UMOUNT_WIPE:
+		ksu_mount_policy_reset();
 		return 0;
-	}
 
 	case KSU_UMOUNT_ADD: {
 		/* Hardening: validate userspace pointer before copy */
@@ -781,20 +773,27 @@ static int add_try_umount(void __user *arg)
 			return -1;
 		}
 
+		ksu_capture_mount_identity(new_entry);
 		down_write(&mount_list_lock);
+		ksu_mount_policy_begin_update();
 
-		// disallow dupes
-		// if this gets too many, we can consider moving this whole task
-		// to a kthread
+		// Refresh identity when the same mountpoint is registered
+		// again.
 		list_for_each_entry (entry, &mount_list, list) {
 			if (!strcmp(entry->umountable, buf)) {
-				pr_info(
-				    "cmd_add_try_umount: %s is already here!\n",
-				    buf);
+				if (new_entry->mount_root &&
+				    new_entry->mount_fstype) {
+					new_entry->flags = entry->flags;
+					list_replace_rcu(&entry->list,
+							 &new_entry->list);
+					ksu_retire_mount_entry(entry);
+					new_entry = NULL;
+				}
+				ksu_mount_policy_changed();
 				up_write(&mount_list_lock);
-				kfree(new_entry->umountable);
-				kfree(new_entry);
-				return -1;
+				if (new_entry)
+					ksu_free_mount_entry(new_entry);
+				return 0;
 			}
 		}
 
@@ -806,7 +805,8 @@ static int add_try_umount(void __user *arg)
 			new_entry->flags = 0;
 
 		// debug
-		list_add(&new_entry->list, &mount_list);
+		list_add_rcu(&new_entry->list, &mount_list);
+		ksu_mount_policy_changed();
 		up_write(&mount_list_lock);
 		pr_info("cmd_add_try_umount: %s added!\n", buf);
 
@@ -827,16 +827,17 @@ static int add_try_umount(void __user *arg)
 		buf[sizeof(buf) - 1] = '\0';
 
 		down_write(&mount_list_lock);
+		ksu_mount_policy_begin_update();
 		list_for_each_entry_safe (entry, tmp, &mount_list, list) {
 			if (!strcmp(entry->umountable, buf)) {
 				pr_info(
 				    "cmd_add_try_umount: entry removed: %s\n",
 				    entry->umountable);
-				list_del(&entry->list);
-				kfree(entry->umountable);
-				kfree(entry);
+				list_del_rcu(&entry->list);
+				ksu_retire_mount_entry(entry);
 			}
 		}
+		ksu_mount_policy_changed();
 		up_write(&mount_list_lock);
 
 		return 0;
@@ -1687,6 +1688,16 @@ long ksu_supercall_handle_ioctl(const struct file *filp, unsigned int cmd,
 #ifdef CONFIG_KSU_DEBUG
 	pr_info("ksu ioctl: cmd=0x%x from uid=%d\n", cmd, current_uid().val);
 #endif // #ifdef CONFIG_KSU_DEBUG
+
+	if (_IOC_TYPE(cmd) == KSM_IOC_MAGIC) {
+		if (!manager_or_root())
+			return -EPERM;
+#ifdef CONFIG_COMPAT
+		if (in_compat_syscall())
+			return -EOPNOTSUPP;
+#endif
+		return kasumi_handle_ioctl(cmd, argp);
+	}
 
 	for (i = 0; ksu_ioctl_handlers[i].handler; i++) {
 		if (cmd == ksu_ioctl_handlers[i].cmd) {
