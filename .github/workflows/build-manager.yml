@@ -12,6 +12,8 @@ on:
       - '.github/workflows/ksuinit.yml'
       - '.github/workflows/yukizygisk.yml'
       - 'repack_apk.py'
+      - '.clang-tidy'
+      - 'cmake/ClangTidy.cmake'
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
@@ -25,6 +27,8 @@ on:
       - '.github/workflows/ksuinit.yml'
       - '.github/workflows/yukizygisk.yml'
       - 'repack_apk.py'
+      - '.clang-tidy'
+      - 'cmake/ClangTidy.cmake'
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
@@ -150,7 +154,7 @@ jobs:
 
       - name: Build with Gradle
         if: ${{ steps.determine.outputs.SKIP != 'true' }}
-        run: ./gradlew assembleRelease --build-cache --no-daemon -PABI=arm64-v8a
+        run: ./gradlew lintDebug lintRelease assembleRelease --build-cache --no-daemon -PABI=arm64-v8a
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7

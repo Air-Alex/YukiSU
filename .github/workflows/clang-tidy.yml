@@ -9,6 +9,8 @@ on:
       - 'cmake/ClangTidy.cmake'
       - 'userspace/zygisk/.clang-tidy'
       - 'userspace/ksud/CMakeLists.txt'
+      - 'userspace/ksud/kagami/**'
+      - 'userspace/common/**'
       - 'userspace/ksuinit/CMakeLists.txt'
       - 'userspace/zygisk/core/CMakeLists.txt'
       - 'userspace/ksud/src/**/*.c'
@@ -44,6 +46,8 @@ on:
       - 'cmake/ClangTidy.cmake'
       - 'userspace/zygisk/.clang-tidy'
       - 'userspace/ksud/CMakeLists.txt'
+      - 'userspace/ksud/kagami/**'
+      - 'userspace/common/**'
       - 'userspace/ksuinit/CMakeLists.txt'
       - 'userspace/zygisk/core/CMakeLists.txt'
       - 'userspace/ksud/src/**/*.c'
@@ -88,7 +92,7 @@ jobs:
         include:
           - name: ksud
             source: userspace/ksud
-            targets: ksud_our_objs
+            targets: ksud_our_objs ksud_kagami_objs
           - name: ksuinit
             source: userspace/ksuinit
             targets: ksuinit
