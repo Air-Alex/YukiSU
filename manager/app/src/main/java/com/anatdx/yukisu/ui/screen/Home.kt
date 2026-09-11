@@ -59,6 +59,7 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.InstallScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.YukiZygiskScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.KasumiConfigScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.KernelVersion
 import com.anatdx.yukisu.Natives
@@ -546,6 +547,9 @@ private fun TopBar(
         ),
         actions = {
             if (isDataLoaded) {
+                IconButton(onClick = { navigator.navigate(KasumiConfigScreenDestination) }) {
+                    Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.kasumi_title))
+                }
                 var showDropdown by remember { mutableStateOf(false) }
                 KsuIsValid {
                     IconButton(onClick = {

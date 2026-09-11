@@ -142,6 +142,9 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
     var requestedSuCompact by remember { mutableStateOf<SuCompactMode?>(null) }
     val suCompactSupported = remember { getFeatureStatus(Natives.FEATURE_SU_COMPAT) == "supported" }
     val ksmSupported = remember { getFeatureStatus(Natives.FEATURE_KASUMI_SUCOMPAT) == "supported" }
+    val kasumi = rememberFeatureToggleState(Natives.FEATURE_KASUMI)
+    val kasumiSupported = remember { getFeatureValueOrNull(Natives.FEATURE_KASUMI) != null }
+    var kasumiInitialized by remember { mutableStateOf(Natives.kasumiIsInitialized()) }
     val kernelUmountDisabled = rememberFeatureToggleState(
         Natives.FEATURE_KERNEL_UMOUNT,
         displayInverted = true
@@ -164,7 +167,7 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
     val yukiZygiskFailedMessage = stringResource(R.string.settings_yukizygisk_toast_failed)
 
     fun updateSuCompact(mode: SuCompactMode? = null, magisk: Boolean? = null) {
-        if (magiskCompat.saving) return
+        if (magiskCompat.saving || kasumi.saving) return
         magiskCompat.saving = true
         requestedSuCompact = mode
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -324,10 +327,34 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
                         }
                     )
 
+                    FeatureSwitchItem(
+                        featureId = Natives.FEATURE_KASUMI,
+                        icon = Icons.Filled.Layers,
+                        title = stringResource(R.string.kasumi_feature_title),
+                        summary = stringResource(R.string.kasumi_feature_summary),
+                        state = kasumi,
+                        enabled = !magiskCompat.saving,
+                        onChange = { enabled ->
+                            scope.persistFeature(
+                                state = kasumi,
+                                featureId = Natives.FEATURE_KASUMI,
+                                featureName = "kasumi",
+                                kernelEnabled = enabled,
+                                relatedStates = listOf(magiskCompat),
+                                onRuntimeSettled = {
+                                    kasumiInitialized = Natives.kasumiIsInitialized()
+                                    suCompact = suCompactController.read()
+                                    magiskCompat.checked = suCompact.magisk
+                                },
+                                onFailure = { snackbarHost.showSnackbar(failedMessage) },
+                            )
+                        },
+                    )
+
                     SuCompactSelector(
                         selected = requestedSuCompact ?: suCompact.mode,
-                        enabled = suCompactSupported && !magiskCompat.saving,
-                        ksmSupported = ksmSupported,
+                        enabled = suCompactSupported && !magiskCompat.saving && !kasumi.saving,
+                        ksmSupported = ksmSupported && (!kasumiSupported || kasumiInitialized),
                         onSelect = { mode ->
                             if (mode != suCompact.mode) updateSuCompact(mode = mode)
                         },
@@ -339,7 +366,8 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
                         title = stringResource(R.string.su_compact_magisk_title),
                         summary = stringResource(R.string.su_compact_magisk_summary),
                         state = magiskCompat,
-                        enabled = suCompact.mode == SuCompactMode.KSM,
+                        enabled = suCompact.mode == SuCompactMode.KSM && !kasumi.saving &&
+                            (!kasumiSupported || kasumiInitialized),
                         onChange = { enabled -> updateSuCompact(magisk = enabled) },
                     )
 

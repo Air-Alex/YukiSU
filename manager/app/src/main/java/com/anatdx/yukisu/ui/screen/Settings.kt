@@ -42,6 +42,7 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.AppProfileTemplateScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FlashScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FeatureControlScreenDestination
+import com.anatdx.yukisu.ui.kasumi.util.KasumiManager
 import com.ramcosta.composedestinations.generated.destinations.LogViewerScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UmountManagerScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UtsViewScreenDestination
@@ -187,6 +188,39 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
+                        var builtinMountEnabled by remember { mutableStateOf<Boolean?>(null) }
+                        var builtinSaving by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            try { builtinMountEnabled = KasumiManager.isBuiltinMountEnabled() }
+                            catch (error: Exception) {
+                                if (error is CancellationException) throw error
+                            }
+                        }
+                        SwitchItem(
+                            icon = Icons.Filled.Storage,
+                            title = stringResource(R.string.kasumi_builtin_mount),
+                            summary = stringResource(R.string.kasumi_builtin_mount_desc),
+                            checked = builtinMountEnabled == true,
+                            enabled = builtinMountEnabled != null && !builtinSaving,
+                            onCheckedChange = { enable ->
+                                if (!builtinSaving) {
+                                    builtinSaving = true
+                                    scope.launch {
+                                        try {
+                                            KasumiManager.setBuiltinMountEnabled(enable)
+                                            builtinMountEnabled = enable
+                                            snackBarHost.showSnackbar(resources.getString(
+                                                if (enable) R.string.kasumi_toast_builtin_enabled else R.string.kasumi_toast_builtin_disabled
+                                            ))
+                                        } catch (error: Exception) {
+                                            if (error is CancellationException) throw error
+                                            snackBarHost.showSnackbar(resources.getString(R.string.kasumi_toast_builtin_failed))
+                                        } finally { builtinSaving = false }
+                                    }
+                                }
+                            }
+                        )
+
                         var skipStoreSuperKey by remember {
                             mutableStateOf(SuperKeyHelper.shouldSkipStorage(context))
                         }
@@ -265,13 +299,13 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                         SettingItem(
                             icon = Icons.Filled.Language,
                             title = stringResource(R.string.settings_uts_view),
+                            groupPosition = SettingsItemPosition.Last,
                             summary = if (utsViewSupported == false) {
                                 stringResource(R.string.feature_status_unsupported_summary)
                             } else {
                                 stringResource(R.string.settings_uts_view_summary)
                             },
                             enabled = utsViewSupported == true,
-                            groupPosition = SettingsItemPosition.Last,
                             onClick = {
                                 if (utsViewSupported == true) {
                                     navigator.navigate(UtsViewScreenDestination)

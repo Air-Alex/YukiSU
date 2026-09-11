@@ -75,6 +75,11 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.ExecuteModuleActionScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FlashScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.ModuleRepositoryScreenDestination
+import com.anatdx.yukisu.ui.kasumi.KasumiMountConfigDialog
+import com.anatdx.yukisu.ui.kasumi.KASUMI_MODE_COLORS
+import com.anatdx.yukisu.ui.kasumi.ConfigChoice
+import com.anatdx.yukisu.ui.kasumi.util.KasumiManager
+import kotlinx.coroutines.CancellationException
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.navigation.EmptyDestinationsNavigator
 import com.anatdx.yukisu.BuildConfig
@@ -148,6 +153,54 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
     var selectedShortcutType by rememberSaveable { mutableStateOf<ShortcutType?>(null) }
     var showShortcutDialog by remember { mutableStateOf(false) }
     var showShortcutTypeDialog by remember { mutableStateOf(false) }
+    var mountState by remember { mutableStateOf<KasumiManager.MountState?>(null) }
+    var mountDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var mountRefresh by remember { mutableIntStateOf(0) }
+    var mountFilter by rememberSaveable { mutableStateOf("all") }
+    var mountConflicts by remember { mutableStateOf<List<KasumiManager.MountConflict>?>(null) }
+    var checkingConflicts by remember { mutableStateOf(false) }
+    val mountRevision by KasumiManager.revision.collectAsState()
+    LaunchedEffect(mountRefresh, mountRevision, viewModel.moduleList) {
+        try { mountState = KasumiManager.getMountState() }
+        catch (e: Exception) {
+            if (e is CancellationException) throw e
+            mountState = null
+            Log.w("ModuleScreen", "Kagami mount controls unavailable", e)
+        }
+    }
+    mountDialog?.let { (id, name) ->
+        val state = mountState
+        if (state != null) KasumiMountConfigDialog(
+            moduleId = id,
+            moduleName = name,
+            initialInfo = state.modules[id],
+            kasumiAvailable = state.available,
+            globalMode = state.globalMode,
+            onDismiss = { mountDialog = null },
+            onSaved = {
+                mountDialog = null
+                mountRefresh++
+            },
+        )
+    }
+    mountConflicts?.let { conflicts ->
+        YukiAlertDialog(
+            onDismissRequest = { mountConflicts = null },
+            title = { Text(stringResource(R.string.kasumi_check_conflicts)) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (conflicts.isEmpty()) Text(stringResource(R.string.kasumi_no_conflicts))
+                    conflicts.forEach { conflict ->
+                        Text(conflict.path, style = MaterialTheme.typography.bodyMedium)
+                        Text(conflict.modules.joinToString(", "), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { mountConflicts = null }) { Text(stringResource(android.R.string.ok)) } },
+        )
+    }
     val selectZipLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
@@ -430,6 +483,10 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                     navigator = navigator,
                     viewModel = viewModel,
                     listState = listState,
+                    mountState = mountState,
+                    mountFilter = mountFilter,
+                    onMountConfig = { id, name -> mountDialog = id to name },
+                    onRefreshMounts = { mountRefresh++ },
                     modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                     boxModifier = Modifier.padding(innerPadding),
                     onInstallModule = {
@@ -524,6 +581,25 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
                     prefs = prefs,
                     scope = scope,
                     bottomSheetState = bottomSheetState,
+                    mountState = mountState,
+                    mountFilter = mountFilter,
+                    onMountFilter = { mountFilter = it },
+                    checkingConflicts = checkingConflicts,
+                    onCheckConflicts = {
+                        if (!checkingConflicts) {
+                            checkingConflicts = true
+                            scope.launch {
+                                try {
+                                    bottomSheetState.hide()
+                                    showBottomSheet = false
+                                    mountConflicts = KasumiManager.checkConflicts()
+                                } catch (error: Exception) {
+                                    if (error is CancellationException) throw error
+                                    snackBarHost.showSnackbar(error.message ?: resources.getString(R.string.operation_failed))
+                                } finally { checkingConflicts = false }
+                            }
+                        }
+                    },
                     onDismiss = { showBottomSheet = false }
                 )
             }
@@ -720,14 +796,19 @@ private fun ModuleBottomSheetContent(
     prefs: android.content.SharedPreferences,
     scope: kotlinx.coroutines.CoroutineScope,
     bottomSheetState: SheetState,
+    mountState: KasumiManager.MountState?,
+    mountFilter: String,
+    onMountFilter: (String) -> Unit,
+    checkingConflicts: Boolean,
+    onCheckConflicts: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(bottom = 24.dp)
     ) {
-        // 排序选项
         Text(
             text = stringResource(R.string.sort_options),
             style = MaterialTheme.typography.titleMedium,
@@ -739,7 +820,6 @@ private fun ModuleBottomSheetContent(
             modifier = Modifier.padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 优先显示有操作的模块
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -765,7 +845,6 @@ private fun ModuleBottomSheetContent(
                 )
             }
 
-            // 优先显示已启用的模块
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -790,6 +869,15 @@ private fun ModuleBottomSheetContent(
                     }
                 )
             }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            ConfigChoice(stringResource(R.string.kasumi_mount_filter), mountFilter,
+                listOf("all", "auto", "kasumi", "overlay", "magic", "none", "kasumi-active"),
+                mountState != null) { value ->
+                onMountFilter(value)
+                scope.launch { bottomSheetState.hide(); onDismiss() }
+            }
+            OutlinedButton(onClick = onCheckConflicts, enabled = mountState != null && !checkingConflicts,
+                modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.kasumi_check_conflicts)) }
         }
     }
 }
@@ -800,6 +888,10 @@ private fun ModuleList(
     navigator: DestinationsNavigator,
     viewModel: ModuleViewModel,
     listState: LazyListState,
+    mountState: KasumiManager.MountState?,
+    mountFilter: String,
+    onMountConfig: (String, String) -> Unit,
+    onRefreshMounts: () -> Unit,
     modifier: Modifier = Modifier,
     boxModifier: Modifier = Modifier,
     onInstallModule: (Uri) -> Unit,
@@ -966,9 +1058,17 @@ private fun ModuleList(
         modifier = boxModifier,
         onRefresh = {
             viewModel.fetchModuleList()
+            onRefreshMounts()
         },
         isRefreshing = viewModel.isRefreshing
     ) {
+        val visibleModules = viewModel.moduleList.filter { module ->
+            when (mountFilter) {
+                "all" -> true
+                "kasumi-active" -> mountState?.activeKasumiIds?.contains(module.dirId) == true
+                else -> mountState?.modules?.get(module.dirId)?.mode == mountFilter
+            }
+        }
         LazyColumn(
             state = listState,
             modifier = modifier,
@@ -983,7 +1083,7 @@ private fun ModuleList(
             },
         ) {
             when {
-                viewModel.moduleList.isEmpty() -> {
+                visibleModules.isEmpty() -> {
                     item {
                         Box(
                             modifier = Modifier.fillParentMaxSize(),
@@ -1013,7 +1113,7 @@ private fun ModuleList(
 
                 else -> {
                     items(
-                        items = viewModel.moduleList,
+                        items = visibleModules,
                         key = { it.dirId }
                     ) { module ->
                         val scope = rememberCoroutineScope()
@@ -1027,6 +1127,9 @@ private fun ModuleList(
                             navigator = navigator,
                             module = module,
                             updateUrl = updatedModule.first,
+                            mountInfo = mountState?.modules?.get(module.dirId),
+                            mountConfigEnabled = mountState?.externalOwner?.isEmpty() == true && mountState.builtinEnabled,
+                            onMountConfig = { onMountConfig(module.dirId, module.name) },
                             onUninstallClicked = {
                                 scope.launch { onModuleUninstallClicked(module) }
                             },
@@ -1098,6 +1201,9 @@ fun ModuleItem(
     navigator: DestinationsNavigator,
     module: ModuleViewModel.ModuleInfo,
     updateUrl: String,
+    mountInfo: KasumiManager.ModuleInfo? = null,
+    mountConfigEnabled: Boolean = false,
+    onMountConfig: () -> Unit = {},
     onUninstallClicked: (ModuleViewModel.ModuleInfo) -> Unit,
     onCheckChanged: suspend (Boolean) -> Boolean,
     onUpdate: (ModuleViewModel.ModuleInfo) -> Unit,
@@ -1357,6 +1463,28 @@ fun ModuleItem(
                             maxLines = 1
                         )
                     }
+                    if (mountInfo != null && mountConfigEnabled && !module.metamodule) {
+                        val strategy = if (mountInfo.mode == "none") "none" else mountInfo.strategy
+                        val strategyLabel = stringResource(when (strategy) {
+                            "kasumi" -> R.string.kasumi_mount_mode_kasumi
+                            "overlay" -> R.string.kasumi_mount_mode_overlay
+                            "magic" -> R.string.kasumi_strategy_magic_mount
+                            else -> R.string.kasumi_strategy_not_mounted
+                        })
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = KASUMI_MODE_COLORS[strategy] ?: MaterialTheme.colorScheme.primary,
+                        ) {
+                            Text(
+                                text = strategyLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1370,6 +1498,16 @@ fun ModuleItem(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (mountInfo != null && mountConfigEnabled && !module.metamodule) {
+                    FilledTonalButton(
+                        modifier = Modifier.defaultMinSize(minWidth = 52.dp, minHeight = 32.dp),
+                        enabled = !module.remove && localEnabled,
+                        onClick = onMountConfig,
+                        contentPadding = ButtonDefaults.TextButtonContentPadding,
+                    ) {
+                        Icon(Icons.Outlined.Folder, stringResource(R.string.kasumi_mount_config), Modifier.size(20.dp))
+                    }
+                }
                 if (module.hasActionScript) {
                     ModuleActionButton(
                         enabled = !module.remove && localEnabled,

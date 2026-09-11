@@ -33,12 +33,26 @@ add_library(kernelsu
         SHARED
         jni.c
         ksud_integrity.c
+        kagami_jni.cpp
+        ${REPO_ROOT}/userspace/ksud/kagami/src/mount/kasumi_client.cpp
         ksu.c
 )
+target_include_directories(kernelsu PRIVATE ${REPO_ROOT}/userspace/ksud/kagami/include)
+target_compile_definitions(kernelsu PRIVATE KAGAMI_EMBEDDED)
+set_source_files_properties(kagami_jni.cpp
+        ${REPO_ROOT}/userspace/ksud/kagami/src/mount/kasumi_client.cpp
+        PROPERTIES COMPILE_OPTIONS "-fexceptions;-funwind-tables")
 
 find_library(log-lib log)
 
-target_link_libraries(kernelsu ${log-lib})
+# The control bridge needs streams and exception support omitted by the compact
+# libcxx prefab. Keep its full static runtime private to this JNI library.
+set_property(TARGET kernelsu PROPERTY LINK_LIBRARIES "")
+target_include_directories(kernelsu SYSTEM PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SYSROOT}/usr/include/c++/v1>)
+target_link_libraries(kernelsu ${log-lib}
+        ${CMAKE_SYSROOT}/usr/lib/aarch64-linux-android/libc++_static.a
+        ${CMAKE_SYSROOT}/usr/lib/aarch64-linux-android/libc++abi.a)
 
 add_library(adbroot
         SHARED

@@ -34,6 +34,15 @@ object Natives {
 
     external fun getFullVersion(): String
 
+    external fun kagamiRequest(ksudPath: ByteArray, request: ByteArray): ByteArray
+    external fun kasumiKernelSnapshot(): ByteArray
+    external fun kasumiIsInitialized(): Boolean
+    external fun kasumiClearMapsRules()
+    external fun kasumiAddMapsRule(numbers: LongArray, path: ByteArray)
+    external fun kasumiReadLog(kernel: Boolean): ByteArray
+    external fun kasumiClearLog()
+    external fun kasumiStorageInfo(path: ByteArray): ByteArray
+
     /** Kernel UAPI contract version (KERNEL_SU_UAPI_VERSION); 0 if unsupported. */
     external fun getUapiVersion(): Int
 
@@ -215,6 +224,7 @@ object Natives {
     const val FEATURE_YUKIZYGISK = 103
     const val FEATURE_HIDE_BOOTLOADER = 104
     const val FEATURE_KASUMI_SUCOMPAT = 105
+    const val FEATURE_KASUMI = 106
 
     /**
      * Reads a feature's value straight from the kernel, or -1 when the kernel
