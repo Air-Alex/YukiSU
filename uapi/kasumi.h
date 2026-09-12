@@ -85,17 +85,16 @@ struct kasumi_spoof_kstat {
 /* Bit 2 remains reserved for the removed cmdline feature. */
 #define KSM_FEATURE_MERGE_DIR (1 << 5)
 #define KSM_FEATURE_MOUNT_HIDE                                                 \
-  (1 << 6) /* hide overlay from /proc/mounts and /proc/pid/mountinfo */
+  (1 << 6) /* use a live deny app mountinfo view for isolated readers */
 #define KSM_FEATURE_MAPS_SPOOF                                                 \
   (1 << 7) /* spoof ino/dev/pathname in /proc/pid/maps (read buffer filter) */
 #define KSM_FEATURE_STATFS_SPOOF                                               \
   (1 << 8) /* spoof statfs f_type so direct matches resolved                   \
               (INCONSISTENT_MOUNT) */
 #define KSM_FEATURE_FAKE_MOUNTINFO                                             \
-  (1 << 9) /* serve per-marked-app fake mountinfo (no KSU mounts, renumbered   \
-              ids) */
+  (1 << 9) /* live deny app mountinfo donor support */
 #define KSM_FEATURE_MOUNT_HIDE_AGGRESSIVE                                      \
-  (1 << 12) /* shared-root and mount-ns link projection */
+  (1 << 12) /* mount-ns link projection */
 #define KSM_FEATURE_OVERLAY_XATTR_HIDE (1 << 13)
 
 #define KSM_MOUNT_HIDE_MODE_NORMAL 0

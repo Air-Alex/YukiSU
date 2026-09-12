@@ -1,3 +1,4 @@
+#include "infra/mount_policy.h"
 #include "kasumi_vfs_view.h"
 #include "kasumi_entrypoints.h"
 #include "kasumi_fake_mountinfo.h"
@@ -203,6 +204,236 @@ out:
 	return ret;
 }
 
+static inline bool is_digit(char c)
+{
+	return c >= '0' && c <= '9';
+}
+
+#define FAKE_MI_MAX_PROP_FIELDS 8
+
+enum fake_mi_prop_kind {
+	FAKE_MI_PROP_SHARED = 0,
+	FAKE_MI_PROP_MASTER,
+	FAKE_MI_PROP_PROPAGATE_FROM,
+};
+
+struct fake_mi_prop_ref {
+	size_t value_start;
+	size_t value_end;
+	int old_id;
+	enum fake_mi_prop_kind kind;
+};
+
+static bool parse_decimal_token(const char *line, size_t start, size_t end,
+				int *out)
+{
+	long v;
+	char tmp[32];
+	size_t len;
+
+	if (!out || start >= end)
+		return false;
+
+	len = end - start;
+	if (len >= sizeof(tmp))
+		return false;
+
+	memcpy(tmp, line + start, len);
+	tmp[len] = 0;
+	if (kstrtol(tmp, 10, &v))
+		return false;
+
+	*out = (int)v;
+	return true;
+}
+
+static bool token_has_prefix(const char *line, size_t start, size_t end,
+			     const char *prefix)
+{
+	size_t plen = strlen(prefix);
+
+	return end >= start + plen && memcmp(line + start, prefix, plen) == 0;
+}
+
+/* Parse the identity fields rendered by the statfs view. */
+static bool parse_line(const char *line, size_t len, int *mnt_id,
+		       int *parent_id, size_t *mi_start, size_t *mi_end,
+		       size_t *pi_start, size_t *pi_end,
+		       struct fake_mi_prop_ref *prop_refs, size_t *prop_count,
+		       bool *is_hidden, bool *is_namespace_root,
+		       size_t *mountpoint_start_out, size_t *mountpoint_end_out)
+{
+	size_t i = 0, token_start, token_end;
+	size_t mount_root_start = 0, mount_root_end = 0;
+	size_t mountpoint_start = 0, mountpoint_end = 0;
+	size_t j;
+	struct ksu_mount_fields fields = {.escaped = true};
+
+	*is_hidden = false;
+	*is_namespace_root = false;
+	if (prop_count)
+		*prop_count = 0;
+
+	/* mnt_id */
+	*mi_start = i;
+	while (i < len && is_digit(line[i]))
+		i++;
+	if (i == *mi_start || i >= len || line[i] != ' ')
+		return false;
+	*mi_end = i;
+	if (!parse_decimal_token(line, *mi_start, *mi_end, mnt_id))
+		return false;
+	i++;
+
+	/* parent_id */
+	*pi_start = i;
+	while (i < len && is_digit(line[i]))
+		i++;
+	if (i == *pi_start || i >= len || line[i] != ' ')
+		return false;
+	*pi_end = i;
+	if (!parse_decimal_token(line, *pi_start, *pi_end, parent_id))
+		return false;
+	i++;
+
+	/* Parse major:minor, root, mountpoint, mount opts. A self-parent entry
+	 * is only a legitimate graph terminator when it is mounted at namespace
+	 * /.
+	 */
+	for (j = 0; j < 4; j++) {
+		token_start = i;
+		while (i < len && line[i] != ' ')
+			i++;
+		token_end = i;
+		if (token_start == token_end || i >= len || line[i] != ' ')
+			return false;
+		i++;
+		if (j == 0)
+			fields.dev = (struct ksu_mount_field){
+			    line + token_start, token_end - token_start};
+		if (j == 1) {
+			mount_root_start = token_start;
+			mount_root_end = token_end;
+		} else if (j == 2) {
+			mountpoint_start = token_start;
+			mountpoint_end = token_end;
+		}
+		if (j == 2 && token_end == token_start + 1 &&
+		    line[token_start] == '/')
+			*is_namespace_root = true;
+	}
+
+	fields.root = (struct ksu_mount_field){
+	    line + mount_root_start, mount_root_end - mount_root_start};
+	fields.target = (struct ksu_mount_field){
+	    line + mountpoint_start, mountpoint_end - mountpoint_start};
+	if (mountpoint_start_out)
+		*mountpoint_start_out = mountpoint_start;
+	if (mountpoint_end_out)
+		*mountpoint_end_out = mountpoint_end;
+
+	while (i < len) {
+		int value;
+
+		token_start = i;
+		while (i < len && line[i] != ' ')
+			i++;
+		token_end = i;
+		if (token_start == token_end)
+			return false;
+
+		if (token_end == token_start + 1 && line[token_start] == '-') {
+			if (i < len && line[i] == ' ')
+				i++;
+			break;
+		}
+
+		if (prop_refs && prop_count &&
+		    *prop_count < FAKE_MI_MAX_PROP_FIELDS) {
+			size_t value_start = 0;
+			const char *prefix = NULL;
+			enum fake_mi_prop_kind kind = FAKE_MI_PROP_SHARED;
+
+			if (token_has_prefix(line, token_start, token_end,
+					     "shared:")) {
+				prefix = "shared:";
+			} else if (token_has_prefix(line, token_start,
+						    token_end, "master:")) {
+				prefix = "master:";
+				kind = FAKE_MI_PROP_MASTER;
+			} else if (token_has_prefix(line, token_start,
+						    token_end,
+						    "propagate_from:")) {
+				prefix = "propagate_from:";
+				kind = FAKE_MI_PROP_PROPAGATE_FROM;
+			}
+
+			if (prefix) {
+				value_start = token_start + strlen(prefix);
+				if (value_start < token_end &&
+				    parse_decimal_token(line, value_start,
+							token_end, &value)) {
+					prop_refs[*prop_count].value_start =
+					    value_start;
+					prop_refs[*prop_count].value_end =
+					    token_end;
+					prop_refs[*prop_count].old_id = value;
+					prop_refs[*prop_count].kind = kind;
+					(*prop_count)++;
+				}
+			}
+		}
+
+		if (i < len && line[i] == ' ')
+			i++;
+	}
+
+	/* Read filesystem identity after the optional fields. */
+	token_start = i;
+	while (i < len && line[i] != ' ')
+		i++;
+	if (i == token_start || i == len)
+		return false;
+	fields.fstype =
+	    (struct ksu_mount_field){line + token_start, i - token_start};
+	i++;
+
+	/* source */
+	token_start = i;
+	while (i < len && line[i] != ' ')
+		i++;
+	token_end = i;
+	if (token_start == token_end)
+		return false;
+	fields.source = (struct ksu_mount_field){line + token_start,
+						 token_end - token_start};
+	while (i < len && line[i] == ' ')
+		i++;
+	fields.super = (struct ksu_mount_field){line + i, len - i};
+	*is_hidden = ksu_mount_is_module(&fields);
+
+	return true;
+}
+
+static int kasumi_view_classify_mount(const char *line, size_t len,
+				      bool *hidden)
+{
+	int mount_id, parent_id;
+	u64 policy_generation = ksu_mount_policy_generation();
+
+	if (policy_generation & 1)
+		return -EAGAIN;
+	size_t mi_start, mi_end, pi_start, pi_end;
+	bool namespace_root;
+
+	if (!line || !hidden ||
+	    !parse_line(line, len, &mount_id, &parent_id, &mi_start, &mi_end,
+			&pi_start, &pi_end, NULL, NULL, hidden, &namespace_root,
+			NULL, NULL))
+		return -EINVAL;
+	return policy_generation == ksu_mount_policy_generation() ? 0 : -EAGAIN;
+}
+
 /* Render just the identity fields used by the mountinfo classifier. No proc
  * file is opened, and filesystem option printers are deliberately not called.
  * namespace_sem pins the topology while follow_up selects a visible ancestor.
@@ -246,7 +477,7 @@ static KASUMI_NOCFI int kasumi_view_mount_hidden(struct seq_file *seq,
 	seq_puts(seq, " rw\n");
 	if (seq_has_overflowed(seq))
 		return -EOVERFLOW;
-	return kasumi_fake_mi_classify_mount(seq->buf, seq->count, hidden);
+	return kasumi_view_classify_mount(seq->buf, seq->count, hidden);
 }
 
 static KASUMI_NOCFI int kasumi_view_statfs(const struct path *path,

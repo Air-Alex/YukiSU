@@ -83,6 +83,11 @@ bool kasumi_policy_current_is_spoof_target(void)
 	return kasumi_policy_current_scope() == KASUMI_POLICY_SCOPE_SPOOF;
 }
 
+bool kasumi_policy_uid_is_spoof_target(uid_t uid)
+{
+	return kasumi_policy_scope_for_uid(uid) == KASUMI_POLICY_SCOPE_SPOOF;
+}
+
 bool kasumi_policy_current_is_isolated(void)
 {
 	uid_t appid = __kuid_val(task_uid(current)) % PER_USER_RANGE;
