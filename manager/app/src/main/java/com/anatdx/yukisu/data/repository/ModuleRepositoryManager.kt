@@ -35,8 +35,7 @@ class ModuleRepositoryManager(
 ) {
     companion object {
         private const val TAG = "ModuleRepository"
-        const val BUILTIN_KERNEL_SU_SOURCE_ID = "builtin-kernelsu-modules"
-        const val BUILTIN_KERNEL_SU_URL = "https://modules.kernelsu.org/modules.json"
+        private const val LEGACY_KERNEL_SU_SOURCE_ID = "builtin-kernelsu-modules"
         const val MMRL_DIRECTORY_URL = "https://mmrl.dev/api/repositories.json"
         private const val MAX_INDEX_BYTES = 16L * 1024L * 1024L
     }
@@ -300,20 +299,9 @@ class ModuleRepositoryManager(
         val state = readAtomic(stateFile)?.let {
             runCatching { gson.fromJson(it, PersistedState::class.java) }.getOrNull()
         }
-        val loadedSources = state?.sources.orEmpty().toMutableList()
-        if (loadedSources.none { it.id == BUILTIN_KERNEL_SU_SOURCE_ID }) {
-            loadedSources.add(
-                RepositorySource(
-                    id = BUILTIN_KERNEL_SU_SOURCE_ID,
-                    name = "KernelSU Modules Repo",
-                    url = BUILTIN_KERNEL_SU_URL,
-                    format = RepositoryFormat.KERNEL_SU,
-                    builtIn = true,
-                    priority = 0,
-                    nameOverridden = true,
-                )
-            )
-        }
+        val loadedSources = state?.sources.orEmpty()
+            .filterNot { it.id == LEGACY_KERNEL_SU_SOURCE_ID }
+        AtomicFile(snapshotFile(LEGACY_KERNEL_SU_SOURCE_ID)).delete()
         _sources.value = loadedSources.sortedBy(RepositorySource::priority)
             .mapIndexed { index, source -> source.copy(priority = index) }
         _bindings.value = state?.bindings.orEmpty().associateBy(InstalledModuleBinding::moduleId)

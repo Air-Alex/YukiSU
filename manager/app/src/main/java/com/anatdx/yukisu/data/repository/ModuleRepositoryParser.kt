@@ -75,13 +75,7 @@ object ModuleRepositoryParser {
                 declaredVersion = version,
                 declaredVersionCode = versionCode,
                 versions = versions,
-                sourceUrl = obj.string("sourceUrl")
-                    ?: obj.string("url")
-                    ?: if (sourceId == ModuleRepositoryManager.BUILTIN_KERNEL_SU_SOURCE_ID) {
-                        "https://github.com/KernelSU-Modules-Repo/$moduleId"
-                    } else {
-                        null
-                    },
+                sourceUrl = obj.string("sourceUrl") ?: obj.string("url"),
                 metamodule = obj.bool("metamodule") ?: false,
                 stars = obj.int("stargazerCount"),
             )
