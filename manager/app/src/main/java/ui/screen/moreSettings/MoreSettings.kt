@@ -323,6 +323,13 @@ private fun CustomizationSettings(
             onChange = handlers::handleKernelSimpleModeChange
         )
 
+        SwitchSettingItem(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            title = stringResource(R.string.predictive_back_gesture),
+            summary = stringResource(R.string.predictive_back_gesture_summary),
+            checked = state.predictiveBackEnabled,
+            onChange = handlers::handlePredictiveBackChange
+        )
 
         HideOptionsSettings(state = state, handlers = handlers)
     }

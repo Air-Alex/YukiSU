@@ -11,7 +11,7 @@ class NavigationLeaveGuard {
     private data class Registration(
         val owner: Any,
         val route: String,
-        val interceptor: ((() -> Unit) -> Unit),
+        val interceptor: (navigate: () -> Unit, onIntercepted: () -> Unit) -> Unit,
     )
 
     private var registration: Registration? = null
@@ -19,7 +19,7 @@ class NavigationLeaveGuard {
     fun register(
         owner: Any,
         route: String,
-        interceptor: ((() -> Unit) -> Unit),
+        interceptor: (navigate: () -> Unit, onIntercepted: () -> Unit) -> Unit,
     ) {
         registration = Registration(owner, route, interceptor)
     }
@@ -30,10 +30,10 @@ class NavigationLeaveGuard {
         }
     }
 
-    fun navigateOrIntercept(route: String?, navigate: () -> Unit) {
+    fun navigateOrIntercept(route: String?, onIntercepted: () -> Unit = {}, navigate: () -> Unit) {
         val current = registration
         if (current != null && current.route == route) {
-            current.interceptor(navigate)
+            current.interceptor(navigate, onIntercepted)
         } else {
             navigate()
         }

@@ -9,18 +9,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,14 +24,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ramcosta.composedestinations.DestinationsNavHost
-import com.ramcosta.composedestinations.animations.NavHostAnimatedDestinationStyle
 import com.ramcosta.composedestinations.generated.NavGraphs
 import com.ramcosta.composedestinations.generated.destinations.ExecuteModuleActionScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.HomeScreenDestination
@@ -50,6 +43,10 @@ import com.anatdx.yukisu.ui.activity.component.BottomBar
 import com.anatdx.yukisu.ui.activity.util.AnimatedBottomBar
 import com.anatdx.yukisu.ui.activity.util.DataRefreshUtils
 import com.anatdx.yukisu.ui.activity.util.DisplayUtils
+import com.anatdx.yukisu.ui.activity.util.LocalPredictiveBackEnabled
+import com.anatdx.yukisu.ui.activity.util.predictiveBackSurfaces
+import com.anatdx.yukisu.ui.activity.util.rememberPredictiveBackEnabled
+import com.anatdx.yukisu.ui.activity.util.rememberPredictiveBackNavHostEngine
 import com.anatdx.yukisu.ui.activity.util.ThemeChangeContentObserver
 import com.anatdx.yukisu.ui.activity.util.ThemeUtils
 import com.anatdx.yukisu.ui.activity.util.UltraActivityUtils
@@ -124,6 +121,7 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val snackBarHostState = remember { SnackbarHostState() }
                     val navigationLeaveGuard = remember { NavigationLeaveGuard() }
+                    val predictiveBackEnabled by rememberPredictiveBackEnabled()
                     val currentDestination = navController.currentBackStackEntryAsState().value?.destination
 
                     val bottomBarRoutes = remember {
@@ -197,11 +195,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val showBottomBar = when (currentDestination?.route) {
-                        ExecuteModuleActionScreenDestination.route -> false
-                        else -> true
-                    }
-
                     LaunchedEffect(Unit) {
                         initPlatform()
                         if (getSharedPreferences("settings", MODE_PRIVATE)
@@ -216,61 +209,47 @@ class MainActivity : ComponentActivity() {
                         LocalNavigationLeaveGuard provides navigationLeaveGuard,
                     ) {
                         Scaffold(
-                            snackbarHost = { SnackbarHost(hostState = snackBarHostState) },
-                            bottomBar = {
-                                AnimatedBottomBar.AnimatedBottomBarWrapper(
-                                    showBottomBar = showBottomBar,
-                                    content = { BottomBar(navController) }
-                                )
+                            containerColor = if (predictiveBackEnabled) Color.Transparent else MaterialTheme.colorScheme.surface,
+                            snackbarHost = {
+                                if (!predictiveBackEnabled) SnackbarHost(hostState = snackBarHostState)
                             },
-                            contentWindowInsets = WindowInsets(0, 0, 0, 0)
-                        ) { innerPadding ->
+                            bottomBar = {
+                                if (!predictiveBackEnabled) {
+                                    AnimatedBottomBar.AnimatedBottomBarWrapper(
+                                        showBottomBar = currentDestination?.route != ExecuteModuleActionScreenDestination.route,
+                                        content = { BottomBar(navController) },
+                                    )
+                                }
+                            },
+                            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                        ) { outerPadding ->
                             DestinationsNavHost(
-                                modifier = Modifier.padding(innerPadding),
+                                modifier = Modifier.fillMaxSize().padding(outerPadding),
                                 navGraph = NavGraphs.root as NavHostGraphSpec,
                                 navController = navController,
-                                defaultTransitions = object : NavHostAnimatedDestinationStyle() {
-                                    override val enterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-                                        // If the target is a detail page (not a bottom navigation page), slide in from the right
-                                        if (targetState.destination.route !in bottomBarRoutes) {
-                                            slideInHorizontally(initialOffsetX = { it })
-                                        } else {
-                                            // Otherwise (switching between bottom navigation pages), use fade in
-                                            fadeIn(animationSpec = tween(340))
-                                        }
-                                    }
-
-                                    override val exitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-                                        // If navigating from the home page (bottom navigation page) to a detail page, slide out to the left
-                                        if (initialState.destination.route in bottomBarRoutes && targetState.destination.route !in bottomBarRoutes) {
-                                            slideOutHorizontally(targetOffsetX = { -it / 4 }) + fadeOut()
-                                        } else {
-                                            // Otherwise (switching between bottom navigation pages), use fade out
-                                            fadeOut(animationSpec = tween(340))
-                                        }
-                                    }
-
-                                    override val popEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-                                        // If returning to the home page (bottom navigation page), slide in from the left
-                                        if (targetState.destination.route in bottomBarRoutes) {
-                                            slideInHorizontally(initialOffsetX = { -it / 4 }) + fadeIn()
-                                        } else {
-                                            // Otherwise (e.g., returning between multiple detail pages), use default fade in
-                                            fadeIn(animationSpec = tween(340))
-                                        }
-                                    }
-
-                                    override val popExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-                                        // If returning from a detail page (not a bottom navigation page), scale down and fade out
-                                        if (initialState.destination.route !in bottomBarRoutes) {
-                                            scaleOut(targetScale = 0.9f) + fadeOut()
-                                        } else {
-                                            // Otherwise, use default fade out
-                                            fadeOut(animationSpec = tween(340))
-                                        }
+                                engine = rememberPredictiveBackNavHostEngine(bottomBarRoutes, predictiveBackEnabled),
+                            ) {
+                                predictiveBackSurfaces(NavGraphs.root) { route, contentModifier, content ->
+                                    val predictive = LocalPredictiveBackEnabled.current
+                                    Scaffold(
+                                        containerColor = if (predictive) MaterialTheme.colorScheme.surface else Color.Transparent,
+                                        snackbarHost = {
+                                            if (predictive) SnackbarHost(hostState = snackBarHostState)
+                                        },
+                                        bottomBar = {
+                                            if (predictive) {
+                                                AnimatedBottomBar.AnimatedBottomBarWrapper(
+                                                    showBottomBar = route != ExecuteModuleActionScreenDestination.route,
+                                                    content = { BottomBar(navController) },
+                                                )
+                                            }
+                                        },
+                                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                                    ) { innerPadding ->
+                                        Box(Modifier.fillMaxSize().padding(innerPadding).then(contentModifier)) { content() }
                                     }
                                 }
-                            )
+                            }
                         }
                     }
                 }

@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.activity.util.PREDICTIVE_BACK_PREFERENCE
 import com.anatdx.yukisu.ui.component.ConfirmResult
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.screen.SettingItem
@@ -241,6 +242,11 @@ class MoreSettingsHandlers(
     fun handleSimpleModeChange(newValue: Boolean) {
         prefs.edit { putBoolean("is_simple_mode", newValue) }
         state.isSimpleMode = newValue
+    }
+
+    fun handlePredictiveBackChange(enabled: Boolean) {
+        prefs.edit { putBoolean(PREDICTIVE_BACK_PREFERENCE, enabled) }
+        state.predictiveBackEnabled = enabled
     }
 
     fun handleKernelSimpleModeChange(newValue: Boolean) {

@@ -355,7 +355,7 @@ private fun ThemeInitializer(context: Context, systemIsDark: Boolean) {
 }
 
 @Composable
-private fun BackgroundLayer(darkTheme: Boolean) {
+internal fun BackgroundLayer(darkTheme: Boolean = ThemeConfig.forceDarkMode ?: isSystemInDarkTheme()) {
     val backgroundUri = rememberSaveable { mutableStateOf(ThemeConfig.customBackgroundUri) }
 
     LaunchedEffect(ThemeConfig.customBackgroundUri) {

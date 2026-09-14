@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import ui.screen.moreSettings.util.LocaleHelper
 import com.anatdx.yukisu.R
+import com.anatdx.yukisu.ui.activity.util.PREDICTIVE_BACK_PREFERENCE
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.ThemeConfig
 import com.anatdx.yukisu.ui.theme.UiStyle
@@ -43,6 +44,7 @@ class MoreSettingsState(
     var showDpiConfirmDialog by mutableStateOf(false)
 
     var isSimpleMode by mutableStateOf(prefs.getBoolean("is_simple_mode", false))
+    var predictiveBackEnabled by mutableStateOf(prefs.getBoolean(PREDICTIVE_BACK_PREFERENCE, false))
     var isHideVersion by mutableStateOf(prefs.getBoolean("is_hide_version", false))
     var isHideOtherInfo by mutableStateOf(prefs.getBoolean("is_hide_other_info", false))
     var isHideZygiskImplement by mutableStateOf(prefs.getBoolean("is_hide_zygisk_Implement", false))

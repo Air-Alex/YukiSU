@@ -416,6 +416,8 @@
     <string name="home_ContributionCard_kernelsu">YukiSU 愿景</string>
     <string name="home_click_to_ContributionCard_kernelsu">YukiSU 是一个极其激进且特立独行的 KSU 分支，但仍然感谢 KernelSU 官方项目以及 SukiSU、Magisk、APatch 等作出的贡献。</string>
     <string name="custom_settings">个性化设置</string>
+    <string name="predictive_back_gesture">预测性返回手势</string>
+    <string name="predictive_back_gesture_summary">返回时随手势预览上一页，默认关闭</string>
     <string name="theme_color">主题颜色</string>
     <!-- Error Messages -->
     <!-- lkm/gki install -->

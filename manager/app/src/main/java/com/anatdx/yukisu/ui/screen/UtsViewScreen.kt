@@ -1,6 +1,5 @@
 package com.anatdx.yukisu.ui.screen
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -286,25 +285,39 @@ fun UtsViewScreen(navigator: DestinationsNavigator) {
         },
     )
 
-    fun requestLeave(navigate: () -> Unit) {
-        if (leaving || leavePromptActive) return
+    fun requestLeave(onIntercepted: () -> Unit = {}, navigate: () -> Unit) {
+        if (leaving || leavePromptActive) {
+            onIntercepted()
+            return
+        }
         leavePromptActive = true
         focusManager.clearFocus(force = true)
         scope.launch {
-            yield()
-            flushTemplateCommits()
-            bootBaselineReady.await()
-            if (bootNeedsRepatch()) {
-                leaveConfirmationDialog.showConfirm(
-                    title = unpatchedBootTitle,
-                    content = unpatchedBootMessage,
-                    confirm = yesLabel,
-                    dismiss = noLabel,
-                )
-            } else {
-                leavePromptActive = false
-                leaving = true
-                navigate()
+            var resolved = false
+            try {
+                yield()
+                flushTemplateCommits()
+                bootBaselineReady.await()
+                if (bootNeedsRepatch()) {
+                    onIntercepted()
+                    resolved = true
+                    leaveConfirmationDialog.showConfirm(
+                        title = unpatchedBootTitle,
+                        content = unpatchedBootMessage,
+                        confirm = yesLabel,
+                        dismiss = noLabel,
+                    )
+                } else {
+                    leavePromptActive = false
+                    leaving = true
+                    navigate()
+                    resolved = true
+                }
+            } finally {
+                if (!resolved) {
+                    leavePromptActive = false
+                    onIntercepted()
+                }
             }
         }
     }
@@ -359,24 +372,18 @@ fun UtsViewScreen(navigator: DestinationsNavigator) {
     }
 
     val currentLeaveInterceptor =
-        rememberUpdatedState<((() -> Unit) -> Unit)> { navigate ->
-            requestLeave(navigate)
+        rememberUpdatedState<(() -> Unit, () -> Unit) -> Unit> { navigate, onIntercepted ->
+            requestLeave(onIntercepted = onIntercepted, navigate = navigate)
         }
     DisposableEffect(navigationLeaveGuard, leaveGuardOwner) {
         navigationLeaveGuard.register(
             owner = leaveGuardOwner,
             route = UtsViewScreenDestination.route,
-        ) { navigate ->
-            currentLeaveInterceptor.value(navigate)
+        ) { navigate, onIntercepted ->
+            currentLeaveInterceptor.value(navigate, onIntercepted)
         }
         onDispose {
             navigationLeaveGuard.unregister(leaveGuardOwner)
-        }
-    }
-
-    BackHandler {
-        requestLeave {
-            navigator.navigateUp()
         }
     }
 
