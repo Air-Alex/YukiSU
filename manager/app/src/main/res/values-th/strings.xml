@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">อนุญาตครั้งเดียว</string>
     <string name="su_request_deny">ปฏิเสธ</string>
     <string name="su_request_deny_hide">ปฏิเสธและซ่อน</string>
+    <string name="settings_unshare_mnt">จัดระเบียบมุมมองการเมานต์</string>
+    <string name="settings_unshare_mnt_summary">สร้างเนมสเปซใหม่และจัดเรียง ID ที่มองเห็นหลังเลิกเมานต์ เริ่มแอปใหม่เพื่อให้มีผล</string>
 </resources>

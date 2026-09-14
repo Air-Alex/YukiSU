@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">1 回だけ許可</string>
     <string name="su_request_deny">拒否</string>
     <string name="su_request_deny_hide">拒否して非表示</string>
+    <string name="settings_unshare_mnt">マウント表示の整理</string>
+    <string name="settings_unshare_mnt_summary">アンマウント後に名前空間を再作成し、表示される ID を整理します。アプリの再起動後に反映されます。</string>
 </resources>

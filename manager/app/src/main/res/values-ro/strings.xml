@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">Permite o dată</string>
     <string name="su_request_deny">Refuză</string>
     <string name="su_request_deny_hide">Refuză și ascunde</string>
+    <string name="settings_unshare_mnt">Ordonarea vizualizării montărilor</string>
+    <string name="settings_unshare_mnt_summary">Recreează spațiul de nume și ordonează ID-urile vizibile după demontare. Reporniți aplicația pentru aplicare.</string>
 </resources>

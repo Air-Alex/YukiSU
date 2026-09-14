@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">یک بار اجازه بده</string>
     <string name="su_request_deny">رد کردن</string>
     <string name="su_request_deny_hide">رد کردن و پنهان کردن</string>
+    <string name="settings_unshare_mnt">مرتب‌سازی نمای اتصال‌ها</string>
+    <string name="settings_unshare_mnt_summary">پس از جدا کردن اتصال‌ها، فضای نام را بازسازی و شناسه‌های قابل مشاهده را مرتب می‌کند. برنامه را دوباره اجرا کنید.</string>
 </resources>

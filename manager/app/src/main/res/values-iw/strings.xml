@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">אפשר פעם אחת</string>
     <string name="su_request_deny">דחה</string>
     <string name="su_request_deny_hide">דחה והסתר</string>
+    <string name="settings_unshare_mnt">סידור תצוגת העגינות</string>
+    <string name="settings_unshare_mnt_summary">יוצר מחדש את מרחב השמות ומסדר את המזהים הגלויים לאחר ביטול העגינה. יש להפעיל מחדש את האפליקציה.</string>
 </resources>

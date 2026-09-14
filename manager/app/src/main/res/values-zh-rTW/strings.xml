@@ -198,6 +198,8 @@
     <string name="home_android_version">Android 版本</string>
     <string name="home_device_model">裝置型號</string>
     <string name="su_not_allowed">不允許授予 %s 超級使用者權限</string>
+    <string name="settings_unshare_mnt">掛載視圖整理</string>
+    <string name="settings_unshare_mnt_summary">卸載後重建命名空間並整理可見編號，重新啟動應用程式後生效。</string>
     <string name="settings_disable_kernel_umount">停用核心卸載</string>
     <string name="settings_disable_kernel_umount_summary">停用由 KernelSU 控制的核心等級卸載</string>
     <string name="settings_enable_enhanced_security">使用嚴格安全性策略</string>

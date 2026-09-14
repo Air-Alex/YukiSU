@@ -499,4 +499,6 @@
     <string name="su_request_deny_hide">Tolak &amp; sembunyikan</string>
     <!-- locale-only keys -->
     <string name="profile">Profil Aplikasi</string>
+    <string name="settings_unshare_mnt">Rapikan tampilan mount</string>
+    <string name="settings_unshare_mnt_summary">Buat ulang namespace dan rapikan ID yang terlihat setelah pelepasan mount. Mulai ulang aplikasi untuk menerapkan.</string>
 </resources>

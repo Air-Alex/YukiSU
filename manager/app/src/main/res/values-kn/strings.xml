@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">ಒಮ್ಮೆ ಅನುಮತಿಸಿ</string>
     <string name="su_request_deny">ನಿರಾಕರಿಸಿ</string>
     <string name="su_request_deny_hide">ನಿರಾಕರಿಸಿ ಮತ್ತು ಮರೆಮಾಡಿ</string>
+    <string name="settings_unshare_mnt">ಮೌಂಟ್ ವೀಕ್ಷಣೆ ವ್ಯವಸ್ಥೆ</string>
+    <string name="settings_unshare_mnt_summary">ಅನ್‌ಮೌಂಟ್ ನಂತರ ನೇಮ್‌ಸ್ಪೇಸ್ ಮರುರಚಿಸಿ ಕಾಣುವ IDಗಳನ್ನು ಕ್ರಮಗೊಳಿಸುತ್ತದೆ. ಅನ್ವಯಿಸಲು ಆ್ಯಪ್ ಮರುಪ್ರಾರಂಭಿಸಿ.</string>
 </resources>

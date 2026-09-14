@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Cho phép một lần</string>
     <string name="su_request_deny">Từ chối</string>
     <string name="su_request_deny_hide">Từ chối và ẩn</string>
+    <string name="settings_unshare_mnt">Sắp xếp chế độ xem gắn kết</string>
+    <string name="settings_unshare_mnt_summary">Tạo lại không gian tên và sắp xếp ID hiển thị sau khi tháo gắn kết. Khởi động lại ứng dụng để áp dụng.</string>
 </resources>

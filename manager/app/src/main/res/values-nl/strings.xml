@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">Eén keer toestaan</string>
     <string name="su_request_deny">Weigeren</string>
     <string name="su_request_deny_hide">Weigeren en verbergen</string>
+    <string name="settings_unshare_mnt">Mount-weergave opschonen</string>
+    <string name="settings_unshare_mnt_summary">Maakt de naamruimte opnieuw aan en ordent zichtbare ID’s na ontkoppelen. Herstart de app om toe te passen.</string>
 </resources>

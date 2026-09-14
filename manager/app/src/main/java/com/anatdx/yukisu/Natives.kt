@@ -225,6 +225,7 @@ object Natives {
     const val FEATURE_HIDE_BOOTLOADER = 104
     const val FEATURE_KASUMI_SUCOMPAT = 105
     const val FEATURE_KASUMI = 106
+    const val FEATURE_UNSHARE_MNT = 107
 
     /**
      * Reads a feature's value straight from the kernel, or -1 when the kernel

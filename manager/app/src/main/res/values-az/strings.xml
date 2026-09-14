@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Bir dəfə icazə ver</string>
     <string name="su_request_deny">Rədd et</string>
     <string name="su_request_deny_hide">Rədd et və gizlət</string>
+    <string name="settings_unshare_mnt">Qoşulma görünüşünü nizamlama</string>
+    <string name="settings_unshare_mnt_summary">Ayırmadan sonra ad fəzasını yenidən yaradır və görünən ID-ləri nizamlayır. Tətbiqi yenidən başladın.</string>
 </resources>

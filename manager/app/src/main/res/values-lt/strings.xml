@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Leisti vieną kartą</string>
     <string name="su_request_deny">Atmesti</string>
     <string name="su_request_deny_hide">Atmesti ir slėpti</string>
+    <string name="settings_unshare_mnt">Prijungimų rodinio tvarkymas</string>
+    <string name="settings_unshare_mnt_summary">Po atjungimo atkuria vardų sritį ir sutvarko matomus ID. Kad įsigaliotų, paleiskite programą iš naujo.</string>
 </resources>

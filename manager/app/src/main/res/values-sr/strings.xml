@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Дозволи једном</string>
     <string name="su_request_deny">Одбити</string>
     <string name="su_request_deny_hide">Одбиј и сакриј</string>
+    <string name="settings_unshare_mnt">Уређивање приказа монтирања</string>
+    <string name="settings_unshare_mnt_summary">Након демонтирања поново прави именски простор и уређује видљиве ID-ове. Поново покрените апликацију.</string>
 </resources>

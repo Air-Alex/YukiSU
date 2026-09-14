@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Permitir unha vez</string>
     <string name="su_request_deny">Denegar</string>
     <string name="su_request_deny_hide">Denegar e ocultar</string>
+    <string name="settings_unshare_mnt">Ordenar a vista de montaxes</string>
+    <string name="settings_unshare_mnt_summary">Recrea o espazo de nomes e ordena os ID visibles tras desmontar. Reinicia a aplicación para aplicar.</string>
 </resources>

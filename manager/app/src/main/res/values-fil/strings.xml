@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Payagan minsan</string>
     <string name="su_request_deny">Tanggihan</string>
     <string name="su_request_deny_hide">Tanggihan at itago</string>
+    <string name="settings_unshare_mnt">Ayusin ang mount view</string>
+    <string name="settings_unshare_mnt_summary">Gumawa muli ng namespace at ayusin ang mga nakikitang ID pagkatapos mag-unmount. I-restart ang app upang mailapat.</string>
 </resources>

@@ -360,6 +360,8 @@
     <string name="home_android_version">Android 版本</string>
     <string name="home_device_model">设备型号</string>
     <string name="su_not_allowed">不允许授予 %s 超级用户权限</string>
+    <string name="settings_unshare_mnt">挂载视图整理</string>
+    <string name="settings_unshare_mnt_summary">卸载后重建命名空间并整理可见编号，重启应用后生效。</string>
     <string name="settings_disable_kernel_umount">关闭内核 umount</string>
     <string name="settings_disable_kernel_umount_summary">关闭 KernelSU 控制的内核级 umount 行为。</string>
     <string name="settings_webview_zygote_umount">为 WebView 卸载模块</string>

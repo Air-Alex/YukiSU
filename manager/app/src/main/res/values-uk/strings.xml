@@ -497,4 +497,6 @@
     <string name="su_request_deny_hide">Відхилити та приховати</string>
     <!-- locale-only keys -->
     <string name="profile">Профіль додатку</string>
+    <string name="settings_unshare_mnt">Упорядкування вигляду монтувань</string>
+    <string name="settings_unshare_mnt_summary">Повторно створює простір імен та впорядковує видимі ID після демонтування. Перезапустіть застосунок для застосування.</string>
 </resources>

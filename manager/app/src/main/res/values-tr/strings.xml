@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Bir kez izin ver</string>
     <string name="su_request_deny">Reddet</string>
     <string name="su_request_deny_hide">Reddet ve gizle</string>
+    <string name="settings_unshare_mnt">Bağlama görünümünü düzenle</string>
+    <string name="settings_unshare_mnt_summary">Ayırma sonrası ad alanını yeniden oluşturur ve görünen kimlikleri düzenler. Uygulamak için uygulamayı yeniden başlatın.</string>
 </resources>

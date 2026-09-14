@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">Consenti una volta</string>
     <string name="su_request_deny">Nega</string>
     <string name="su_request_deny_hide">Nega e nascondi</string>
+    <string name="settings_unshare_mnt">Riordino della vista dei mount</string>
+    <string name="settings_unshare_mnt_summary">Ricrea lo spazio dei nomi e riordina gli ID visibili dopo lo smontaggio. Riavvia l’app per applicare.</string>
 </resources>

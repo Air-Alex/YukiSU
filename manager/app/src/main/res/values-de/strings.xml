@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">Einmal erlauben</string>
     <string name="su_request_deny">Ablehnen</string>
     <string name="su_request_deny_hide">Ablehnen &amp; verbergen</string>
+    <string name="settings_unshare_mnt">Mount-Ansicht bereinigen</string>
+    <string name="settings_unshare_mnt_summary">Erstellt nach dem Aushängen den Namensraum neu und ordnet sichtbare IDs. App zum Anwenden neu starten.</string>
 </resources>

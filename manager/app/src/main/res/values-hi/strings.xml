@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">एक बार अनुमति दें</string>
     <string name="su_request_deny">अस्वीकार करें</string>
     <string name="su_request_deny_hide">अस्वीकार करें और छिपाएं</string>
+    <string name="settings_unshare_mnt">माउंट दृश्य व्यवस्थित करें</string>
+    <string name="settings_unshare_mnt_summary">अनमाउंट के बाद नेमस्पेस फिर से बनाता है और दिखाई देने वाले ID व्यवस्थित करता है। लागू करने के लिए ऐप पुनः शुरू करें।</string>
 </resources>

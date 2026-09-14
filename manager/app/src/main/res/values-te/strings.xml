@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">ఒకసారి అనుమతించండి</string>
     <string name="su_request_deny">తిరస్కరించండి</string>
     <string name="su_request_deny_hide">తిరస్కరించి దాచండి</string>
+    <string name="settings_unshare_mnt">మౌంట్ వీక్షణ క్రమబద్ధీకరణ</string>
+    <string name="settings_unshare_mnt_summary">అన్‌మౌంట్ తర్వాత నేమ్‌స్పేస్‌ను తిరిగి సృష్టించి కనిపించే IDలను క్రమబద్ధీకరిస్తుంది. వర్తింపజేయడానికి యాప్‌ను మళ్లీ ప్రారంభించండి.</string>
 </resources>

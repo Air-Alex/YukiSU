@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Luba üks kord</string>
     <string name="su_request_deny">Keeldu</string>
     <string name="su_request_deny_hide">Keeldu ja peida</string>
+    <string name="settings_unshare_mnt">Haakimisvaate korrastus</string>
+    <string name="settings_unshare_mnt_summary">Loob pärast lahtihaakimist nimeruumi uuesti ja korrastab nähtavad ID-d. Rakendamiseks taaskäivita rakendus.</string>
 </resources>

@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Dopusti jednom</string>
     <string name="su_request_deny">Odbij</string>
     <string name="su_request_deny_hide">Odbij i sakrij</string>
+    <string name="settings_unshare_mnt">Uređivanje prikaza montiranja</string>
+    <string name="settings_unshare_mnt_summary">Nakon demontiranja ponovno stvara imenski prostor i uređuje vidljive ID-ove. Ponovno pokrenite aplikaciju.</string>
 </resources>

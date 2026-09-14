@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.anatdx.yukisu.Natives
@@ -152,6 +153,7 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
     val webViewZygoteUmount = rememberFeatureToggleState(
         Natives.FEATURE_WEBVIEW_ZYGOTE_UMOUNT
     )
+    val unshareMnt = rememberFeatureToggleState(Natives.FEATURE_UNSHARE_MNT)
     val suLog = rememberFeatureToggleState(Natives.FEATURE_SULOG)
     val adbRoot = rememberFeatureToggleState(Natives.FEATURE_ADB_ROOT)
     val enhancedSecurity = rememberFeatureToggleState(Natives.FEATURE_ENHANCED_SECURITY)
@@ -323,6 +325,23 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
                                 featureId = Natives.FEATURE_ENHANCED_SECURITY,
                                 featureName = "enhanced_security",
                                 kernelEnabled = enabled
+                            )
+                        }
+                    )
+
+                    FeatureSwitchItem(
+                        featureId = Natives.FEATURE_UNSHARE_MNT,
+                        icon = ImageVector.vectorResource(R.drawable.ic_mount_view_cleanup),
+                        title = stringResource(R.string.settings_unshare_mnt),
+                        summary = stringResource(R.string.settings_unshare_mnt_summary),
+                        state = unshareMnt,
+                        onChange = { enabled ->
+                            scope.persistFeature(
+                                state = unshareMnt,
+                                featureId = Natives.FEATURE_UNSHARE_MNT,
+                                featureName = "unshare_mnt",
+                                kernelEnabled = enabled,
+                                onFailure = { snackbarHost.showSnackbar(failedMessage) }
                             )
                         }
                     )

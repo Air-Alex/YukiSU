@@ -498,4 +498,6 @@
     <string name="su_request_allow_once">Разрешить один раз</string>
     <string name="su_request_deny">Отклонить</string>
     <string name="su_request_deny_hide">Отклонить и скрыть</string>
+    <string name="settings_unshare_mnt">Упорядочить вид монтирований</string>
+    <string name="settings_unshare_mnt_summary">Пересоздаёт пространство имён и упорядочивает видимые ID после размонтирования. Перезапустите приложение для применения.</string>
 </resources>

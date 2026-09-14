@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Dovoli enkrat</string>
     <string name="su_request_deny">Zavrni</string>
     <string name="su_request_deny_hide">Zavrni in skrij</string>
+    <string name="settings_unshare_mnt">Urejanje prikaza priklopov</string>
+    <string name="settings_unshare_mnt_summary">Po odklopu znova ustvari imenski prostor in uredi vidne ID-je. Za uveljavitev znova zaženite aplikacijo.</string>
 </resources>

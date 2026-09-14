@@ -497,4 +497,6 @@
     <string name="su_request_allow_once">Atļaut vienreiz</string>
     <string name="su_request_deny">Noraidīt</string>
     <string name="su_request_deny_hide">Noraidīt un slēpt</string>
+    <string name="settings_unshare_mnt">Montējumu skata sakārtošana</string>
+    <string name="settings_unshare_mnt_summary">Pēc atvienošanas atjauno vārdtelpu un sakārto redzamos ID. Lai lietotu, pārstartējiet lietotni.</string>
 </resources>

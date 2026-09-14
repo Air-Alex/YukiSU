@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">Tillad én gang</string>
     <string name="su_request_deny">Afvis</string>
     <string name="su_request_deny_hide">Afvis og skjul</string>
+    <string name="settings_unshare_mnt">Oprydning i monteringsvisning</string>
+    <string name="settings_unshare_mnt_summary">Genskab navnerummet og ordn synlige id’er efter afmontering. Genstart appen for at anvende.</string>
 </resources>

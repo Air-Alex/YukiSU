@@ -495,4 +495,6 @@
     <string name="su_request_allow_once">한 번 허용</string>
     <string name="su_request_deny">거부</string>
     <string name="su_request_deny_hide">거부 및 숨기기</string>
+    <string name="settings_unshare_mnt">마운트 보기 정리</string>
+    <string name="settings_unshare_mnt_summary">마운트 해제 후 네임스페이스를 재생성하고 표시되는 ID를 정리합니다. 적용하려면 앱을 다시 시작하세요.</string>
 </resources>

@@ -496,4 +496,6 @@ A</string>
     <string name="su_request_allow_once">Engedélyezés egyszer</string>
     <string name="su_request_deny">Elutasítás</string>
     <string name="su_request_deny_hide">Elutasítás és elrejtés</string>
+    <string name="settings_unshare_mnt">Csatolási nézet rendezése</string>
+    <string name="settings_unshare_mnt_summary">Leválasztás után újra létrehozza a névteret és rendezi a látható azonosítókat. Indítsa újra az alkalmazást.</string>
 </resources>
