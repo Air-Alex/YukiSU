@@ -18,6 +18,7 @@ struct kasumi_mi_snapshot {
 int kasumi_fake_mi_init(void);
 void kasumi_fake_mi_exit(void);
 bool kasumi_fake_mi_active(void);
+int kasumi_mi_normalize_groups(char *data, size_t *len);
 int kasumi_fake_mi_get_snapshot(struct file *file,
 				const struct file_operations *ops,
 				struct mnt_namespace **original_ns,

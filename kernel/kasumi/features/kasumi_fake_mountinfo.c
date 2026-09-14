@@ -306,7 +306,7 @@ static int kasumi_mi_compare_ids(const void *a, const void *b)
 }
 
 /* Only propagation numbers change; sorted positive IDs never grow in width. */
-static int kasumi_mi_normalize_groups(char *data, size_t *len)
+int kasumi_mi_normalize_groups(char *data, size_t *len)
 {
 	struct kasumi_mi_prop_ref *refs = NULL;
 	u32 *ids = NULL;

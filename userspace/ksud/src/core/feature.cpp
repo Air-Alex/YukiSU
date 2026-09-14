@@ -46,6 +46,7 @@ const std::map<std::string, uint32_t>& get_feature_map() {
         {"hide_bootloader", KSU_FEATURE_HIDE_BOOTLOADER},
         {"kasumi_sucompat", KSU_FEATURE_KASUMI_SUCOMPAT},
         {"kasumi", KSU_FEATURE_KASUMI},
+        {"unshare_mnt", KSU_FEATURE_UNSHARE_MNT},
     };
     return map;
 }
@@ -87,6 +88,9 @@ const std::map<uint32_t, const char*>& get_feature_descriptions() {
         {KSU_FEATURE_KASUMI,
          "Kasumi - initializes the embedded VFS engine on demand; required for all Kasumi "
          "functions. Disabling takes effect after reboot (off by default)"},
+        {KSU_FEATURE_UNSHARE_MNT,
+         "Mount View Cleanup - rebuilds the namespace after module unmounting and normalizes "
+         "visible propagation IDs (off by default)"},
     };
     return desc;
 }

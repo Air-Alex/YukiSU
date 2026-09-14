@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sort.h>
+#include <linux/syscalls.h>
 #include <linux/task_work.h>
 #include <linux/types.h>
 #include <linux/vmalloc.h>
@@ -27,12 +28,15 @@
 #include "feature/kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
 #include "ksu.h"
+#include "kasumi_proc_read_hooks.h"
 #include "runtime/ksud_boot.h"
 #include "runtime/ksud.h"
 #include "selinux/selinux.h"
 
 static bool ksu_kernel_umount_enabled = true;
 static bool ksu_webview_zygote_umount_enabled;
+static bool ksu_unshare_mnt_enabled;
+static bool ksu_unshare_mnt_hooks_held;
 
 static int kernel_umount_feature_get(u64 *value)
 {
@@ -80,6 +84,41 @@ static const struct ksu_feature_handler webview_zygote_umount_handler = {
     .name = "webview_zygote_umount",
     .get_handler = webview_zygote_umount_feature_get,
     .set_handler = webview_zygote_umount_feature_set,
+};
+
+bool ksu_is_unshare_mnt_enabled(void)
+{
+	return READ_ONCE(ksu_unshare_mnt_enabled);
+}
+
+static int unshare_mnt_feature_get(u64 *value)
+{
+	*value = READ_ONCE(ksu_unshare_mnt_enabled) ? 1 : 0;
+	return 0;
+}
+
+static int unshare_mnt_feature_set(u64 value)
+{
+	bool enable = value != 0;
+	int ret;
+
+	if (enable && !ksu_unshare_mnt_hooks_held) {
+		ret = kasumi_proc_proxy_get();
+		if (ret)
+			return ret;
+		ksu_unshare_mnt_hooks_held = true;
+	}
+
+	WRITE_ONCE(ksu_unshare_mnt_enabled, enable);
+	pr_info("unshare_mnt: set to %d\n", enable);
+	return 0;
+}
+
+static const struct ksu_feature_handler unshare_mnt_handler = {
+    .feature_id = KSU_FEATURE_UNSHARE_MNT,
+    .name = "unshare_mnt",
+    .get_handler = unshare_mnt_feature_get,
+    .set_handler = unshare_mnt_feature_set,
 };
 
 extern int path_umount(struct path *path, int flags);
@@ -387,6 +426,16 @@ static void umount_tw_func(struct callback_head *cb)
 	     !signature_mismatch))
 		ksu_umount_mount_list();
 
+	if (READ_ONCE(ksu_unshare_mnt_enabled) &&
+	    !(current->flags & PF_EXITING) && current->fs && current->nsproxy) {
+		/* Clone the remaining mounts only after all detach attempts. */
+		int ret = ksys_unshare(CLONE_NEWNS);
+
+		if (ret)
+			pr_warn_ratelimited("unshare_mnt: pid %d failed: %d\n",
+					    current->pid, ret);
+	}
+
 	revert_creds(saved);
 
 	if (tw->mountinfo)
@@ -560,10 +609,19 @@ void ksu_kernel_umount_init(void)
 		pr_err("Failed to register webview_zygote_umount feature "
 		       "handler\n");
 	}
+	if (ksu_register_feature_handler(&unshare_mnt_handler)) {
+		pr_err("Failed to register unshare_mnt feature handler\n");
+	}
 }
 
 void ksu_kernel_umount_exit(void)
 {
+	ksu_unregister_feature_handler(KSU_FEATURE_UNSHARE_MNT);
+	WRITE_ONCE(ksu_unshare_mnt_enabled, false);
+	if (ksu_unshare_mnt_hooks_held) {
+		kasumi_proc_proxy_put();
+		ksu_unshare_mnt_hooks_held = false;
+	}
 	ksu_unregister_feature_handler(KSU_FEATURE_WEBVIEW_ZYGOTE_UMOUNT);
 	ksu_unregister_feature_handler(KSU_FEATURE_KERNEL_UMOUNT);
 }

@@ -9,6 +9,7 @@
 void ksu_kernel_umount_init(void);
 void ksu_kernel_umount_exit(void);
 bool ksu_is_webview_zygote_umount_enabled(void);
+bool ksu_is_unshare_mnt_enabled(void);
 
 void try_umount(const char *mnt, int flags);
 
