@@ -207,7 +207,7 @@ bool inject_superkey_to_lkm(const std::string& lkm_path, const std::string& supe
 }
 
 bool inject_imgpatch_config_to_lkm(const std::string& lkm_path, bool allow_shell, bool enable_adbd,
-                                   const ksu_uts_template* uts_config) {
+                                   const ksu_uts_template* uts_config, bool bundled_lkm) {
     static_assert(sizeof(ksu_imgpatch_config) == 512, "ImgPatch config ABI drift");
     static_assert(offsetof(ksu_imgpatch_config, uts) == 24, "ImgPatch UTS config ABI drift");
 
@@ -215,6 +215,8 @@ bool inject_imgpatch_config_to_lkm(const std::string& lkm_path, bool allow_shell
     config.magic = KSU_IMGPATCH_CONFIG_MAGIC;
     config.version = KSU_IMGPATCH_CONFIG_VERSION;
     config.size = sizeof(config);
+    if (bundled_lkm)
+        config.flags |= KSU_IMGPATCH_CONFIG_BUNDLED;
     if (allow_shell)
         config.flags |= KSU_IMGPATCH_CONFIG_ALLOW_SHELL;
     if (enable_adbd)
@@ -526,8 +528,10 @@ bool inject_superkey_into_lkm(const std::string& lkm_path, const std::string& su
 }
 
 bool inject_imgpatch_config_into_lkm(const std::string& lkm_path, bool allow_shell,
-                                     bool enable_adbd, const ksu_uts_template* uts_config) {
-    return inject_imgpatch_config_to_lkm(lkm_path, allow_shell, enable_adbd, uts_config);
+                                     bool enable_adbd, const ksu_uts_template* uts_config,
+                                     bool bundled_lkm) {
+    return inject_imgpatch_config_to_lkm(lkm_path, allow_shell, enable_adbd, uts_config,
+                                         bundled_lkm);
 }
 
 // Parse boot patch arguments
@@ -1097,6 +1101,7 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     // Prepare LKM module
     printf("- Preparing assets\n");
     const std::string kmod_file = workdir + "/kernelsu.ko";
+    bool bundled_lkm = false;
 
     if (!parsed.module.empty()) {
         // Use specified module
@@ -1111,6 +1116,7 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         printf("- KMI: %s\n", kmi.c_str());
 
         if (copy_asset_to_file(kmi_lkm_name, kmod_file)) {
+            bundled_lkm = true;
             printf("- Using embedded LKM: %s\n", kmi_lkm_name.c_str());
         } else {
             // Fallback: try to find LKM from known locations
@@ -1353,6 +1359,8 @@ int boot_patch_impl(const std::vector<std::string>& args) {
     }
 
     std::vector<std::string> ksu_config;
+    if (bundled_lkm)
+        ksu_config.emplace_back("bundled=1");
     if (parsed.allow_shell) {
         printf("- Adding allow shell config\n");
         ksu_config.emplace_back("allow_shell=1");

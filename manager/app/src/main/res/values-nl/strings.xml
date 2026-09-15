@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Kan de handtekening van de dynamische beheerder voor %s niet ophalen</string>
     <string name="allow_any_dynamic_manager">Elke app als dynamische beheerder toestaan</string>
     <string name="allow_any_dynamic_manager_summary">Experimenteel. Toon de schakelaar voor dynamische beheerder voor elke app in plaats van alleen voor vooraf ingestelde beheerderhandtekeningen.</string>
-    <string name="require_kernel_version" formatted="false">De huidige KernelSU-versie %s is te laag om de beheerder correct te laten werken. Werk bij naar versie %s of hoger!</string>
+    <string name="require_kernel_version">Kernelupdate vereist. Tik om te installeren.</string>
     <string name="settings_umount_modules_default">Ontkoppel standaard de modules</string>
     <string name="settings_umount_modules_default_summary">Algemene standaard voor de instelling \"Modules ontkoppelen\" in App Profile. Indien ingeschakeld, worden modulewijzigingen verwijderd voor apps zonder profiel. Deze instelling is standaard uitgeschakeld, dus nieuwe of onbekende apps behouden modulewijzigingen.</string>
     <string name="profile_umount_modules_summary">Met deze optie ingeschakeld zal KernelSU toelaten om alle gewijzigde bestanden door de modules voor deze app te herstellen.</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">Weigeren en verbergen</string>
     <string name="settings_unshare_mnt">Mount-weergave opschonen</string>
     <string name="settings_unshare_mnt_summary">Maakt de naamruimte opnieuw aan en ordent zichtbare ID’s na ontkoppelen. Herstart de app om toe te passen.</string>
+    <string name="home_lkm_update_available">Er is een nieuwere versie van de ingebouwde LKM beschikbaar. Tik om bij te werken.</string>
+    <string name="home_lkm_custom">Aangepast</string>
+    <string name="require_manager_version">Managerupdate vereist.</string>
 </resources>

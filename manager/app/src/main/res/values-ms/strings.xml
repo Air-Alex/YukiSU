@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Tidak dapat mengekstrak tandatangan pengurus dinamik untuk %s</string>
     <string name="allow_any_dynamic_manager">Benarkan mana-mana aplikasi sebagai pengurus dinamik</string>
     <string name="allow_any_dynamic_manager_summary">Eksperimental. Menunjukkan suis pengurus dinamik untuk setiap aplikasi dan bukan hanya untuk tandatangan pengurus pratetap.</string>
-    <string name="require_kernel_version" formatted="false">Versi KernelSU semasa %s terlalu rendah untuk pengurus berfungsi dengan betul. Sila naik taraf kepada versi %s atau lebih tinggi!</string>
+    <string name="require_kernel_version">Kernel perlu dikemas kini. Ketik untuk memasang.</string>
     <string name="settings_umount_modules_default">Nyahlekap modul secara lalai</string>
     <string name="settings_umount_modules_default_summary">Lalai global untuk tetapan \"Nyahlekap modul\" dalam App Profile. Apabila didayakan, pengubahsuaian modul dialih keluar untuk apl tanpa profil. Tetapan ini dimatikan secara lalai, jadi apl baharu atau tidak diketahui menyimpan pengubahsuaian modul.</string>
     <string name="profile_umount_modules_summary">Mendayakan pilihan ini akan membolehkan KernelSU memulihkan sebarang fail yang diubah suai oleh modul untuk apl ini</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Tolak dan sembunyikan</string>
     <string name="settings_unshare_mnt">Kemas paparan lekapan</string>
     <string name="settings_unshare_mnt_summary">Cipta semula ruang nama dan susun ID yang kelihatan selepas nyahlekap. Mulakan semula aplikasi untuk menerapkan.</string>
+    <string name="home_lkm_update_available">Versi lebih baharu bagi LKM terbina dalam tersedia. Ketik untuk mengemas kini.</string>
+    <string name="home_lkm_custom">Tersuai</string>
+    <string name="require_manager_version">Pengurus perlu dikemas kini.</string>
 </resources>

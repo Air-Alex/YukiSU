@@ -43,6 +43,7 @@ extern struct cred *ksu_cred;
 extern bool ksu_late_loaded;
 extern bool ksu_imgpatch_loaded;
 extern bool ksu_no_custom_rc;
+extern bool ksu_bundled;
 extern struct selinux_policy *backup_sepolicy;
 
 #endif // #ifndef __KSU_H_KSU

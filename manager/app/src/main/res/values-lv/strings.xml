@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Neizdevās izgūt dinamiskā pārvaldnieka parakstu priekš %s</string>
     <string name="allow_any_dynamic_manager">Atļaut jebkuru lietotni kā dinamisko pārvaldnieku</string>
     <string name="allow_any_dynamic_manager_summary">Eksperimentāli. Rāda dinamiskā pārvaldnieka slēdzi katrai lietotnei, nevis tikai iepriekš iestatītajiem pārvaldnieku parakstiem.</string>
-    <string name="require_kernel_version" formatted="false">Pašreizējā KernelSU versija %s ir pārāk zema, lai pārvaldnieks darbotos pareizi. Lūdzu, atjauniniet uz versiju %s vai jaunāku!</string>
+    <string name="require_kernel_version">Nepieciešams kodola atjauninājums. Pieskarieties, lai instalētu.</string>
     <string name="settings_umount_modules_default">Pēc noklusējuma atvienot moduļus</string>
     <string name="settings_umount_modules_default_summary">Globālais noklusējums iestatījumam \"Atvienot moduļus\" lietotnes profilā. Ja tas ir ieslēgts, lietotnēm bez profila tiek noņemtas visas moduļu veiktās izmaiņas. Pēc noklusējuma šis iestatījums ir izslēgts, tāpēc jaunās vai nezināmās lietotnes saglabā moduļu izmaiņas.</string>
     <string name="profile_umount_modules_summary">Iespējojot šo opciju, KernelSU varēs atjaunot visus moduļos šīs lietojumprogrammas modificētos failus.</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">Noraidīt un slēpt</string>
     <string name="settings_unshare_mnt">Montējumu skata sakārtošana</string>
     <string name="settings_unshare_mnt_summary">Pēc atvienošanas atjauno vārdtelpu un sakārto redzamos ID. Lai lietotu, pārstartējiet lietotni.</string>
+    <string name="home_lkm_update_available">Pieejama jaunāka iebūvētā LKM versija. Pieskarieties, lai atjauninātu.</string>
+    <string name="home_lkm_custom">Pielāgots</string>
+    <string name="require_manager_version">Nepieciešams pārvaldnieka atjauninājums.</string>
 </resources>

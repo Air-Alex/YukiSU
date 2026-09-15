@@ -10,6 +10,7 @@
 #include "core/imgpatch_config.h"
 #include "extension/uts_view.h"
 #include "klog.h" // IWYU pragma: keep
+#include "ksu.h"
 #include "policy/allowlist.h"
 #include "uapi/imgpatch_config.h"
 
@@ -151,6 +152,7 @@ int ksu_imgpatch_config_apply(void)
 		return -EINVAL;
 	}
 
+	ksu_bundled = !!(config.flags & KSU_IMGPATCH_CONFIG_BUNDLED);
 	allow_shell = !!(config.flags & KSU_IMGPATCH_CONFIG_ALLOW_SHELL);
 	if (config.flags & KSU_IMGPATCH_CONFIG_UTS_BOOT) {
 		ret = ksu_uts_view_set_imgpatch_boot_template(&config.uts);

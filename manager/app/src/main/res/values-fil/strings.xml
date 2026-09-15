@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Hindi ma-extract ang dynamic manager signature para sa %s</string>
     <string name="allow_any_dynamic_manager">Payagan ang anumang app bilang dynamic manager</string>
     <string name="allow_any_dynamic_manager_summary">Eksperimental. Ipakita ang switch ng dynamic manager para sa bawat app sa halip na para lamang sa mga preset manager signature.</string>
-    <string name="require_kernel_version" formatted="false">Masyadong mababa ang kasalukuyang KernelSU version %s para gumana nang maayos ang manager. Mangyaring mag-upgrade sa version %s o mas mataas!</string>
+    <string name="require_kernel_version">Kailangang i-update ang kernel. I-tap para i-install.</string>
     <string name="settings_umount_modules_default">I-umount ang mga module bilang default</string>
     <string name="settings_umount_modules_default_summary">Global default para sa setting na \"I-unmount ang mga module\" sa App Profile. Kapag pinagana, aalisin ang mga pagbabago sa module para sa mga app na walang profile. Naka-off ang setting na ito bilang default, kaya ang mga bago o hindi kilalang app ay nagpapanatili ng mga pagbabago sa module.</string>
     <string name="profile_umount_modules_summary">Ang pagpapagana sa opsyong ito ay magbibigay-daan sa KernelSU na ibalik ang anumang binagong file ng mga modyul para sa aplikasyon na ito.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Tanggihan at itago</string>
     <string name="settings_unshare_mnt">Ayusin ang mount view</string>
     <string name="settings_unshare_mnt_summary">Gumawa muli ng namespace at ayusin ang mga nakikitang ID pagkatapos mag-unmount. I-restart ang app upang mailapat.</string>
+    <string name="home_lkm_update_available">May available na mas bagong naka-bundle na LKM. I-tap para mag-update.</string>
+    <string name="home_lkm_custom">Pasadya</string>
+    <string name="require_manager_version">Kailangang i-update ang manager.</string>
 </resources>

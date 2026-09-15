@@ -69,13 +69,15 @@ struct ksu_become_daemon_cmd {
  */
 // 3: scoped su-session driver fd
 // The su prompt request/verdict ioctls are additive and feature-gated.
-#define KERNEL_SU_UAPI_VERSION 3
+// 4: bundled LKM provenance and UAPI-based version matching.
+#define KERNEL_SU_UAPI_VERSION 4
 
 #define KSU_GET_INFO_FLAG_LKM (1U << 0)
 #define KSU_GET_INFO_FLAG_MANAGER (1U << 1)
 #define KSU_GET_INFO_FLAG_LATE_LOAD (1U << 2)
 #define KSU_GET_INFO_FLAG_PR_BUILD                                             \
   (1U << 3) // reserved (no PR-build concept yet)
+#define KSU_GET_INFO_FLAG_BUNDLED (1U << 4)
 
 struct ksu_get_info_cmd {
   __u32 version;

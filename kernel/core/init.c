@@ -92,6 +92,9 @@ module_param(allow_shell, bool, 0);
 bool ksu_no_custom_rc = false;
 module_param_named(norc, ksu_no_custom_rc, bool, 0);
 
+bool ksu_bundled;
+module_param_named(bundled, ksu_bundled, bool, 0);
+
 static void yukisu_custom_config_init(void)
 {
 }

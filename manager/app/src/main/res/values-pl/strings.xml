@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Nie można wyodrębnić podpisu menedżera dynamicznego dla %s</string>
     <string name="allow_any_dynamic_manager">Zezwól każdej aplikacji jako menedżer dynamiczny</string>
     <string name="allow_any_dynamic_manager_summary">Eksperymentalne. Pokazuje przełącznik menedżera dynamicznego dla każdej aplikacji, a nie tylko dla wstępnie zdefiniowanych podpisów menedżerów.</string>
-    <string name="require_kernel_version" formatted="false">Bieżąca wersja KernelSU %s jest zbyt niska, aby menedżer działał poprawnie. Zaktualizuj do wersji %s lub wyższej!</string>
+    <string name="require_kernel_version">Wymagana jest aktualizacja jądra. Kliknij, aby zainstalować.</string>
     <string name="settings_umount_modules_default">Domyślnie odmontuj moduły</string>
     <string name="settings_umount_modules_default_summary">Globalne ustawienie domyślne dla ustawienia \"Odmontuj moduły\" w App Profile. Po włączeniu modyfikacje modułów są usuwane w przypadku aplikacji bez profilu. To ustawienie jest domyślnie wyłączone, więc nowe lub nieznane aplikacje zachowują modyfikacje modułów.</string>
     <string name="profile_umount_modules_summary">Włączenie tej opcji umożliwi KernelSU przywrócenie wszelkich zmodyfikowanych plików przez moduły dla tej aplikacji.</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">Odmów i ukryj</string>
     <string name="settings_unshare_mnt">Porządkowanie widoku montowań</string>
     <string name="settings_unshare_mnt_summary">Po odmontowaniu odtwarza przestrzeń nazw i porządkuje widoczne identyfikatory. Uruchom aplikację ponownie, aby zastosować.</string>
+    <string name="home_lkm_update_available">Dostępna jest nowsza wersja wbudowanego LKM. Kliknij, aby zaktualizować.</string>
+    <string name="home_lkm_custom">Własny</string>
+    <string name="require_manager_version">Wymagana jest aktualizacja menedżera.</string>
 </resources>

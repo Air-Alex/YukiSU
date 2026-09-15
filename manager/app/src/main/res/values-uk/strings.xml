@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Не вдалося отримати підпис динамічного менеджера для %s</string>
     <string name="allow_any_dynamic_manager">Дозволити будь-який застосунок як динамічний менеджер</string>
     <string name="allow_any_dynamic_manager_summary">Експериментально. Показувати перемикач динамічного менеджера для кожного застосунку, а не лише для попередньо заданих підписів менеджерів.</string>
-    <string name="require_kernel_version" formatted="false">Поточна версія KernelSU %s занадто низька для коректної роботи менеджера. Будь ласка, оновіться до версії %s або вище!</string>
+    <string name="require_kernel_version">Потрібно оновити ядро. Натисніть, щоб установити.</string>
     <string name="settings_umount_modules_default">Відмонтовувати модулі за замовчуванням</string>
     <string name="settings_umount_modules_default_summary">Глобальне значення за замовчуванням для налаштування «Відмонтувати модулі» в App Profile. Якщо ввімкнено, модифікації модуля видаляються для програм без профілю. Цей параметр вимкнено за умовчанням, тому нові або невідомі програми зберігають модифікації модулів.</string>
     <string name="profile_umount_modules_summary">Увімкнення цієї опції дозволить KernelSU відновити будь-які змінені модулями файли для цього додатку.</string>
@@ -499,4 +499,7 @@
     <string name="profile">Профіль додатку</string>
     <string name="settings_unshare_mnt">Упорядкування вигляду монтувань</string>
     <string name="settings_unshare_mnt_summary">Повторно створює простір імен та впорядковує видимі ID після демонтування. Перезапустіть застосунок для застосування.</string>
+    <string name="home_lkm_update_available">Доступна новіша версія вбудованого LKM. Натисніть, щоб оновити.</string>
+    <string name="home_lkm_custom">Власний</string>
+    <string name="require_manager_version">Потрібно оновити менеджер.</string>
 </resources>

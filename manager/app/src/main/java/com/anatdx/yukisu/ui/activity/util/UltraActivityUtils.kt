@@ -141,8 +141,7 @@ object AppData {
     }
 
     fun isFullFeatured(): Boolean {
-        val isManager = Natives.isManager
-        return isManager && !Natives.requireNewKernel() && rootAvailable()
+        return Natives.isFullFeatured()
     }
 }
 

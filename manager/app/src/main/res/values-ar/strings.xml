@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">تعذّر استخراج توقيع المدير الديناميكي لـ %s</string>
     <string name="allow_any_dynamic_manager">السماح لأي تطبيق كمدير ديناميكي</string>
     <string name="allow_any_dynamic_manager_summary">تجريبي. إظهار مفتاح المدير الديناميكي لكل تطبيق بدلاً من توقيعات المدراء المحددة مسبقاً فقط.</string>
-    <string name="require_kernel_version" formatted="false">إصدار KernelSU الحالي %s منخفض جدًا بحيث لا يعمل المدير بشكل صحيح. الرجاء الترقية إلى الإصدار %s أو أعلى!</string>
+    <string name="require_kernel_version">يلزم تحديث النواة. اضغط للتثبيت.</string>
     <string name="settings_umount_modules_default">الغاء تحميل الإضافات بشكل افتراضي</string>
     <string name="settings_umount_modules_default_summary">الإعداد الافتراضي العالمي لإعداد \"إلغاء تحميل الوحدات\" في App Profile. عند التمكين، تتم إزالة تعديلات الوحدة للتطبيقات التي لا تحتوي على ملف تعريف. يتم إيقاف هذا الإعداد بشكل افتراضي، لذا تحتفظ التطبيقات الجديدة أو غير المعروفة بتعديلات الوحدة.</string>
     <string name="profile_umount_modules_summary">سيسمح تمكين هذا الخيار لـKernelSU باستعادة أي ملفات معدلة بواسطة الإضافات لهذا التطبيق.</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">رفض وإخفاء</string>
     <string name="settings_unshare_mnt">تنظيم عرض التثبيت</string>
     <string name="settings_unshare_mnt_summary">إعادة إنشاء مساحة الأسماء وتنظيم المعرّفات المرئية بعد إلغاء التثبيت. أعد تشغيل التطبيق للتطبيق.</string>
+    <string name="home_lkm_update_available">يتوفر إصدار أحدث من LKM المضمّن. اضغط للتحديث.</string>
+    <string name="home_lkm_custom">مُخصّص</string>
+    <string name="require_manager_version">يلزم تحديث المدير.</string>
 </resources>

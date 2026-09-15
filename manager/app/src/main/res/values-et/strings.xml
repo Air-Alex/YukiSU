@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Ei õnnestunud eraldada %s dünaamilise halduri allkirja</string>
     <string name="allow_any_dynamic_manager">Luba mis tahes rakendus dünaamilise haldurina</string>
     <string name="allow_any_dynamic_manager_summary">Eksperimentaalne. Kuvab dünaamilise halduri lüliti iga rakenduse jaoks, mitte ainult eelseadistatud halduri allkirjade jaoks.</string>
-    <string name="require_kernel_version" formatted="false">Praegune KernelSU versioon %s on liiga madal, et haldur korralikult töötaks. Palun uuendage versioonile %s või uuemale!</string>
+    <string name="require_kernel_version">Kerneli värskendamine on vajalik. Puuduta installimiseks.</string>
     <string name="settings_umount_modules_default">Haagi moodulid vaikimisi lahti</string>
     <string name="settings_umount_modules_default_summary">Globaalne vaikeseade App Profile sätte \"Unmount moodulid\" jaoks. Kui see on lubatud, eemaldatakse profiilita rakenduste mooduli muudatused. See seade on vaikimisi välja lülitatud, nii et uued või tundmatud rakendused säilitavad mooduli muudatused.</string>
     <string name="profile_umount_modules_summary">Selle valiku lubamine lubab KernelSU-l taastada selle rakenduse moodulite poolt mistahes muudetud faile.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Keeldu ja peida</string>
     <string name="settings_unshare_mnt">Haakimisvaate korrastus</string>
     <string name="settings_unshare_mnt_summary">Loob pärast lahtihaakimist nimeruumi uuesti ja korrastab nähtavad ID-d. Rakendamiseks taaskäivita rakendus.</string>
+    <string name="home_lkm_update_available">Saadaval on kaasasoleva LKM-i uuem versioon. Puuduta värskendamiseks.</string>
+    <string name="home_lkm_custom">Kohandatud</string>
+    <string name="require_manager_version">Halduri värskendamine on vajalik.</string>
 </resources>

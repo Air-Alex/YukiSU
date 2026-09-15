@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">%s üçün dinamik menecer imzası çıxarıla bilmədi</string>
     <string name="allow_any_dynamic_manager">İstənilən tətbiqə dinamik menecer olaraq icazə ver</string>
     <string name="allow_any_dynamic_manager_summary">Eksperimental. Yalnız əvvəlcədən təyin edilmiş menecer imzaları əvəzinə hər tətbiq üçün dinamik menecer açarını göstərir.</string>
-    <string name="require_kernel_version" formatted="false">Cari KernelSU versiyası %s menecerin düzgün işləməsi üçün çox aşağıdır. Zəhmət olmasa %s və ya daha yüksək versiyaya yeniləyin!</string>
+    <string name="require_kernel_version">Nüvəni yeniləmək lazımdır. Quraşdırmaq üçün toxunun.</string>
     <string name="settings_umount_modules_default">Defolt olaraq modulları umount et</string>
     <string name="settings_umount_modules_default_summary">App Profile-da \"Modulları ayırmaq\" parametri üçün qlobal standart. Aktiv edildikdə, modul dəyişiklikləri profili olmayan tətbiqlər üçün silinir. Bu parametr defolt olaraq deaktivdir, ona görə də yeni və ya naməlum proqramlar modul dəyişikliklərini saxlayır.</string>
     <string name="profile_umount_modules_summary">Bu seçimi aktivləşdirmək KernelSU-ya bu proqram üçün modullar tərəfindən hər hansı dəyişdirilmiş faylları bərpa etməyə imkan verəcək.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Rədd et və gizlət</string>
     <string name="settings_unshare_mnt">Qoşulma görünüşünü nizamlama</string>
     <string name="settings_unshare_mnt_summary">Ayırmadan sonra ad fəzasını yenidən yaradır və görünən ID-ləri nizamlayır. Tətbiqi yenidən başladın.</string>
+    <string name="home_lkm_update_available">Daxili LKM-in daha yeni versiyası mövcuddur. Yeniləmək üçün toxunun.</string>
+    <string name="home_lkm_custom">Özəl</string>
+    <string name="require_manager_version">Meneceri yeniləmək lazımdır.</string>
 </resources>

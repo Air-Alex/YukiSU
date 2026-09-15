@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.KernelVersion
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.getKernelVersion
@@ -30,10 +31,22 @@ class HomeViewModel : ViewModel() {
         val ksuFullVersion : String? = null,
         val kernelVersion: KernelVersion = getKernelVersion(),
         val isRootAvailable: Boolean = false,
-        val requireNewKernel: Boolean = false,
+        val isLkmBundled: Boolean = false,
         val kernelUapiVersion: Int = 0,
-        val managerUapiVersion: Int = 0
-    )
+        val managerUapiVersion: Int = 0,
+        val managerVersionCode: Long = BuildConfig.VERSION_CODE.toLong(),
+    ) {
+        val requireNewKernel: Boolean
+            get() = isManager && kernelUapiVersion < managerUapiVersion
+        val requireNewManager: Boolean
+            get() = isManager && kernelUapiVersion > managerUapiVersion
+        val showLkmUpdate: Boolean
+            get() = isManager && isLkmBundled && ksuVersion != null &&
+                ksuVersion.toLong() != managerVersionCode &&
+                kernelUapiVersion == managerUapiVersion
+        val showCustomLkmBadge: Boolean
+            get() = ksuVersion != null && !isLkmBundled
+    }
 
     data class SystemInfo(
         val kernelRelease: String = "",
@@ -154,11 +167,7 @@ class HomeViewModel : ViewModel() {
                     false
                 }
 
-                val requireNewKernel = try {
-                    isManager && Natives.requireNewKernel()
-                } catch (_: Exception) {
-                    false
-                }
+                val isLkmBundled = isManager && runCatching { Natives.isLkmBundled }.getOrDefault(false)
 
                 val kernelUapiVersion = if (isManager) {
                     try { Natives.getUapiVersion() } catch (_: Exception) { 0 }
@@ -174,7 +183,7 @@ class HomeViewModel : ViewModel() {
                     ksuFullVersion = ksuFullVersion,
                     kernelVersion = kernelVersion,
                     isRootAvailable = isRootAvailable,
-                    requireNewKernel = requireNewKernel,
+                    isLkmBundled = isLkmBundled,
                     kernelUapiVersion = kernelUapiVersion,
                     managerUapiVersion = managerUapiVersion
                 )

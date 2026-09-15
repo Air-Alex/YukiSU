@@ -327,27 +327,20 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         WarningCard(stringResource(R.string.ksud_integrity_warning))
                     }
 
-                    // 警告信息
                     if (viewModel.systemStatus.requireNewKernel) {
                         WarningCard(
-                            stringResource(id = R.string.require_kernel_version).format(
-                                Natives.getSimpleVersionFull(),
-                                Natives.MINIMAL_SUPPORTED_KERNEL_FULL
-                            )
+                            message = stringResource(R.string.require_kernel_version),
+                            onClick = { navigator.navigate(InstallScreenDestination()) },
                         )
                     }
-
-                    // UAPI 版本不匹配（管理器与内核 ABI 不同步）
-                    if (viewModel.systemStatus.isManager &&
-                        viewModel.systemStatus.ksuVersion != null &&
-                        viewModel.systemStatus.kernelUapiVersion != viewModel.systemStatus.managerUapiVersion
-                    ) {
+                    if (viewModel.systemStatus.requireNewManager) {
+                        WarningCard(stringResource(R.string.require_manager_version))
+                    }
+                    if (viewModel.systemStatus.showLkmUpdate) {
                         WarningCard(
-                            stringResource(
-                                id = R.string.uapi_mismatch,
-                                viewModel.systemStatus.managerUapiVersion,
-                                viewModel.systemStatus.kernelUapiVersion
-                            )
+                            message = stringResource(R.string.home_lkm_update_available),
+                            color = MaterialTheme.colorScheme.primary,
+                            onClick = { navigator.navigate(InstallScreenDestination()) },
                         )
                     }
 
@@ -357,9 +350,6 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                         )
                     }
 
-                    // 只有在没有其他警告信息时才显示不兼容内核警告
-                    val shouldShowWarnings = viewModel.systemStatus.requireNewKernel ||
-                            (viewModel.systemStatus.ksuVersion != null && !viewModel.systemStatus.isRootAvailable)
                 }
 
                 if (viewModel.isExtendedDataLoaded) {
@@ -749,19 +739,35 @@ private fun StatusCard(
                         if (!isHideVersion) {
                             Spacer(Modifier.height(4.dp))
                             systemStatus.ksuFullVersion?.let {
-                                // version_full (…@YukiSU) + (内核ksuver[/uapi]) in parens,
-                                // matching the manager version's "(code/uapi)" style.
                                 val ksuver = systemStatus.ksuVersion
                                 val versionText = when {
                                     systemStatus.kernelUapiVersion > 0 ->
                                         "$it ($ksuver/${systemStatus.kernelUapiVersion})"
                                     else -> "$it ($ksuver)"
                                 }
-                                Text(
-                                    text = stringResource(R.string.home_working_version, versionText),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.home_working_version, versionText),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                    )
+                                    if (systemStatus.showCustomLkmBadge) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.home_lkm_custom),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

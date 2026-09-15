@@ -291,6 +291,11 @@ bool is_lkm() {
     return (get_flags() & KSU_GET_INFO_FLAG_LKM) != 0;
 }
 
+bool is_lkm_bundled() {
+    const auto flags = get_flags();
+    return (flags & KSU_GET_INFO_FLAG_LKM) != 0 && (flags & KSU_GET_INFO_FLAG_BUNDLED) != 0;
+}
+
 bool is_late_load() {
     return (get_flags() & KSU_GET_INFO_FLAG_LATE_LOAD) != 0;
 }

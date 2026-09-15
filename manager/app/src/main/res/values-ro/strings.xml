@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Nu s-a putut extrage semnătura administratorului dinamic pentru %s</string>
     <string name="allow_any_dynamic_manager">Permite oricărei aplicații să fie administrator dinamic</string>
     <string name="allow_any_dynamic_manager_summary">Experimental. Afișează comutatorul de administrator dinamic pentru fiecare aplicație, nu doar pentru semnăturile de administrator presetate.</string>
-    <string name="require_kernel_version" formatted="false">Versiunea curentă de KernelSU %s este prea veche pentru ca administratorul să funcționeze corect. Vă rugăm să faceți upgrade la versiunea %s sau mai nouă!</string>
+    <string name="require_kernel_version">Este necesară actualizarea kernelului. Atingeți pentru instalare.</string>
     <string name="settings_umount_modules_default">U-montează modulele în mod implicit</string>
     <string name="settings_umount_modules_default_summary">Implicit global pentru setarea „Demontare module” din App Profile. Când este activată, modificările modulelor sunt eliminate pentru aplicațiile fără profil. Această setare este dezactivată în mod implicit, așa că aplicațiile noi sau necunoscute păstrează modificările modulelor.</string>
     <string name="profile_umount_modules_summary">Activarea acestei opțiuni va permite KernelSU să restaureze orice fișiere modificate de către modulele pentru această aplicație.</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">Refuză și ascunde</string>
     <string name="settings_unshare_mnt">Ordonarea vizualizării montărilor</string>
     <string name="settings_unshare_mnt_summary">Recreează spațiul de nume și ordonează ID-urile vizibile după demontare. Reporniți aplicația pentru aplicare.</string>
+    <string name="home_lkm_update_available">Este disponibilă o versiune mai nouă a LKM-ului integrat. Atingeți pentru actualizare.</string>
+    <string name="home_lkm_custom">Personalizat</string>
+    <string name="require_manager_version">Este necesară actualizarea managerului.</string>
 </resources>

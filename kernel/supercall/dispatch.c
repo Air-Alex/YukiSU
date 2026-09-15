@@ -91,6 +91,8 @@ static int do_get_info(void __user *arg)
 		cmd.version = KSU_DYNAMIC_MANAGER_COMPAT_VERSION;
 
 	cmd.flags |= KSU_GET_INFO_FLAG_LKM;
+	if (ksu_bundled)
+		cmd.flags |= KSU_GET_INFO_FLAG_BUNDLED;
 	if (is_manager()) {
 		cmd.flags |= KSU_GET_INFO_FLAG_MANAGER;
 	}

@@ -138,8 +138,7 @@
     <string name="dynamic_manager_signature_unavailable">Unable to extract dynamic manager signature for %s</string>
     <string name="allow_any_dynamic_manager">Allow any app as dynamic manager</string>
     <string name="allow_any_dynamic_manager_summary">Experimental. Show the dynamic manager switch for every app instead of only preset manager signatures.</string>
-    <string name="require_kernel_version" formatted="false">The current KernelSU version %s is too low for the manager to work properly. Please upgrade to version %s or higher!</string>
-    <string name="uapi_mismatch" tools:ignore="MissingTranslation">The manager (UAPI %1$d) and kernel (UAPI %2$d) are out of sync. Please update both the kernel and the manager to matching versions.</string>
+    <string name="require_kernel_version">Kernel update required. Tap to install.</string>
     <string name="settings_umount_modules_default">Umount modules by default</string>
     <string name="settings_umount_modules_default_summary">Umount modules for apps without their own profile. Off by default.</string>
     <string name="settings_default_no_new_privs" tools:ignore="MissingTranslation">Default anti-escape (no-new-privs)</string>
@@ -796,7 +795,6 @@
     <string name="partition_ak3_use_mkbootfs_summary" tools:ignore="MissingTranslation">Temporarily replace the package\'s mkbootfs for this flash. When disabled, keep the tools and fallback behavior supplied by the AnyKernel3 package.</string>
     <string name="partition_ak3_trust_warning" tools:ignore="MissingTranslation">AnyKernel3 packages execute their own shell code as root and may write boot-critical partitions. Flash only a package you trust and verify the selected slot.</string>
     <string name="partition_ak3_flash_now" tools:ignore="MissingTranslation">Flash package</string>
-    
     <!-- Advanced Tools -->
     <string name="install_advanced_tools">Advanced Tools</string>
     <string name="partition_manager_desc">Backup/restore partitions, manage slots</string>
@@ -934,4 +932,7 @@
     <string name="repository_retry" tools:ignore="MissingTranslation">Retry</string>
     <string name="uts_view_unpatched_boot_title" tools:ignore="MissingTranslation">Boot-global configuration not patched</string>
     <string name="uts_view_unpatched_boot_message" tools:ignore="MissingTranslation">You changed the boot-global configuration, but have not patched the LKM yet. Patch it now?</string>
+    <string name="home_lkm_update_available">A newer bundled LKM is available. Tap to update.</string>
+    <string name="home_lkm_custom">Custom</string>
+    <string name="require_manager_version">Manager update required</string>
 </resources>

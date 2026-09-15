@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Не удалось извлечь подпись динамического менеджера для %s</string>
     <string name="allow_any_dynamic_manager">Разрешить любое приложение как динамический менеджер</string>
     <string name="allow_any_dynamic_manager_summary">Экспериментально. Показывать переключатель динамического менеджера для каждого приложения, а не только для предустановленных подписей менеджеров.</string>
-    <string name="require_kernel_version" formatted="false">Текущая версия KernelSU %s слишком низкая для правильной работы менеджера. Пожалуйста, обновите до версии %s или выше!</string>
+    <string name="require_kernel_version">Требуется обновить ядро. Нажмите, чтобы установить.</string>
     <string name="settings_umount_modules_default">Размонтировать модули по умолчанию</string>
     <string name="settings_umount_modules_default_summary">Глобальное значение по умолчанию для настройки «Отключить модули» в App Profile. Если этот параметр включен, изменения модуля удаляются для приложений без профиля. По умолчанию этот параметр отключен, поэтому новые или неизвестные приложения сохраняют изменения модуля.</string>
     <string name="profile_umount_modules_summary">Включение этой опции позволит KernelSU восстанавливать любые измененные модулями файлы для данного приложения.</string>
@@ -500,4 +500,7 @@
     <string name="su_request_deny_hide">Отклонить и скрыть</string>
     <string name="settings_unshare_mnt">Упорядочить вид монтирований</string>
     <string name="settings_unshare_mnt_summary">Пересоздаёт пространство имён и упорядочивает видимые ID после размонтирования. Перезапустите приложение для применения.</string>
+    <string name="home_lkm_update_available">Доступна новая версия встроенного LKM. Нажмите, чтобы обновить.</string>
+    <string name="home_lkm_custom">Пользовательский</string>
+    <string name="require_manager_version">Требуется обновить менеджер.</string>
 </resources>

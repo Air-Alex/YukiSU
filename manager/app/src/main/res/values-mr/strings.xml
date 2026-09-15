@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">%s साठी डायनॅमिक व्यवस्थापक स्वाक्षरी काढण्यात अक्षम</string>
     <string name="allow_any_dynamic_manager">कोणत्याही अॅपला डायनॅमिक व्यवस्थापक म्हणून परवानगी द्या</string>
     <string name="allow_any_dynamic_manager_summary">प्रायोगिक. केवळ पूर्वनिर्धारित व्यवस्थापक स्वाक्षरींऐवजी प्रत्येक अॅपसाठी डायनॅमिक व्यवस्थापक स्विच दाखवा.</string>
-    <string name="require_kernel_version" formatted="false">सध्याची KernelSU आवृत्ती %s व्यवस्थापक योग्यरित्या कार्य करण्यासाठी खूप कमी आहे. कृपया आवृत्ती %s किंवा उच्चतर वर अपग्रेड करा!</string>
+    <string name="require_kernel_version">कर्नल अपडेट करणे आवश्यक आहे. इंस्टॉल करण्यासाठी टॅप करा.</string>
     <string name="settings_umount_modules_default">डीफॉल्टनुसार मॉड्यूल्स उमाउंट करा</string>
     <string name="settings_umount_modules_default_summary">App Profile मधील \"अनमाउंट मॉड्यूल्स\" सेटिंगसाठी ग्लोबल डीफॉल्ट. सक्षम केल्यावर, प्रोफाइलशिवाय ॲप्ससाठी मॉड्यूल बदल काढले जातात. ही सेटिंग बाय डीफॉल्ट बंद असते, त्यामुळे नवीन किंवा अज्ञात ॲप्स मॉड्यूल बदल करत राहतात.</string>
     <string name="profile_umount_modules_summary">हा पर्याय सक्षम केल्याने KernelSU ला या ऍप्लिकेशनसाठी मॉड्यूल्सद्वारे कोणत्याही सुधारित फाइल्स पुनर्संचयित करण्यास अनुमती मिळेल.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">नाकारा आणि लपवा</string>
     <string name="settings_unshare_mnt">माउंट दृश्य नीटनेटके करा</string>
     <string name="settings_unshare_mnt_summary">अनमाउंटनंतर नेमस्पेस पुन्हा तयार करून दिसणारे ID क्रमाने लावते. लागू करण्यासाठी ॲप पुन्हा सुरू करा.</string>
+    <string name="home_lkm_update_available">अंगभूत LKM ची नवीन आवृत्ती उपलब्ध आहे. अपडेट करण्यासाठी टॅप करा.</string>
+    <string name="home_lkm_custom">सानुकूल</string>
+    <string name="require_manager_version">व्यवस्थापक अपडेट करणे आवश्यक आहे.</string>
 </resources>

@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">No se pudo extraer la firma del administrador dinámico para %s</string>
     <string name="allow_any_dynamic_manager">Permitir cualquier aplicación como administrador dinámico</string>
     <string name="allow_any_dynamic_manager_summary">Experimental. Muestra el interruptor de administrador dinámico para cada aplicación en lugar de solo para las firmas de administrador predefinidas.</string>
-    <string name="require_kernel_version" formatted="false">La versión %s actual de KernelSU es demasiado baja para que el gestor funcione correctamente. Por favor, ¡actualice a la versión %s o superior!</string>
+    <string name="require_kernel_version">Se requiere actualizar el kernel. Toca para instalar.</string>
     <string name="settings_umount_modules_default">Desmontar módulos por defecto</string>
     <string name="settings_umount_modules_default_summary">Valor predeterminado global para la configuración \"Desmontar módulos\" en App Profile. Cuando está habilitado, las modificaciones del módulo se eliminan para las aplicaciones sin perfil. Esta configuración está desactivada de forma predeterminada, por lo que las aplicaciones nuevas o desconocidas mantienen las modificaciones del módulo.</string>
     <string name="profile_umount_modules_summary">Activar esta opción permitirá a KernelSU restaurar cualquier archivo modificado por los módulos para esta aplicación.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Denegar y ocultar</string>
     <string name="settings_unshare_mnt">Ordenar vista de montajes</string>
     <string name="settings_unshare_mnt_summary">Recrea el espacio de nombres y ordena los ID visibles tras desmontar. Reinicia la aplicación para aplicar.</string>
+    <string name="home_lkm_update_available">Hay disponible una versión más reciente del LKM incluido. Toca para actualizar.</string>
+    <string name="home_lkm_custom">Personalizado</string>
+    <string name="require_manager_version">Se requiere actualizar el gestor.</string>
 </resources>

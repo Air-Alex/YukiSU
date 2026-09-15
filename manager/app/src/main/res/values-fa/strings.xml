@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">استخراج امضای مدیر پویا برای %s ممکن نشد</string>
     <string name="allow_any_dynamic_manager">اجازه به هر برنامه به‌عنوان مدیر پویا</string>
     <string name="allow_any_dynamic_manager_summary">آزمایشی. کلید مدیر پویا را برای هر برنامه نمایش می‌دهد، به‌جای فقط امضاهای مدیر از پیش تعیین‌شده.</string>
-    <string name="require_kernel_version" formatted="false">نسخه فعلی KernelSU یعنی %s برای عملکرد صحیح مدیر بسیار پایین است. لطفاً به نسخه %s یا بالاتر ارتقا دهید!</string>
+    <string name="require_kernel_version">به‌روزرسانی هسته لازم است. برای نصب ضربه بزنید.</string>
     <string name="settings_umount_modules_default">آنمانت ماژول‌ها به‌صورت پیش‌فرض</string>
     <string name="settings_umount_modules_default_summary">پیش‌فرض جهانی برای تنظیم \"Unmount modules\" در App Profile. وقتی فعال باشد، تغییرات ماژول برای برنامه‌های بدون نمایه حذف می‌شود. این تنظیم به طور پیش فرض خاموش است، بنابراین برنامه های جدید یا ناشناخته تغییرات ماژول را حفظ می کنند.</string>
     <string name="profile_umount_modules_summary">فعال کردن این گزینه به KernelSU اجازه می دهد تا فایل های اصلاح شده را توسط ماژول های این برنامه بازیابی کند.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">رد کردن و پنهان کردن</string>
     <string name="settings_unshare_mnt">مرتب‌سازی نمای اتصال‌ها</string>
     <string name="settings_unshare_mnt_summary">پس از جدا کردن اتصال‌ها، فضای نام را بازسازی و شناسه‌های قابل مشاهده را مرتب می‌کند. برنامه را دوباره اجرا کنید.</string>
+    <string name="home_lkm_update_available">نسخه جدیدتری از LKM داخلی موجود است. برای به‌روزرسانی ضربه بزنید.</string>
+    <string name="home_lkm_custom">شخصی‌سازی‌شده</string>
+    <string name="require_manager_version">به‌روزرسانی مدیر لازم است.</string>
 </resources>

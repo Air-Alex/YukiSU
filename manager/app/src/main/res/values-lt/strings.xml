@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Nepavyko išgauti dinaminės tvarkyklės parašo %s</string>
     <string name="allow_any_dynamic_manager">Leisti bet kuriai programai būti dinamine tvarkykle</string>
     <string name="allow_any_dynamic_manager_summary">Eksperimentinė. Rodo dinaminės tvarkyklės jungiklį kiekvienai programai, o ne tik iš anksto nustatytiems tvarkyklių parašams.</string>
-    <string name="require_kernel_version" formatted="false">Dabartinė KernelSU versija %s yra per žema, kad tvarkyklė veiktų tinkamai. Atnaujinkite į versiją %s arba naujesnę!</string>
+    <string name="require_kernel_version">Reikia atnaujinti branduolį. Palieskite, kad įdiegtumėte.</string>
     <string name="settings_umount_modules_default">Atjungti modulius pagal numatytuosius parametrus</string>
     <string name="settings_umount_modules_default_summary">Visuotinis numatytasis parametras „Atjungti modulius“ App Profile. Kai įgalinta, programų be profilio modulių pakeitimai pašalinami. Šis nustatymas išjungtas pagal numatytuosius nustatymus, todėl naujos arba nežinomos programos išsaugo modulio pakeitimus.</string>
     <string name="profile_umount_modules_summary">Įjungus šią parinktį, KernelSU galės atkurti visus modulių modifikuotus failus šiai programai.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Atmesti ir slėpti</string>
     <string name="settings_unshare_mnt">Prijungimų rodinio tvarkymas</string>
     <string name="settings_unshare_mnt_summary">Po atjungimo atkuria vardų sritį ir sutvarko matomus ID. Kad įsigaliotų, paleiskite programą iš naujo.</string>
+    <string name="home_lkm_update_available">Pasiekiama naujesnė integruoto LKM versija. Palieskite, kad atnaujintumėte.</string>
+    <string name="home_lkm_custom">Pasirinktinis</string>
+    <string name="require_manager_version">Reikia atnaujinti tvarkyklę.</string>
 </resources>

@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">%s の動的マネージャー署名を取得できませんでした</string>
     <string name="allow_any_dynamic_manager">任意のアプリを動的マネージャーとして許可</string>
     <string name="allow_any_dynamic_manager_summary">実験的機能。プリセットのマネージャー署名だけでなく、すべてのアプリに動的マネージャーのスイッチを表示します。</string>
-    <string name="require_kernel_version" formatted="false">現在の KernelSU のバージョン「%s」は低すぎるため、マネージャーは正常に動作しません。バージョン「%s」以上に更新してください！</string>
+    <string name="require_kernel_version">カーネルの更新が必要です。タップしてインストールします。</string>
     <string name="settings_umount_modules_default">デフォルトでモジュールのマウントを解除する</string>
     <string name="settings_umount_modules_default_summary">App Profile の「モジュールのアンマウント」設定のグローバル デフォルト。有効にすると、プロファイルのないアプリのモジュールの変更が削除されます。この設定はデフォルトではオフになっているため、新しいアプリや不明なアプリはモジュールの変更を保持します。</string>
     <string name="profile_umount_modules_summary">このオプションを有効にすると、KernelSU はこのアプリのモジュールによって変更されたファイルを復元できるようになります。</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">拒否して非表示</string>
     <string name="settings_unshare_mnt">マウント表示の整理</string>
     <string name="settings_unshare_mnt_summary">アンマウント後に名前空間を再作成し、表示される ID を整理します。アプリの再起動後に反映されます。</string>
+    <string name="home_lkm_update_available">内蔵 LKM の新しいバージョンが利用可能です。タップして更新します。</string>
+    <string name="home_lkm_custom">カスタム</string>
+    <string name="require_manager_version">マネージャーの更新が必要です。</string>
 </resources>

@@ -56,6 +56,8 @@ NativeBridgeNP(isManager, jboolean) { return is_manager(); }
 
 NativeBridgeNP(isLateLoadMode, jboolean) { return is_late_load_mode(); }
 
+NativeBridgeNP(isLkmBundled, jboolean) { return is_lkm_bundled(); }
+
 NativeBridgeNP(isImagePatchMode, jboolean) { return is_image_patch_mode(); }
 
 NativeBridgeNP(getLoadMode, jint) { return (jint)get_load_mode(); }

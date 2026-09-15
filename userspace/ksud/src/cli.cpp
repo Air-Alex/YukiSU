@@ -301,6 +301,7 @@ int cmd_debug(const std::vector<std::string>& args) {
         printf("  insmod <KO> [PARAMS...]  Load a kernel module (legacy alias)\n");
         printf("  su [-g]            Root shell\n");
         printf("  version            Get kernel version\n");
+        printf("  info               Get kernel compatibility and load information\n");
         printf("  mark <get|mark|unmark|refresh> [PID]\n");
         printf("  sulogd             Launch sulog daemon now\n");
         return 1;
@@ -313,6 +314,15 @@ int cmd_debug(const std::vector<std::string>& args) {
         return debug_set_manager(pkg);
     } else if (subcmd == "insmod" && args.size() > 1) {
         return debug_insmod(args[1], std::vector<std::string>(args.begin() + 2, args.end()));
+    } else if (subcmd == "info") {
+        printf("version: %d\n", get_version());
+        printf("uapi_version: %u\n", get_uapi_version());
+        printf("flags: 0x%x\n", get_flags());
+        printf("lkm: %s\n", is_lkm() ? "true" : "false");
+        printf("bundled: %s\n", is_lkm_bundled() ? "true" : "false");
+        printf("late_load: %s\n", is_late_load() ? "true" : "false");
+        printf("runtime_mode: %s\n", runtime_mode());
+        return 0;
     } else if (subcmd == "version") {
         printf("Kernel Version: %d\n", get_version());
         return 0;

@@ -162,6 +162,12 @@ bool is_manager() {
   return false;
 }
 
+bool is_lkm_bundled() {
+  auto info = get_info();
+  return (info.flags & KSU_GET_INFO_FLAG_LKM) != 0 &&
+         (info.flags & KSU_GET_INFO_FLAG_BUNDLED) != 0;
+}
+
 bool is_late_load_mode() {
   auto info = get_info();
   if (info.version > 0) {

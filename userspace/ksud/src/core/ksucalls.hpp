@@ -63,6 +63,7 @@ constexpr uint32_t uapi_version() {
     return KERNEL_SU_UAPI_VERSION;
 }
 bool is_lkm();
+bool is_lkm_bundled();
 bool is_late_load();
 const char* runtime_mode();
 bool ensure_uapi_version_matched(std::string* error = nullptr);

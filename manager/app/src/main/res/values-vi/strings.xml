@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Không thể trích xuất chữ ký trình quản lý động cho %s</string>
     <string name="allow_any_dynamic_manager">Cho phép bất kỳ ứng dụng nào làm trình quản lý động</string>
     <string name="allow_any_dynamic_manager_summary">Thử nghiệm. Hiển thị công tắc trình quản lý động cho mọi ứng dụng thay vì chỉ cho các chữ ký trình quản lý định sẵn.</string>
-    <string name="require_kernel_version" formatted="false">Phiên bản KernelSU %s hiện tại quá thấp để người quản lý có thể hoạt động bình thường. Vui lòng nâng cấp lên phiên bản %s hoặc cao hơn!</string>
+    <string name="require_kernel_version">Cần cập nhật Kernel. Nhấn để cài đặt.</string>
     <string name="settings_umount_modules_default">Umount modules</string>
     <string name="settings_umount_modules_default_summary">Giá trị mặc định toàn cục của tùy chọn \"Ngắt kết nối mô-đun\" trong Hồ sơ ứng dụng. Khi bật, các thay đổi của mô-đun sẽ bị loại bỏ đối với ứng dụng chưa có hồ sơ. Tùy chọn này mặc định tắt, vì vậy ứng dụng mới hoặc chưa xác định vẫn giữ các thay đổi của mô-đun.</string>
     <string name="profile_umount_modules_summary">Việc bật tùy chọn này sẽ cho phép KernelSU khôi phục mọi tệp đã sửa đổi theo mô-đun cho ứng dụng này</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">Từ chối và ẩn</string>
     <string name="settings_unshare_mnt">Sắp xếp chế độ xem gắn kết</string>
     <string name="settings_unshare_mnt_summary">Tạo lại không gian tên và sắp xếp ID hiển thị sau khi tháo gắn kết. Khởi động lại ứng dụng để áp dụng.</string>
+    <string name="home_lkm_update_available">Hiện có phiên bản LKM tích hợp mới hơn. Nhấn để cập nhật.</string>
+    <string name="home_lkm_custom">Tuỳ chỉnh</string>
+    <string name="require_manager_version">Cần cập nhật Trình quản lý.</string>
 </resources>

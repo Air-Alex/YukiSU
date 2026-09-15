@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Impossible d\'extraire la signature du gestionnaire dynamique pour %s</string>
     <string name="allow_any_dynamic_manager">Autoriser toute application comme gestionnaire dynamique</string>
     <string name="allow_any_dynamic_manager_summary">Expérimental. Afficher le commutateur de gestionnaire dynamique pour chaque application plutôt que pour les seules signatures de gestionnaires prédéfinies.</string>
-    <string name="require_kernel_version" formatted="false">La version actuelle de KernelSU (%s) est trop ancienne pour que le gestionnaire fonctionne correctement. Veuillez passer à la version %s ou à une version supérieure !</string>
+    <string name="require_kernel_version">Mise à jour du noyau requise. Appuyez pour installer.</string>
     <string name="settings_umount_modules_default">Démonter les modules par défaut</string>
     <string name="settings_umount_modules_default_summary">Valeur par défaut globale pour le paramètre \"Démonter les modules\" au App Profile. Lorsqu\'elles sont activées, les modifications du module sont supprimées pour les applications sans profil. Ce paramètre est désactivé par défaut, donc les applications nouvelles ou inconnues conservent les modifications du module.</string>
     <string name="profile_umount_modules_summary">L\'activation de cette option permettra à KernelSU de restaurer tous les fichiers modifiés par les modules pour cette application.</string>
@@ -499,4 +499,7 @@
     <string name="su_request_deny_hide">Refuser et masquer</string>
     <string name="settings_unshare_mnt">Nettoyage de la vue des montages</string>
     <string name="settings_unshare_mnt_summary">Recrée l’espace de noms et ordonne les identifiants visibles après démontage. Redémarrez l’application pour appliquer.</string>
+    <string name="home_lkm_update_available">Une version plus récente du LKM intégré est disponible. Appuyez pour mettre à jour.</string>
+    <string name="home_lkm_custom">Personnalisé</string>
+    <string name="require_manager_version">Mise à jour du gestionnaire requise.</string>
 </resources>

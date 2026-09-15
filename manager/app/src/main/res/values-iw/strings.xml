@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">לא ניתן לחלץ את חתימת המנהל הדינמי עבור %s</string>
     <string name="allow_any_dynamic_manager">אפשר לכל אפליקציה לשמש כמנהל דינמי</string>
     <string name="allow_any_dynamic_manager_summary">ניסיוני. הצג את מתג המנהל הדינמי עבור כל אפליקציה במקום רק עבור חתימות מנהל מוגדרות מראש.</string>
-    <string name="require_kernel_version" formatted="false">גרסת KernelSU הנוכחית %s נמוכה מדי כדי שהמנהל יפעל כראוי. אנא שדרג לגרסה %s או גבוהה יותר!</string>
+    <string name="require_kernel_version">יש לעדכן את הליבה. הקש כדי להתקין.</string>
     <string name="settings_umount_modules_default">טעינת מודולים כברירת מחדל</string>
     <string name="settings_umount_modules_default_summary">ברירת מחדל עולמית עבור ההגדרה \"ביטול מודולים\" ב-App Profile. כאשר מופעל, שינויים במודול יוסרו עבור אפליקציות ללא פרופיל. הגדרה זו כבויה כברירת מחדל, כך שאפליקציות חדשות או לא ידועות שומרות על שינויים במודול.</string>
     <string name="profile_umount_modules_summary">הפעלת אפשרות זו תאפשר ל-KernelSU לשחזר קבצים שהשתנו על ידי המודולים עבור יישום זה.</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">דחה והסתר</string>
     <string name="settings_unshare_mnt">סידור תצוגת העגינות</string>
     <string name="settings_unshare_mnt_summary">יוצר מחדש את מרחב השמות ומסדר את המזהים הגלויים לאחר ביטול העגינה. יש להפעיל מחדש את האפליקציה.</string>
+    <string name="home_lkm_update_available">גרסה חדשה יותר של ה-LKM המובנה זמינה. הקש כדי לעדכן.</string>
+    <string name="home_lkm_custom">מותאם אישית</string>
+    <string name="require_manager_version">יש לעדכן את המנהל.</string>
 </resources>

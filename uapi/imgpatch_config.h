@@ -16,9 +16,10 @@ extern "C" {
 #define KSU_IMGPATCH_CONFIG_ALLOW_SHELL (1ULL << 0)
 #define KSU_IMGPATCH_CONFIG_ENABLE_ADBD (1ULL << 1)
 #define KSU_IMGPATCH_CONFIG_UTS_BOOT (1ULL << 2)
+#define KSU_IMGPATCH_CONFIG_BUNDLED (1ULL << 3)
 #define KSU_IMGPATCH_CONFIG_VALID_FLAGS                                        \
   (KSU_IMGPATCH_CONFIG_ALLOW_SHELL | KSU_IMGPATCH_CONFIG_ENABLE_ADBD |         \
-   KSU_IMGPATCH_CONFIG_UTS_BOOT)
+   KSU_IMGPATCH_CONFIG_UTS_BOOT | KSU_IMGPATCH_CONFIG_BUNDLED)
 
 /*
  * Patchable, on-disk ABI stored in the LKM .data section. Keep this block at

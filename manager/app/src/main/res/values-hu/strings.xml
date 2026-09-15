@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">Nem sikerült kinyerni a dinamikus kezelő aláírását ehhez: %s</string>
     <string name="allow_any_dynamic_manager">Bármely alkalmazás engedélyezése dinamikus kezelőként</string>
     <string name="allow_any_dynamic_manager_summary">Kísérleti. A dinamikus kezelő kapcsolójának megjelenítése minden alkalmazásnál, nem csak az előre beállított kezelői aláírásoknál.</string>
-    <string name="require_kernel_version" formatted="false">A jelenlegi KernelSU verzió (%s) túl alacsony a kezelő megfelelő működéséhez. Kérjük, frissítsen a(z) %s vagy újabb verzióra!</string>
+    <string name="require_kernel_version">A kernel frissítése szükséges. Érintse meg a telepítéshez.</string>
     <string name="settings_umount_modules_default">Modulok leválasztása alapértelmezetten</string>
     <string name="settings_umount_modules_default_summary">Globális alapértelmezés a \"Modulok leválasztása\" beállításhoz a App Profile-ban. Ha engedélyezve van, a modul módosításai törlődnek a profil nélküli alkalmazásoknál. Ez a beállítás alapértelmezés szerint ki van kapcsolva, így az új vagy ismeretlen alkalmazások megtartják a modul módosításait.</string>
     <string name="profile_umount_modules_summary">Ha engedélyezi ezt az opciót, a KernelSU visszaállíthatja az alkalmazás moduljai által módosított fájlokat.</string>
@@ -498,4 +498,7 @@ A</string>
     <string name="su_request_deny_hide">Elutasítás és elrejtés</string>
     <string name="settings_unshare_mnt">Csatolási nézet rendezése</string>
     <string name="settings_unshare_mnt_summary">Leválasztás után újra létrehozza a névteret és rendezi a látható azonosítókat. Indítsa újra az alkalmazást.</string>
+    <string name="home_lkm_update_available">Elérhető a beépített LKM újabb verziója. Érintse meg a frissítéshez.</string>
+    <string name="home_lkm_custom">Egyedi</string>
+    <string name="require_manager_version">A menedzser frissítése szükséges.</string>
 </resources>

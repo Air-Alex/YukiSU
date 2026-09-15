@@ -69,7 +69,7 @@
     <string name="dynamic_manager_signature_unavailable">%s এর জন্য ডায়নামিক ম্যানেজার স্বাক্ষর বের করতে অক্ষম</string>
     <string name="allow_any_dynamic_manager">যেকোনো অ্যাপকে ডায়নামিক ম্যানেজার হিসেবে অনুমতি দিন</string>
     <string name="allow_any_dynamic_manager_summary">পরীক্ষামূলক। শুধুমাত্র পূর্বনির্ধারিত ম্যানেজার স্বাক্ষরের পরিবর্তে প্রতিটি অ্যাপের জন্য ডায়নামিক ম্যানেজার সুইচ দেখান।</string>
-    <string name="require_kernel_version" formatted="false">বর্তমান KernelSU সংস্করণ %s ম্যানেজার সঠিকভাবে কাজ করার জন্য খুব কম। অনুগ্রহ করে সংস্করণ %s বা উচ্চতরে আপগ্রেড করুন!</string>
+    <string name="require_kernel_version">কার্নেল আপডেট করা প্রয়োজন। ইনস্টল করতে চাপুন।</string>
     <string name="settings_umount_modules_default">ডিফল্টরূপে মডিউল আনমাউন্ট করুন</string>
     <string name="settings_umount_modules_default_summary">App Profile এ \"আনমাউন্ট মডিউল\" সেটিং এর জন্য গ্লোবাল ডিফল্ট। সক্রিয় থাকা অবস্থায়, প্রোফাইল ছাড়া অ্যাপগুলির জন্য মডিউল পরিবর্তনগুলি সরানো হয়৷ এই সেটিংটি ডিফল্টরূপে বন্ধ থাকে, তাই নতুন বা অজানা অ্যাপগুলি মডিউল পরিবর্তনগুলি রাখে৷</string>
     <string name="profile_umount_modules_summary">এই বিকল্পটি সক্রিয় করলে KernelSU এই অ্যাপের জন্য মডিউল দ্বারা পরিবর্তিত যেকোনো ফাইল পুনরুদ্ধার করতে পারবে।</string>
@@ -497,4 +497,7 @@
     <string name="su_request_deny_hide">প্রত্যাখ্যান করুন এবং লুকান</string>
     <string name="settings_unshare_mnt">মাউন্ট ভিউ বিন্যাস</string>
     <string name="settings_unshare_mnt_summary">আনমাউন্টের পরে নেমস্পেস পুনরায় তৈরি করে দৃশ্যমান ID সাজায়। কার্যকর করতে অ্যাপ পুনরায় চালু করুন।</string>
+    <string name="home_lkm_update_available">একটি নতুন বিল্ট-ইন LKM উপলভ্য। আপডেট করতে চাপুন।</string>
+    <string name="home_lkm_custom">কাস্টম</string>
+    <string name="require_manager_version">ম্যানেজার আপডেট করা প্রয়োজন।</string>
 </resources>
