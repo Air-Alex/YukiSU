@@ -32,6 +32,7 @@ import java.io.File
 import java.util.zip.ZipFile
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.FieldVisitor
 import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
@@ -43,6 +44,125 @@ plugins {
     id("kotlin-parcelize")
 
 
+}
+
+/** Replaces reflection-heavy library methods without changing their JVM interfaces. */
+abstract class WebUiReflectionPatch : AsmClassVisitorFactory<InstrumentationParameters.None> {
+    override fun isInstrumentable(classData: ClassData): Boolean =
+        classData.className.replace('.', '/') in TARGETS
+
+    override fun createClassVisitor(classContext: ClassContext, nextClassVisitor: ClassVisitor): ClassVisitor =
+        object : ClassVisitor(Opcodes.ASM9, nextClassVisitor) {
+            private val owner = classContext.currentClassData.className.replace('.', '/')
+            private val target = TARGETS.getValue(owner)
+            private val fields = linkedMapOf<String, String>()
+            private var patched = false
+
+            override fun visitField(access: Int, name: String, descriptor: String, signature: String?, value: Any?): FieldVisitor? {
+                if (access and Opcodes.ACC_STATIC == 0) fields[name] = descriptor
+                return super.visitField(access, name, descriptor, signature, value)
+            }
+
+            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
+                val method = super.visitMethod(access, name, descriptor, signature, exceptions)
+                if (name + descriptor != target) return method
+                check(!patched) { "Duplicate WebUI patch target: $owner#$target" }
+                patched = true
+                method.visitCode()
+                if (owner == WEB_COLORS) {
+                    method.visitVarInsn(Opcodes.ALOAD, 0)
+                    method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+                    method.visitVarInsn(Opcodes.ALOAD, 1)
+                    method.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER, "create", "(Landroidx/compose/material3/ColorScheme;)L$SNAPSHOT;", false)
+                    method.visitVarInsn(Opcodes.ASTORE, 2)
+                    COLOR_FIELDS.forEach { (field, type) ->
+                        method.visitVarInsn(Opcodes.ALOAD, 0)
+                        method.visitVarInsn(Opcodes.ALOAD, 2)
+                        method.visitFieldInsn(Opcodes.GETFIELD, SNAPSHOT, field, type)
+                        method.visitFieldInsn(Opcodes.PUTFIELD, owner, field, type)
+                    }
+                    method.visitInsn(Opcodes.RETURN)
+                } else {
+                    method.visitVarInsn(Opcodes.ALOAD, 1)
+                    method.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER, "asStringMap", "(Ljava/lang/Object;)Ljava/util/Map;", false)
+                    method.visitInsn(Opcodes.ARETURN)
+                }
+                method.visitMaxs(2, 3)
+                method.visitEnd()
+                return null
+            }
+
+            override fun visitEnd() {
+                check(patched) { "WebUI dependency changed: missing $owner#$target" }
+                if (owner == WEB_COLORS) {
+                    check(fields == COLOR_FIELDS) { "WebColors fields changed: $fields" }
+                }
+                super.visitEnd()
+            }
+        }
+
+    companion object {
+        const val WEB_COLORS = "com/dergoogler/mmrl/webui/model/WebColors"
+        const val HELPER = "com/anatdx/yukisu/ui/webui/WebUiColorMaps"
+        const val SNAPSHOT = "$HELPER\$Snapshot"
+        val TARGETS = mapOf(
+            WEB_COLORS to "<init>(Landroidx/compose/material3/ColorScheme;)V",
+            "com/dergoogler/mmrl/platform/file/config/ConfigFile" to "asStringMap(Ljava/lang/Object;)Ljava/util/Map;",
+        )
+        val COLOR_FIELDS = linkedMapOf(
+            "colorScheme" to "Landroidx/compose/material3/ColorScheme;",
+            "filledTonalButtonColors" to "Landroidx/compose/material3/ButtonColors;",
+            "cardColors" to "Landroidx/compose/material3/CardColors;",
+            "colorSchemeMap" to "Ljava/util/Map;",
+            "filledTonalButtonColorsMap" to "Ljava/util/Map;",
+            "cardColorsMap" to "Ljava/util/Map;",
+            "allCssColors" to "Ljava/lang/String;",
+        )
+    }
+}
+
+@CacheableTask
+abstract class VerifyWebUiReflectionPatchTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val classJars: ListProperty<RegularFile>
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val classDirs: ListProperty<Directory>
+
+    @get:OutputFile
+    abstract val receipt: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        WebUiReflectionPatch.TARGETS.forEach { (owner, target) ->
+            val entry = "$owner.class"
+            val bytes = classDirs.get().firstNotNullOfOrNull { dir ->
+                dir.asFile.resolve(entry).takeIf { it.isFile }?.readBytes()
+            } ?: classJars.get().firstNotNullOfOrNull { jar ->
+                ZipFile(jar.asFile).use { zip -> zip.getEntry(entry)?.let { zip.getInputStream(it).use { stream -> stream.readBytes() } } }
+            } ?: error("Missing WebUI patch class: $owner")
+            var callsHelper = false
+            var callsReflection = false
+            ClassReader(bytes).accept(object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
+                    if (name + descriptor != target) return null
+                    return object : MethodVisitor(Opcodes.ASM9) {
+                        override fun visitMethodInsn(opcode: Int, owner: String, name: String, descriptor: String, isInterface: Boolean) {
+                            callsHelper = callsHelper || owner == WebUiReflectionPatch.HELPER
+                            callsReflection = callsReflection || owner.startsWith("kotlin/reflect/") || owner == "kotlin/jvm/internal/Reflection"
+                        }
+                    }
+                }
+            }, ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES)
+            check(callsHelper && !callsReflection) { "WebUI reflection patch was not applied to $owner#$target" }
+        }
+        receipt.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("WebUI color and configuration mappings use direct field access.\n")
+        }
+    }
 }
 
 @CacheableTask
@@ -569,8 +689,24 @@ androidComponents {
             RectListParentGuard::class.java,
             InstrumentationScope.ALL,
         ) {}
+        variant.instrumentation.transformClassesWith(
+            WebUiReflectionPatch::class.java,
+            InstrumentationScope.ALL,
+        ) {}
 
         val capitalizedVariant = variant.name.replaceFirstChar(Char::uppercaseChar)
+        val verifyWebUiPatchTask = tasks.register<VerifyWebUiReflectionPatchTask>(
+            "verifyWebUiReflectionPatch$capitalizedVariant"
+        ) {
+            receipt.set(layout.buildDirectory.file("reports/webUiReflectionPatch/${variant.name}.txt"))
+        }
+        variant.artifacts.forScope(ScopedArtifacts.Scope.ALL)
+            .use(verifyWebUiPatchTask)
+            .toGet(
+                ScopedArtifact.CLASSES,
+                VerifyWebUiReflectionPatchTask::classJars,
+                VerifyWebUiReflectionPatchTask::classDirs,
+            )
         val verifyPatchTask = tasks.register<VerifyRectListPatchTask>(
             "verifyRectListPatch$capitalizedVariant"
         ) {
@@ -589,6 +725,7 @@ androidComponents {
         val packagingTasks = setOf("assemble$capitalizedVariant", "bundle$capitalizedVariant")
         tasks.matching { it.name in packagingTasks }.configureEach {
             dependsOn(verifyPatchTask)
+            dependsOn(verifyWebUiPatchTask)
         }
 
         val outputName =
@@ -670,14 +807,25 @@ dependencies {
 
     implementation(libs.com.github.topjohnwu.libsu.core)
 
-    implementation(libs.mmrl.platform)
+    // WebUiReflectionPatch removes the live reflection calls.
+    implementation(libs.mmrl.platform) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    }
     compileOnly(libs.mmrl.hidden.api)
-    implementation(libs.mmrl.webui)
+    implementation(libs.mmrl.webui) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    }
     implementation(libs.mmrl.hwui)
-    implementation(libs.mmrl.ext)
-    implementation(libs.mmrl.compat)
+    implementation(libs.mmrl.ext) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    }
+    implementation(libs.mmrl.compat) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    }
     implementation(libs.androidx.swiperefreshlayout)
-    implementation(libs.mmrl.ui)
+    implementation(libs.mmrl.ui) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    }
 
     implementation(libs.accompanist.drawablepainter)
     implementation(libs.ucrop)
