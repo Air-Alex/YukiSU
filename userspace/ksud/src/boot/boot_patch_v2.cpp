@@ -701,6 +701,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         return 1;
     }
     const bool already_patched = boot::lkm_image::contains_capsule(*kernel);
+    const bool bundled_lkm = parsed.module.empty();
     auto module = load_module(parsed, *kernel, work);
     if (!module) {
         cleanup();
@@ -724,7 +725,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     }
     if (!inject_imgpatch_config_into_lkm(
             module_for_injection.string(), parsed.allow_shell, parsed.enable_adbd,
-            have_boot_uts_config ? &boot_uts_config : nullptr, parsed.module.empty())) {
+            have_boot_uts_config ? &boot_uts_config : nullptr, bundled_lkm)) {
         LOGE("boot-patch-v2: failed to inject ImgPatch configuration into LKM");
         cleanup();
         return 1;
@@ -735,7 +736,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         cleanup();
         return 1;
     }
-    const auto marked_module = boot::lkm_image::mark_module_image_patch(&*module);
+    const auto marked_module = boot::lkm_image::mark_module_image_patch(&*module, bundled_lkm);
     if (!marked_module) {
         LOGE("boot-patch-v2: failed to mark the LKM load mode: %s",
              marked_module.error().message.c_str());

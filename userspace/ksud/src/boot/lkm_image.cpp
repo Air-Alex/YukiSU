@@ -1741,7 +1741,7 @@ Result<InjectionResult> inject_image_impl(const std::vector<std::uint8_t>& origi
 
 }  // namespace
 
-Result<void> mark_module_image_patch(std::vector<std::uint8_t>* module) {
+Result<void> mark_module_image_patch(std::vector<std::uint8_t>* module, bool require_marker) {
     if (module == nullptr)
         return failure<void>(ErrorCode::kInvalidArgument, "module buffer is null");
     auto parsed_sections = parse_module_sections(*module);
@@ -1801,9 +1801,12 @@ Result<void> mark_module_image_patch(std::vector<std::uint8_t>* module) {
         }
     }
 
-    if (!load_mode_offset)
+    if (!load_mode_offset) {
+        if (!require_marker)
+            return Result<void>::success();
         return failure<void>(ErrorCode::kUnsupported,
                              "LKM does not expose the image-patch load-mode marker");
+    }
     std::uint32_t current_mode = 0;
     if (!read_u32(*module, *load_mode_offset, &current_mode) ||
         (current_mode != kLoadModeRamdisk && current_mode != kLoadModeImagePatch))
