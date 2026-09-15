@@ -705,7 +705,7 @@ static KASUMI_NOCFI int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
 			return PTR_ERR(target);
 		}
 	}
-	if (src && !strcmp(src, "/system/bin/su")) {
+	if (src && ksu_sucompat_vfs_reserved_path(src)) {
 		kfree(src);
 		kfree(target);
 		return -EPERM;

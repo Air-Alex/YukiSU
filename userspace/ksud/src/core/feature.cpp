@@ -9,6 +9,7 @@
 #include "../utils.hpp"
 #include "../yukizygisk_snapshot.hpp"
 #include "ksucalls.hpp"
+#include "su_path.hpp"
 
 #include <unistd.h>
 #include <cerrno>
@@ -144,12 +145,43 @@ void settle_sucompat_values(std::map<uint32_t, uint64_t>& features) {
     }
 }
 
+void close_su_view_after_path_failure() {
+    (void)set_feature(KSU_FEATURE_MAGISK_COMPAT, 0);
+    (void)set_feature(KSU_FEATURE_KASUMI_SUCOMPAT, 0);
+    (void)set_feature(KSU_FEATURE_SU_COMPAT, 0);
+    kill_msud_locked();
+    LOGE("Custom su path is unavailable; keeping su disabled and preserving its saved "
+         "configuration");
+}
+
 int apply_sucompat_config(std::map<uint32_t, uint64_t>& features) {
+    const bool requested_ksm =
+        (features.count(KSU_FEATURE_KASUMI_SUCOMPAT) &&
+         features.at(KSU_FEATURE_KASUMI_SUCOMPAT) != 0) ||
+        (features.count(KSU_FEATURE_MAGISK_COMPAT) && features.at(KSU_FEATURE_MAGISK_COMPAT) != 0);
+    bool custom_path = false;
+    if (requested_ksm && restore_su_path(&custom_path) != 0) {
+        close_su_view_after_path_failure();
+        return -1;
+    }
+    if (requested_ksm && custom_path &&
+        (!get_feature(KSU_FEATURE_KASUMI_SUCOMPAT).second ||
+         (features.count(KSU_FEATURE_MAGISK_COMPAT) &&
+          features.at(KSU_FEATURE_MAGISK_COMPAT) != 0 &&
+          !get_feature(KSU_FEATURE_MAGISK_COMPAT).second))) {
+        close_su_view_after_path_failure();
+        return -1;
+    }
+    normalize_sucompat_config(features);
     if (get_feature(KSU_FEATURE_KASUMI).second && !kagami::kasumi::is_available() &&
         ((features.count(KSU_FEATURE_KASUMI_SUCOMPAT) &&
           features.at(KSU_FEATURE_KASUMI_SUCOMPAT) != 0) ||
          (features.count(KSU_FEATURE_MAGISK_COMPAT) &&
           features.at(KSU_FEATURE_MAGISK_COMPAT) != 0))) {
+        if (custom_path) {
+            close_su_view_after_path_failure();
+            return -1;
+        }
         features[KSU_FEATURE_KASUMI_SUCOMPAT] = 0;
         features[KSU_FEATURE_MAGISK_COMPAT] = 0;
         features[KSU_FEATURE_SU_COMPAT] = 1;
@@ -173,6 +205,10 @@ int apply_sucompat_config(std::map<uint32_t, uint64_t>& features) {
     if (want_magisk) {
         if (ensure_msud_running_locked() != 0) {
             LOGW("Failed to start msud before enabling magisk_compat");
+            if (custom_path) {
+                close_su_view_after_path_failure();
+                return -1;
+            }
             settle_sucompat_values(features);
             if (features[KSU_FEATURE_MAGISK_COMPAT] == 0) {
                 kill_msud_locked();
@@ -189,6 +225,10 @@ int apply_sucompat_config(std::map<uint32_t, uint64_t>& features) {
         }
 
         LOGW("Failed to enable magisk_compat: %d", ret);
+        if (custom_path) {
+            close_su_view_after_path_failure();
+            return -1;
+        }
         settle_sucompat_values(features);
         if (features[KSU_FEATURE_MAGISK_COMPAT] == 0) {
             kill_msud_locked();
@@ -209,6 +249,10 @@ int apply_sucompat_config(std::map<uint32_t, uint64_t>& features) {
                 kill_msud_locked();
             } else {
                 LOGW("Failed to disable magisk_compat: %d", ret);
+                if (custom_path) {
+                    close_su_view_after_path_failure();
+                    return -1;
+                }
                 settle_sucompat_values(features);
                 return applied;
             }
@@ -224,6 +268,10 @@ int apply_sucompat_config(std::map<uint32_t, uint64_t>& features) {
             return applied + 1;
         }
 
+        if (custom_path) {
+            close_su_view_after_path_failure();
+            return -1;
+        }
         LOGW("Failed to enable kasumi_sucompat: %d; restoring classic su_compat", ret);
         const int fallback = set_feature(KSU_FEATURE_SU_COMPAT, 1);
         features[KSU_FEATURE_KASUMI_SUCOMPAT] = 0;
@@ -350,6 +398,12 @@ int feature_save_config_locked() {
 }
 
 int feature_set_impl(const std::string& id, uint32_t feature_id, uint64_t value) {
+    if (value != 0 &&
+        (feature_id == KSU_FEATURE_MAGISK_COMPAT || feature_id == KSU_FEATURE_KASUMI_SUCOMPAT) &&
+        restore_su_path() != 0) {
+        LOGE("Failed to restore su path before enabling KSM");
+        return 1;
+    }
     if (value != 0 &&
         (feature_id == KSU_FEATURE_MAGISK_COMPAT || feature_id == KSU_FEATURE_KASUMI_SUCOMPAT) &&
         get_feature(KSU_FEATURE_KASUMI).second && !kagami::kasumi::is_available()) {
@@ -570,8 +624,8 @@ int feature_load_config() {
     });
 
     const auto requested_features = loaded_features;
-    normalize_sucompat_config(loaded_features);
-    apply_sucompat_config(loaded_features);
+    if (apply_sucompat_config(loaded_features) < 0)
+        return 1;
 
     const int save_result = loaded_features != requested_features
                                 ? save_feature_config_files(loaded_features)
@@ -677,8 +731,6 @@ std::map<uint32_t, uint64_t> load_binary_config() {
         features[id] = value;
     }
 
-    normalize_sucompat_config(features);
-
     LOGI("Loaded %zu features from binary config", features.size());
     return features;
 }
@@ -715,7 +767,7 @@ int save_binary_config(const std::map<uint32_t, uint64_t>& features) {
 
 namespace {
 
-void apply_config_locked(std::map<uint32_t, uint64_t>& features) {
+int apply_config_locked(std::map<uint32_t, uint64_t>& features) {
     LOGI("Applying feature configuration to kernel...");
 
     int applied = 0;
@@ -736,9 +788,13 @@ void apply_config_locked(std::map<uint32_t, uint64_t>& features) {
         }
     }
 
-    applied += apply_sucompat_config(features);
+    const int su_applied = apply_sucompat_config(features);
+    if (su_applied < 0)
+        return 1;
+    applied += su_applied;
 
     LOGI("Applied %d features successfully", applied);
+    return 0;
 }
 
 }  // namespace
@@ -758,6 +814,9 @@ int init_features() {
     }
 
     LOGI("Initializing features from config...");
+
+    if (restore_su_path() != 0)
+        LOGE("Persisted su path could not be restored");
 
     auto features = load_binary_config();
 
@@ -828,7 +887,8 @@ int init_features() {
     }
 
     const auto requested_features = features;
-    apply_config_locked(features);
+    if (apply_config_locked(features) != 0)
+        return 1;
 
     // Save the configuration (excluding managed features). A legacy migration
     // updates the human-readable config too, so a later `feature load` cannot

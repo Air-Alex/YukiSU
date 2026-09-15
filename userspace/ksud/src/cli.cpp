@@ -7,6 +7,7 @@
 #include "core/feature.hpp"
 #include "core/ksucalls.hpp"
 #include "core/restorecon.hpp"
+#include "core/su_path.hpp"
 #include "core/uts_view.hpp"
 #include "debug.hpp"
 #include "defs.hpp"
@@ -159,6 +160,7 @@ void print_usage() {
     printf("  feature        Manage kernel features\n");
     printf("  kagami         Manage built-in Kasumi and module mounts\n");
     printf("  uts-view       Manage UTS identity views\n");
+    printf("  su-path        Configure and persist the Kasumi su path\n");
     printf("  yzctl          Control YukiZygisk and read kernel state\n");
     printf("  dynamic        Manage dynamic manager signatures\n");
     printf("  initrc         Manage init.rc injection\n");
@@ -997,6 +999,8 @@ int cli_run(int argc, char** argv) {
         return cmd_feature(args);
     } else if (cmd == "kagami") {
         return kagami::embedded_command(args);
+    } else if (cmd == "su-path") {
+        return su_path_command(args);
     } else if (cmd == "uts-view") {
         return uts_view_command(args);
     } else if (cmd == "yzctl" || cmd == "yukizygisk") {

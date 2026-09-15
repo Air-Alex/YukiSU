@@ -219,8 +219,9 @@ static struct dentry *KASUMI_NOCFI kasumi_dh_lookup_inner(struct inode *dir,
 	c = kasumi_dh_find_child(
 	    dn, dentry->d_name.name, (u16)dentry->d_name.len,
 	    full_name_hash(dir, dentry->d_name.name, dentry->d_name.len));
-	if (c && ((c->flags & KASUMI_VNODE_F_SU) ? ksu_sucompat_vfs_enabled()
-						 : kasumi_dh_current_sees())) {
+	if (c && ((c->flags & KASUMI_VNODE_F_SU)
+		      ? ksu_sucompat_vfs_current_ino(c->v_ino)
+		      : kasumi_dh_current_sees())) {
 		if (c->source.dentry) {
 			source = c->source;
 			path_get(&source);
@@ -377,10 +378,10 @@ kasumi_dh_proxy_actor(struct dir_context *ctx, const char *name, int namelen,
 		 * (inject / hide).  A lookup_only child leaves readdir to the
 		 * overlay filldir, which already emits and dedups the name, so
 		 * it must pass through here untouched. */
-		injected =
-		    c && !c->lookup_only &&
-		    ((c->flags & KASUMI_VNODE_F_SU) ? ksu_sucompat_vfs_enabled()
-						    : kasumi_dh_current_sees());
+		injected = c && !c->lookup_only &&
+			   ((c->flags & KASUMI_VNODE_F_SU)
+				? ksu_sucompat_vfs_current_ino(c->v_ino)
+				: kasumi_dh_current_sees());
 		rcu_read_unlock();
 	}
 	if (injected) {
@@ -409,7 +410,8 @@ static void kasumi_dh_emit_children(struct dir_context *ctx,
 		u32 cur;
 		u8 dt;
 		if (!((c->flags & KASUMI_VNODE_F_SU)
-			  ? ksu_sucompat_vfs_visible()
+			  ? (ksu_sucompat_vfs_current_ino(c->v_ino) &&
+			     ksu_sucompat_vfs_visible())
 			  : kasumi_dh_current_sees()))
 			continue;
 
@@ -552,12 +554,15 @@ static int KASUMI_NOCFI kasumi_dh_revalidate_inner(
 			governed = true;
 			child_hide = c->hide;
 			if (c->flags & KASUMI_VNODE_F_SU) {
-				bool enabled = ksu_sucompat_vfs_enabled();
+				bool enabled =
+				    ksu_sucompat_vfs_current_ino(c->v_ino);
 				bool visible = ksu_sucompat_vfs_visible();
+				unsigned long ino = c->v_ino;
 				rcu_read_unlock();
 				if (enabled)
 					return visible
 						   ? (inode &&
+						      inode->i_ino == ino &&
 						      ksu_sucompat_vfs_is_inode(
 							  inode))
 						   : (!inode &&
@@ -1138,6 +1143,12 @@ static int kasumi_dh_dir_add_child(struct kasumi_dh_dir *dir, const char *name,
 		kasumi_dh_child_free(c);
 		return -EPERM;
 	}
+	if (old && (flags & KASUMI_VNODE_F_SU) &&
+	    !(old->flags & KASUMI_VNODE_F_SU)) {
+		spin_unlock(&dir->lock);
+		kasumi_dh_child_free(c);
+		return -EEXIST;
+	}
 	if (old)
 		hlist_del_rcu(&old->node);
 	hlist_add_head_rcu(&c->node, &dir->children);
@@ -1319,7 +1330,8 @@ out:
 static KASUMI_NOCFI int kasumi_dh_register(const char *visible_path,
 					   const struct path *source,
 					   unsigned long v_ino, u8 flags,
-					   bool hide, bool lookup_only)
+					   bool hide, bool lookup_only,
+					   struct path *bound_parent)
 {
 	char *parent = NULL;
 	const char *child = NULL;
@@ -1337,9 +1349,6 @@ static KASUMI_NOCFI int kasumi_dh_register(const char *visible_path,
 		return -EOPNOTSUPP;
 	if (!visible_path)
 		return -EINVAL;
-	if (!(flags & KASUMI_VNODE_F_SU) &&
-	    !strcmp(visible_path, "/system/bin/su"))
-		return -EPERM;
 	ret = kasumi_dh_split_parent(visible_path, &parent, &child);
 	if (ret)
 		return ret;
@@ -1355,7 +1364,8 @@ static KASUMI_NOCFI int kasumi_dh_register(const char *visible_path,
 		 * so a deep visible path still resolves.  Only for backed
 		 * inject/dir-source rules — a hide or merge-shadow with a
 		 * missing parent is meaningless. */
-		if (ret == -ENOENT && !hide && !lookup_only)
+		if (ret == -ENOENT && !hide && !lookup_only &&
+		    !(flags & KASUMI_VNODE_F_SU))
 			return kasumi_dh_register_vtopo(visible_path);
 		return ret;
 	}
@@ -1364,6 +1374,25 @@ static KASUMI_NOCFI int kasumi_dh_register(const char *visible_path,
 		path_put(&ppath);
 		kfree(parent);
 		return -ENOTDIR;
+	}
+	if (flags & KASUMI_VNODE_F_SU) {
+		struct path existing;
+
+		ret = kern_path(visible_path, 0, &existing);
+		if (!ret) {
+			bool is_su = ksu_sucompat_vfs_is_path(&existing);
+
+			path_put(&existing);
+			if (!is_su)
+				ret = -EEXIST;
+		} else if (ret == -ENOENT) {
+			ret = 0;
+		}
+		if (ret) {
+			path_put(&ppath);
+			kfree(parent);
+			return ret;
+		}
 	}
 
 	mutex_lock(&kasumi_dh_lock);
@@ -1405,6 +1434,10 @@ out:
 		kasumi_dh_release_detached_dir(rollback_dir);
 	else if (ret && sop_registered && !dir)
 		kasumi_sop_shadow_reap();
+	if (!ret && bound_parent) {
+		*bound_parent = ppath;
+		path_get(bound_parent);
+	}
 	path_put(&ppath);
 	pr_info("kasumi: dirhijack_%s visible=%s child=%s ret=%d\n",
 		hide	      ? "hide"
@@ -1419,7 +1452,14 @@ int kasumi_dirhijack_add(const char *visible_path, const struct path *source,
 			 unsigned long v_ino, u8 flags)
 {
 	return kasumi_dh_register(visible_path, source, v_ino, flags, false,
-				  false);
+				  false, NULL);
+}
+
+int kasumi_dirhijack_add_su(const char *visible_path, unsigned long v_ino,
+			    struct path *parent)
+{
+	return kasumi_dh_register(visible_path, NULL, v_ino, KASUMI_VNODE_F_SU,
+				  false, false, parent);
 }
 
 /*
@@ -1435,7 +1475,7 @@ int kasumi_dirhijack_add_shadow(const char *visible_path,
 				u8 flags)
 {
 	return kasumi_dh_register(visible_path, source, v_ino, flags, false,
-				  true);
+				  true, NULL);
 }
 
 /*
@@ -1447,41 +1487,23 @@ int kasumi_dirhijack_add_shadow(const char *visible_path,
  */
 int kasumi_dirhijack_hide(const char *visible_path)
 {
-	return kasumi_dh_register(visible_path, NULL, 0, 0, true, false);
+	return kasumi_dh_register(visible_path, NULL, 0, 0, true, false, NULL);
 }
 
-KASUMI_NOCFI int kasumi_dirhijack_del(const char *visible_path)
+static KASUMI_NOCFI int
+kasumi_dh_unregister(struct path ppath, const char *child, unsigned long su_ino)
 {
-	char *parent = NULL;
-	const char *child = NULL;
-	struct path ppath;
 	struct kasumi_dh_iop *m;
 	struct kasumi_dh_child *c = NULL;
 	struct kasumi_dh_dir *dead_dir = NULL;
 	struct kasumi_dh_dop_meta *dm;
 	struct hlist_node *htmp;
 	LIST_HEAD(retired_dops);
-	size_t child_len;
+	size_t child_len = strlen(child);
 	bool had_dops;
 	int bkt;
-	int ret;
-
-	ret = kasumi_dh_split_parent(visible_path, &parent, &child);
-	if (ret)
-		return ret;
-	child_len = strlen(child);
-	if (!child_len || child_len > NAME_MAX) {
-		kfree(parent);
+	if (!child_len || child_len > NAME_MAX)
 		return -EINVAL;
-	}
-	ret = kern_path(parent, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &ppath);
-	if (ret) {
-		kfree(parent);
-		/* A deep-virtual rule's parent does not exist as a real dir; it
-		 * was registered via the vtopo path, so ENOENT is not an error.
-		 */
-		return ret == -ENOENT ? 0 : ret;
-	}
 
 	mutex_lock(&kasumi_dh_lock);
 	m = kasumi_dh_iop_of(d_inode(ppath.dentry));
@@ -1490,12 +1512,12 @@ KASUMI_NOCFI int kasumi_dirhijack_del(const char *visible_path)
 		c = kasumi_dh_find_child(
 		    m->dir, child, (u16)child_len,
 		    full_name_hash(m->dir->dir_inode, child, child_len));
-		if (c && (c->flags & KASUMI_VNODE_F_SU)) {
+		if ((su_ino && (!c || !(c->flags & KASUMI_VNODE_F_SU) ||
+				c->v_ino != su_ino)) ||
+		    (!su_ino && c && (c->flags & KASUMI_VNODE_F_SU))) {
 			spin_unlock(&m->dir->lock);
 			mutex_unlock(&kasumi_dh_lock);
-			path_put(&ppath);
-			kfree(parent);
-			return -EPERM;
+			return su_ino ? -ENOENT : -EPERM;
 		}
 		if (c)
 			hlist_del_rcu(&c->node);
@@ -1563,9 +1585,35 @@ KASUMI_NOCFI int kasumi_dirhijack_del(const char *visible_path)
 		shrink_dcache_sb(ppath.dentry->d_sb);
 	if (dead_dir)
 		kasumi_dh_release_detached_dir(dead_dir);
-	path_put(&ppath);
-	kfree(parent);
 	return c ? 0 : -ENOENT;
+}
+
+int kasumi_dirhijack_del(const char *visible_path)
+{
+	char *parent = NULL;
+	const char *child = NULL;
+	struct path ppath;
+	int ret;
+
+	ret = kasumi_dh_split_parent(visible_path, &parent, &child);
+	if (ret)
+		return ret;
+	ret = kern_path(parent, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &ppath);
+	if (!ret) {
+		ret = kasumi_dh_unregister(ppath, child, 0);
+		path_put(&ppath);
+	} else if (ret == -ENOENT) {
+		ret = 0;
+	}
+	kfree(parent);
+	return ret;
+}
+
+void kasumi_dirhijack_del_su(const struct path *parent, const char *name,
+			     unsigned long v_ino)
+{
+	if (parent->dentry && v_ino)
+		kasumi_dh_unregister(*parent, name, v_ino);
 }
 
 static void kasumi_dh_shrink_dead_sbs(struct list_head *dead_dirs)

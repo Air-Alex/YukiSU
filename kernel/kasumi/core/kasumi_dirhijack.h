@@ -40,6 +40,11 @@ int kasumi_dh_reclaim_drop_inode(struct inode *inode,
 int kasumi_dirhijack_add(const char *visible_path, const struct path *source,
 			 unsigned long v_ino, u8 flags);
 
+int kasumi_dirhijack_add_su(const char *visible_path, unsigned long v_ino,
+			    struct path *parent);
+void kasumi_dirhijack_del_su(const struct path *parent, const char *name,
+			     unsigned long v_ino);
+
 /*
  * Register a lookup-only child at @visible_path backed by @source: VFS lookup
  * resolves it to a Kasumi vnode, but dirhijack does not shadow this dir's

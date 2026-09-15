@@ -45,6 +45,7 @@ enum ksu_su_exec_stage {
 struct ksu_su_exec_ctx {
 	u64 magic;
 	u64 prompt_generation;
+	unsigned long su_ino;
 	uid_t uid;
 	u32 choice;
 	bool prompted;
@@ -150,7 +151,7 @@ static void ksu_su_exec_emit_log(struct ksu_su_exec_ctx *ctx, int retval)
 static bool ksu_su_exec_grant_valid(const struct ksu_su_exec_ctx *ctx)
 {
 	if (!ctx || current_uid().val != ctx->uid ||
-	    !ksu_sucompat_vfs_enabled())
+	    !ksu_sucompat_vfs_current_ino(ctx->su_ino))
 		return false;
 	if (!ctx->prompted)
 		return ksu_is_allow_uid_for_current(ctx->uid);
@@ -170,7 +171,7 @@ static int ksu_su_exec_authorize(struct ksu_su_exec_ctx *ctx, bool allow_prompt)
 {
 	int ret;
 
-	if (!ctx || !ksu_sucompat_vfs_enabled())
+	if (!ctx || !ksu_sucompat_vfs_current_ino(ctx->su_ino))
 		return -EACCES;
 	ctx->uid = current_uid().val;
 	if (ksu_is_allow_uid_for_current(ctx->uid))
@@ -382,12 +383,14 @@ int ksu_sucompat_exec_file_open(struct file *file)
 	struct ksu_su_exec_ctx *ctx;
 
 	if (!file || !READ_ONCE(ksu_su_exec_hooks_ready) ||
-	    !(file->f_flags & __FMODE_EXEC))
+	    !(file->f_flags & __FMODE_EXEC) ||
+	    !ksu_sucompat_vfs_current_ino(file_inode(file)->i_ino))
 		return -EACCES;
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
 	ctx->magic = KSU_SU_EXEC_CTX_MAGIC;
+	ctx->su_ino = file_inode(file)->i_ino;
 	ctx->stage = KSU_SU_EXEC_OPEN;
 	file->private_data = ctx;
 	return 0;

@@ -20,6 +20,7 @@ extern "C" {
 
 #include "uapi/app_profile.h"
 #include "uapi/selinux.h"
+#include "uapi/su_path.h"
 #include "uapi/uts_view.h"
 
 // Magic numbers for reboot hook
@@ -343,6 +344,9 @@ struct ksu_su_prompt_key {
 #define KSU_IOCTL_SU_PROMPT_READY _IOW('K', 249, struct ksu_su_prompt_key)
 /* Available only on the prompt consumer fd; never grants permission. */
 #define KSU_IOCTL_CANCEL_SU_PROMPT _IOW('K', 250, struct ksu_su_prompt_key)
+
+#define KSU_IOCTL_GET_SU_PATH _IOR('K', 251, struct ksu_su_path_config)
+#define KSU_IOCTL_SET_SU_PATH _IOW('K', 252, struct ksu_su_path_config)
 
 #define KSU_IOCTL_SUPERKEY_AUTH _IOC(_IOC_READ | _IOC_WRITE, 'K', 107, 0)
 #define KSU_IOCTL_SUPERKEY_STATUS _IOC(_IOC_READ, 'K', 108, 0)

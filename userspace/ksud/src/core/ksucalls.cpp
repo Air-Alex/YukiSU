@@ -373,6 +373,24 @@ int get_uts_view_config(ksu_uts_view_config* config) {
     return uts_ksuctl(KSU_IOCTL_GET_UTS_VIEW_CONFIG, config);
 }
 
+int get_su_path_config(ksu_su_path_config* config) {
+    if (config == nullptr)
+        return -EINVAL;
+    *config = {};
+    const int fd = get_driver_fd();
+    if (fd < 0)
+        return -ENODEV;
+    return ioctl(fd, KSU_IOCTL_GET_SU_PATH, config) < 0 ? -errno : 0;
+}
+
+int set_su_path_config(const ksu_su_path_config& config) {
+    auto request = config;
+    const int fd = get_driver_fd();
+    if (fd < 0)
+        return -ENODEV;
+    return ioctl(fd, KSU_IOCTL_SET_SU_PATH, &request) < 0 ? -errno : 0;
+}
+
 int set_uts_view_config(const ksu_uts_view_config& config) {
     ksu_uts_view_config request = config;
     return uts_ksuctl(KSU_IOCTL_SET_UTS_VIEW_CONFIG, &request);

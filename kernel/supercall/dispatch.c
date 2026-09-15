@@ -30,6 +30,7 @@
 #include "feature/selinux_hide.h"
 #include "feature/sucompat.h"
 #include "feature/sucompat_prompt.h"
+#include "feature/sucompat_vfs.h"
 #include "infra/file_wrapper.h"
 #include "feature/kernel_umount.h"
 #include "extension/uts_view.h"
@@ -572,6 +573,34 @@ static int do_set_feature(void __user *arg)
 	}
 
 	return 0;
+}
+
+static int do_get_su_path(void __user *arg)
+{
+	struct ksu_su_path_config *config;
+	int ret;
+
+	config = kzalloc(sizeof(*config), GFP_KERNEL);
+	if (!config)
+		return -ENOMEM;
+	ret = ksu_sucompat_vfs_get_config(config);
+	if (!ret && copy_to_user(arg, config, sizeof(*config)))
+		ret = -EFAULT;
+	kfree(config);
+	return ret;
+}
+
+static int do_set_su_path(void __user *arg)
+{
+	struct ksu_su_path_config *config;
+	int ret;
+
+	config = memdup_user(arg, sizeof(*config));
+	if (IS_ERR(config))
+		return PTR_ERR(config);
+	ret = ksu_sucompat_vfs_set_config(config);
+	kfree(config);
+	return ret;
 }
 
 static int do_get_uts_view_config(void __user *arg)
@@ -1574,6 +1603,14 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
      .name = "MAGISK_PERSIST",
      .handler = do_magisk_persist,
      .perm_check = only_root},
+    {.cmd = KSU_IOCTL_GET_SU_PATH,
+     .name = "GET_SU_PATH",
+     .handler = do_get_su_path,
+     .perm_check = manager_or_root},
+    {.cmd = KSU_IOCTL_SET_SU_PATH,
+     .name = "SET_SU_PATH",
+     .handler = do_set_su_path,
+     .perm_check = manager_or_root},
     {.cmd = KSU_IOCTL_GET_UTS_VIEW_CONFIG,
      .name = "GET_UTS_VIEW_CONFIG",
      .handler = do_get_uts_view_config,

@@ -3,7 +3,9 @@
 #include <linux/fs.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/path.h>
 #include <linux/security.h>
+#include <linux/string.h>
 #include <linux/version.h>
 
 #include "feature/sucompat_exec.h"
@@ -20,6 +22,11 @@ static DEFINE_MUTEX(su_view_lock);
 static bool su_ready;
 static bool su_enabled;
 static bool su_prompt_enabled;
+static char su_path[KSU_SU_PATH_MAX] = KSU_SU_PATH_DEFAULT;
+static struct path su_parent;
+static char su_name[NAME_MAX + 1];
+static unsigned long su_ino;
+static unsigned long su_next_ino = (1UL << 63) | 0x53550000UL;
 static const struct inode_operations su_inode_ops;
 
 bool ksu_sucompat_vfs_enabled(void)
@@ -29,6 +36,11 @@ bool ksu_sucompat_vfs_enabled(void)
 bool ksu_sucompat_vfs_active(void)
 {
 	return ksu_sucompat_vfs_enabled();
+}
+
+bool ksu_sucompat_vfs_current_ino(unsigned long ino)
+{
+	return ksu_sucompat_vfs_enabled() && ino && ino == READ_ONCE(su_ino);
 }
 bool ksu_sucompat_vfs_prompt_enabled(void)
 {
@@ -85,7 +97,8 @@ static int su_permission(struct user_namespace *userns, struct inode *inode,
 static int su_permission(struct inode *inode, int mask)
 #endif
 {
-	if (!ksu_sucompat_vfs_visible())
+	if (!ksu_sucompat_vfs_visible() ||
+	    !ksu_sucompat_vfs_current_ino(inode->i_ino))
 		return -EACCES;
 	return mask & MAY_WRITE ? -EROFS : 0;
 }
@@ -118,19 +131,117 @@ int ksu_sucompat_vfs_setup_inode(struct inode *inode)
 	return ret;
 }
 
-static int su_bind_locked(void)
+static int su_bind_locked(const char *path)
 {
 	const struct cred *old;
+	struct path parent = {};
+	unsigned long ino;
 	int ret;
 
 	lockdep_assert_held(&su_view_lock);
 	if (!ksu_cred)
 		return -EAGAIN;
+	if (su_next_ino == ULONG_MAX)
+		return -EOVERFLOW;
+	ino = ++su_next_ino;
 	old = override_creds(ksu_cred);
-	ret =
-	    kasumi_dirhijack_add("/system/bin/su", NULL,
-				 (1UL << 63) | 0x53550001UL, KASUMI_VNODE_F_SU);
+	ret = kasumi_dirhijack_add_su(path, ino, &parent);
+	if (!ret) {
+		unsigned long previous = READ_ONCE(su_ino);
+
+		/* Publish one binding; old dentries and in-flight execs lose
+		 * admission. */
+		WRITE_ONCE(su_ino, ino);
+		if (su_parent.dentry) {
+			kasumi_dirhijack_del_su(&su_parent, su_name, previous);
+			path_put(&su_parent);
+		}
+		su_parent = parent;
+		strscpy(su_name, strrchr(path, '/') + 1, sizeof(su_name));
+	}
 	revert_creds(old);
+	return ret;
+}
+
+static int su_validate_path(const char *path)
+{
+	const char *component;
+	size_t len = strnlen(path, KSU_SU_PATH_MAX);
+	size_t i;
+
+	if (len == KSU_SU_PATH_MAX)
+		return -ENAMETOOLONG;
+	if (len < 2 || path[0] != '/')
+		return -EINVAL;
+	component = path + 1;
+	for (i = 1; i <= len; i++) {
+		size_t size;
+
+		if (path[i] && (unsigned char)path[i] < 0x20)
+			return -EINVAL;
+		if (path[i] && path[i] != '/')
+			continue;
+		size = path + i - component;
+		if (!size || (size == 1 && component[0] == '.') ||
+		    (size == 2 && component[0] == '.' && component[1] == '.'))
+			return -EINVAL;
+		if (size > NAME_MAX)
+			return -ENAMETOOLONG;
+		component = path + i + 1;
+	}
+	return 0;
+}
+
+int ksu_sucompat_vfs_get_config(struct ksu_su_path_config *config)
+{
+	memset(config, 0, sizeof(*config));
+	config->version = KSU_SU_PATH_VERSION;
+	config->size = sizeof(*config);
+	mutex_lock(&su_view_lock);
+	config->flags = ksu_sucompat_vfs_enabled() ? KSU_SU_PATH_ENABLED : 0;
+	strscpy(config->path, su_path, sizeof(config->path));
+	mutex_unlock(&su_view_lock);
+	return 0;
+}
+
+bool ksu_sucompat_vfs_reserved_path(const char *path)
+{
+	bool reserved;
+
+	mutex_lock(&su_view_lock);
+	reserved = !strcmp(path, su_path);
+	mutex_unlock(&su_view_lock);
+	return reserved;
+}
+
+int ksu_sucompat_vfs_set_config(const struct ksu_su_path_config *config)
+{
+	int ret;
+
+	if (config->version != KSU_SU_PATH_VERSION ||
+	    config->size != sizeof(*config) || config->flags ||
+	    config->reserved)
+		return -EINVAL;
+	ret = su_validate_path(config->path);
+	if (ret)
+		return ret;
+	mutex_lock(&su_view_lock);
+	if (strcmp(su_path, config->path)) {
+		if (su_enabled) {
+			ret = su_bind_locked(config->path);
+			if (ret)
+				goto out;
+		} else if (su_parent.dentry) {
+			kasumi_dirhijack_del_su(&su_parent, su_name,
+						READ_ONCE(su_ino));
+			path_put(&su_parent);
+			memset(&su_parent, 0, sizeof(su_parent));
+			WRITE_ONCE(su_ino, 0);
+		}
+		strscpy(su_path, config->path, sizeof(su_path));
+	}
+out:
+	mutex_unlock(&su_view_lock);
 	return ret;
 }
 
@@ -140,7 +251,7 @@ int ksu_sucompat_vfs_refresh(void)
 
 	mutex_lock(&su_view_lock);
 	if (su_ready && su_enabled)
-		ret = su_bind_locked();
+		ret = su_bind_locked(su_path);
 	mutex_unlock(&su_view_lock);
 	return ret;
 }
@@ -155,7 +266,7 @@ int ksu_sucompat_vfs_set_enabled(bool enabled)
 		goto out;
 	}
 	if (enabled) {
-		ret = su_bind_locked();
+		ret = su_bind_locked(su_path);
 		if (ret)
 			goto out;
 	}
@@ -184,6 +295,11 @@ void ksu_sucompat_vfs_exit(void)
 	mutex_lock(&su_view_lock);
 	WRITE_ONCE(su_enabled, false);
 	WRITE_ONCE(su_prompt_enabled, false);
+	if (su_parent.dentry) {
+		kasumi_dirhijack_del_su(&su_parent, su_name, READ_ONCE(su_ino));
+		path_put(&su_parent);
+		memset(&su_parent, 0, sizeof(su_parent));
+	}
 	if (su_ready) {
 		WRITE_ONCE(su_ready, false);
 	}
