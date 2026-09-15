@@ -151,6 +151,10 @@ void ksu_restore_root_profile_caps(struct cred *cred,
 	       sizeof(cred->cap_permitted));
 	memcpy(&cred->cap_bset, &profile->capabilities.effective,
 	       sizeof(cred->cap_bset));
+	if (profile->uid != 0) {
+		cred->cap_inheritable = cred->cap_effective;
+		cred->cap_ambient = cred->cap_effective;
+	}
 }
 
 static int ksu_apply_root_profile_state_cred_common(
