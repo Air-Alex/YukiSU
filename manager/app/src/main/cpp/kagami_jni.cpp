@@ -2,6 +2,7 @@
 
 #include "kagami/embedded_paths.hpp"
 #include "kagami/kasumi_client.hpp"
+#include "userspace/common/su_path.hpp"
 
 #include <algorithm>
 #include <array>
@@ -155,6 +156,73 @@ void start_controller(const std::string &path) {
     failure("Wait for Kagami");
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
     failure("Kagami startup failed", EIO);
+}
+
+std::string save_su_path(const std::string &ksud, const std::string &path) {
+  if (ksud.empty() || ksud.front() != '/' ||
+      ksud.find('\0') != std::string::npos)
+    failure("Invalid ksud path", EINVAL);
+  const int validation = ksud::validate_su_path(path);
+  if (validation)
+    failure("Invalid su path", -validation);
+
+  std::array<int, 2> output{};
+  if (pipe2(output.data(), O_CLOEXEC) != 0)
+    failure("su path pipe");
+  const Fd reader(output[0]);
+  Fd writer(output[1]);
+  posix_spawn_file_actions_t actions;
+  int error = posix_spawn_file_actions_init(&actions);
+  if (error)
+    failure("spawn actions", error);
+  error = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
+                                           O_RDONLY, 0);
+  if (!error)
+    error =
+        posix_spawn_file_actions_adddup2(&actions, writer.get(), STDOUT_FILENO);
+  if (!error)
+    error = posix_spawn_file_actions_addopen(&actions, STDERR_FILENO,
+                                             "/dev/null", O_WRONLY, 0);
+  std::array<std::string, 5> arguments{ksud, "su-path", "set", "--json", path};
+  std::array<char *, 6> argv{arguments[0].data(), arguments[1].data(),
+                             arguments[2].data(), arguments[3].data(),
+                             arguments[4].data(), nullptr};
+  pid_t pid = -1;
+  if (!error)
+    error = posix_spawn(&pid, ksud.c_str(), &actions, nullptr, argv.data(),
+                        environ);
+  posix_spawn_file_actions_destroy(&actions);
+  if (error)
+    failure("Start su path controller", error);
+  close(writer.release());
+
+  std::string text;
+  std::array<char, 1024> buffer{};
+  for (;;) {
+    const auto count = read(reader.get(), buffer.data(), buffer.size());
+    if (count < 0) {
+      if (errno == EINTR)
+        continue;
+      error = errno;
+      break;
+    }
+    if (!count)
+      break;
+    if (text.size() < 16384)
+      text.append(buffer.data(), static_cast<size_t>(count));
+  }
+  int status = 0;
+  pid_t waited;
+  do {
+    waited = waitpid(pid, &status, 0);
+  } while (waited < 0 && errno == EINTR);
+  if (waited < 0)
+    failure("Wait for su path controller");
+  if (error)
+    failure("Read su path result", error);
+  if (!WIFEXITED(status) || WEXITSTATUS(status) > 1 || text.empty())
+    failure("Invalid su path response", EIO);
+  return text;
 }
 
 int connect_controller(const char *path) {
@@ -404,6 +472,22 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_anatdx_yukisu_Natives_kasumiKernelSnapshot(JNIEnv *env,
                                                     jobject /* thiz */) {
   return result(env, kernel_snapshot);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_anatdx_yukisu_Natives_saveSuPath(JNIEnv *env, jobject /* thiz */,
+                                          jbyteArray ksud, jbyteArray path) {
+  try {
+    const auto input =
+        std::make_shared<const std::pair<std::string, std::string>>(
+            bytes(env, ksud), bytes(env, path));
+    return result(
+        env, [input] { return save_su_path(input->first, input->second); });
+  } catch (const std::exception &error) {
+    if (!env->ExceptionCheck())
+      env->ThrowNew(env->FindClass("java/io/IOException"), error.what());
+    return nullptr;
+  }
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

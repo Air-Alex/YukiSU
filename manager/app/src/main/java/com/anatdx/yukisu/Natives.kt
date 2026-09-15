@@ -42,6 +42,8 @@ object Natives {
     external fun kasumiReadLog(kernel: Boolean): ByteArray
     external fun kasumiClearLog()
     external fun kasumiStorageInfo(path: ByteArray): ByteArray
+    external fun getSuPath(): ByteArray?
+    external fun saveSuPath(ksudPath: ByteArray, path: ByteArray): ByteArray
 
     /** Kernel UAPI contract version (KERNEL_SU_UAPI_VERSION); 0 if unsupported. */
     external fun getUapiVersion(): Int

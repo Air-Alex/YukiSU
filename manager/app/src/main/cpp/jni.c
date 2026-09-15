@@ -60,6 +60,21 @@ NativeBridgeNP(isImagePatchMode, jboolean) { return is_image_patch_mode(); }
 
 NativeBridgeNP(getLoadMode, jint) { return (jint)get_load_mode(); }
 
+NativeBridgeNP(getSuPath, jbyteArray) {
+  struct ksu_su_path_config config = {};
+  if (ksu_kasumi_ioctl(KSU_IOCTL_GET_SU_PATH, &config) != 0 ||
+      config.version != KSU_SU_PATH_VERSION || config.size != sizeof(config))
+    return NULL;
+  size_t length = strnlen(config.path, sizeof(config.path));
+  if (length == sizeof(config.path))
+    return NULL;
+  jbyteArray result = GetEnvironment()->NewByteArray(env, (jsize)length);
+  if (result)
+    GetEnvironment()->SetByteArrayRegion(env, result, 0, (jsize)length,
+                                         (const jbyte *)config.path);
+  return result;
+}
+
 static void fillIntArray(JNIEnv *env, jobject list, int *data, int count) {
   jclass cls = GetEnvironment()->GetObjectClass(env, list);
   jmethodID add =
