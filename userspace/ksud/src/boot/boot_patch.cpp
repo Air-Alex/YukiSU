@@ -4,6 +4,7 @@
 #include "../defs.hpp"
 #include "../log.hpp"
 #include "../utils.hpp"
+#include "boot_backup.hpp"
 #include "lkm_image.hpp"
 #include "tools.hpp"
 #include "uapi/imgpatch_config.h"
@@ -26,7 +27,6 @@
 #include <string_view>
 #include <vector>
 
-#include <mbedtls/sha1.h>
 #include <mbedtls/sha256.h>
 
 namespace fs = std::filesystem;
@@ -45,26 +45,6 @@ constexpr uint64_t SUPERKEY_VERIFICATION_SIGN_AND_KEY = 1;
 constexpr uint64_t SUPERKEY_VERIFICATION_KEY_ONLY = 2;
 
 namespace {
-
-constexpr const char* kDirectLkmBackupDirectory = "/data/adb/ksu";
-constexpr const char* kDirectLkmBackupPrefix = "boot-patch-v2-original";
-
-std::optional<fs::path> find_direct_lkm_backup(const std::string& slot) {
-    fs::path path =
-        fs::path(kDirectLkmBackupDirectory) / (std::string(kDirectLkmBackupPrefix) + slot + ".img");
-    std::error_code error;
-    if (!fs::is_regular_file(path, error) || error)
-        return std::nullopt;
-    const auto size = fs::file_size(path, error);
-    if (error || size == 0)
-        return std::nullopt;
-    return path;
-}
-
-bool is_boot_partition_device(const std::string& device) {
-    const std::string name = fs::path(device).filename().string();
-    return name == "boot" || name == "boot_a" || name == "boot_b";
-}
 
 // LZ4 legacy ramdisk magic (reject before cpio to avoid huge cache/hang).
 constexpr std::array<unsigned char, 4> LZ4_LEGACY_MAGIC = {0x02, 0x21, 0x4c, 0x18};
@@ -338,87 +318,16 @@ bool flash_boot(const std::string& bootdevice, const std::string& new_boot) {
     return true;
 }
 
-// SHA-1 of a file, streamed. mbedTLS is already linked for the SuperKey hash, so
-// this needed neither a `sha1sum` on PATH nor parsing "<hex>  <name>" back out of
-// a child's stdout -- and it no longer silently returns "" when the tool is
-// missing from a recovery PATH.
-std::string calculate_sha1(const std::string& file_path) {
-    const int fd = open(file_path.c_str(), O_RDONLY | O_CLOEXEC);
-    if (fd < 0) {
-        LOGE("sha1: cannot open %s: %s", file_path.c_str(), strerror(errno));
-        return "";
-    }
-    mbedtls_sha1_context ctx;
-    mbedtls_sha1_init(&ctx);
-    if (mbedtls_sha1_starts(&ctx) != 0) {
-        mbedtls_sha1_free(&ctx);
-        close(fd);
-        return "";
-    }
-    std::array<unsigned char, 64UL * 1024> buffer{};
-    bool ok = true;
-    for (;;) {
-        const ssize_t count = read(fd, buffer.data(), buffer.size());
-        if (count > 0) {
-            if (mbedtls_sha1_update(&ctx, buffer.data(), static_cast<size_t>(count)) != 0) {
-                ok = false;
-                break;
-            }
-            continue;
-        }
-        if (count == 0)
-            break;
-        if (errno == EINTR)
-            continue;
-        LOGE("sha1: read %s failed: %s", file_path.c_str(), strerror(errno));
-        ok = false;
-        break;
-    }
-    close(fd);
-
-    std::array<unsigned char, 20> digest{};
-    if (ok && mbedtls_sha1_finish(&ctx, digest.data()) != 0) {
-        ok = false;
-    }
-    mbedtls_sha1_free(&ctx);
-    if (!ok) {
-        return "";
-    }
-
-    // Lowercase hex, matching what sha1sum printed and what the backup format
-    // stores.
-    std::string hex;
-    hex.reserve(digest.size() * 2);
-    for (const unsigned char byte : digest) {
-        append_hex(&hex, byte, false, 2);
-    }
-    return hex;
-}
-
 // Backup stock boot image
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool do_backup(const std::string& magiskboot, const std::string& workdir,
                const std::string& cpio_path, const std::string& image) {
-    const std::string sha1 = calculate_sha1(image);
-    if (sha1.empty()) {
-        LOGE("Failed to calculate SHA1 of boot image");
+    const auto backup = boot_backup::save_stock(image);
+    if (!backup)
         return false;
-    }
-
-    const std::string filename = std::string(KSU_BACKUP_FILE_PREFIX) + sha1;
-    printf("- Backup stock boot image\n");
-
-    const std::string target = std::string(KSU_BACKUP_DIR) + filename;
-
-    // Copy image to backup location
-    if (!copy_file_data(image, target)) {
-        LOGE("Failed to backup boot image to %s", target.c_str());
-        return false;
-    }
-
-    // Write sha1 to workdir
     const std::string sha1_file = workdir + "/" + BACKUP_FILENAME;
-    write_file(sha1_file, sha1);
+    if (!write_file(sha1_file, backup->sha1))
+        return false;
 
     // Add backup info to ramdisk
     if (!do_cpio_cmd(
@@ -428,7 +337,7 @@ bool do_backup(const std::string& magiskboot, const std::string& workdir,
     }
 
     printf("- Stock image has been backup to\n");
-    printf("- %s\n", target.c_str());
+    printf("- %s\n", backup->stored_image.c_str());
     return true;
 }
 
@@ -490,34 +399,6 @@ std::string parse_kmi_from_boot(const std::string& magiskboot, const std::string
         LOGE("Failed to get KMI from target boot image");
     }
     return kmi;
-}
-
-// Clean old backups
-void clean_backup(const std::string& current_sha1) {
-    printf("- Clean up backup\n");
-    const std::string backup_name = std::string(KSU_BACKUP_FILE_PREFIX) + current_sha1;
-
-    std::error_code ec;
-    for (auto it = fs::directory_iterator(KSU_BACKUP_DIR, ec);
-         it != fs::directory_iterator() && !ec; it.increment(ec)) {
-        std::error_code rf_ec;
-        if (!it->is_regular_file(rf_ec))
-            continue;
-
-        const std::string name = it->path().filename().string();
-        if (name != backup_name && starts_with(name, KSU_BACKUP_FILE_PREFIX)) {
-            std::error_code remove_error;
-            if (fs::remove(it->path(), remove_error)) {
-                printf("- removed %s\n", name.c_str());
-            } else if (remove_error) {
-                LOGW("Failed to remove backup %s: %s", name.c_str(),
-                     remove_error.message().c_str());
-            }
-        }
-    }
-    if (ec) {
-        LOGW("Clean backup error: %s", ec.message().c_str());
-    }
 }
 
 }  // namespace
@@ -759,26 +640,6 @@ DirectLkmImageStatus inspect_direct_lkm_image(const fs::path& image, const std::
         LOGW("Image has no recognizable ARM64 kernel for direct-LKM validation: %s",
              image.string().c_str());
     return DirectLkmImageStatus::kUnverified;
-}
-
-DirectLkmImageStatus validate_direct_lkm_backup(const fs::path& backup,
-                                                const std::string& magiskboot,
-                                                const std::string& workdir) {
-    const auto status = inspect_direct_lkm_image(backup, magiskboot, workdir);
-    if (status != DirectLkmImageStatus::kContainsCapsule)
-        return status;
-
-    std::error_code remove_error;
-    const bool removed = fs::remove(backup, remove_error);
-    if (remove_error) {
-        LOGE("Failed to delete invalid direct-LKM backup %s: %s", backup.string().c_str(),
-             remove_error.message().c_str());
-    } else if (removed) {
-        printf("- Deleted invalid direct-LKM backup: %s\n", backup.string().c_str());
-    } else {
-        LOGW("Invalid direct-LKM backup disappeared before deletion: %s", backup.string().c_str());
-    }
-    return DirectLkmImageStatus::kContainsCapsule;
 }
 
 DirectLkmRestoreStatus restore_direct_lkm_kernel(const std::string& workdir) {
@@ -1072,30 +933,6 @@ int boot_patch_impl(const std::vector<std::string>& args) {
         }
         bootdevice = partition_name;
         rollback_bootimage = bootimage;
-
-        if (is_boot_partition_device(bootdevice)) {
-            if (const auto backup = find_direct_lkm_backup(get_slot_suffix(parsed.ota))) {
-                const auto backup_status = validate_direct_lkm_backup(*backup, magiskboot, workdir);
-                if (backup_status == DirectLkmImageStatus::kNoCapsule) {
-                    const fs::path patch_source = fs::path(workdir) / "boot-original.img";
-                    if (!copy_file_data(*backup, patch_source, 0644, false)) {
-                        LOGE("Failed to stage original boot backup %s: %s",
-                             backup->string().c_str(), strerror(errno));
-                        cleanup();
-                        return 1;
-                    }
-                    bootimage = patch_source.string();
-                    printf(
-                        "- Using verified original boot backup for traditional ramdisk patch: %s\n",
-                        backup->string().c_str());
-                } else if (backup_status == DirectLkmImageStatus::kContainsCapsule) {
-                    printf("- Direct-LKM backup contained an embedded capsule; falling back to "
-                           "current boot\n");
-                } else {
-                    printf("- Could not verify direct-LKM backup; falling back to current boot\n");
-                }
-            }
-        }
     }
 
     // Prepare LKM module
@@ -1697,79 +1534,24 @@ int boot_restore(const std::vector<std::string>& args) {
         return 1;
     }
 
-    // Validate external backups before using them. A backup containing the
-    // direct-LKM capsule is itself patched and must never be flashed as stock.
-    if (!parsed.flash && !parsed.boot_image.empty()) {
-        const fs::path backup_path = parsed.boot_image + ".yukisu-original.img";
-        std::error_code backup_error;
-        if (fs::is_regular_file(backup_path, backup_error) && !backup_error) {
-            const auto backup_status = validate_direct_lkm_backup(backup_path, magiskboot, workdir);
-            if (backup_status == DirectLkmImageStatus::kNoCapsule) {
-                const std::string output_image = "./" + make_restore_output_name(parsed.out_name);
-                if (!copy_file_data(backup_path, output_image)) {
-                    LOGE("Failed to restore boot backup %s: %s", backup_path.string().c_str(),
-                         strerror(errno));
-                    cleanup();
-                    return 1;
-                }
-                printf("- Restored verified original boot from external backup\n");
-                printf("- Output file is written to\n");
-                printf("- %s\n", output_image.c_str());
-                printf("- Restore successfully\n");
-                printf("- Done!\n");
-                cleanup();
-                return 0;
-            }
-            if (backup_status == DirectLkmImageStatus::kContainsCapsule)
-                printf("- External backup contained an embedded capsule; falling back to manual "
-                       "restore\n");
-            else
-                printf("- Could not verify external backup; falling back to manual restore\n");
-        }
-    }
-
     bool prefer_boot_partition = false;
     std::string restore_slot;
-    if (parsed.flash && parsed.boot_image.empty()) {
+    if (parsed.boot_image.empty()) {
         restore_slot = get_slot_suffix(false);
-        if (!restore_slot.empty()) {
-            const fs::path bootdevice = fs::path("/dev/block/by-name/boot" + restore_slot);
-            if (const auto backup = find_direct_lkm_backup(restore_slot)) {
-                const auto backup_status = validate_direct_lkm_backup(*backup, magiskboot, workdir);
-                if (backup_status == DirectLkmImageStatus::kNoCapsule) {
-                    printf("- Restoring verified original boot backup: %s\n",
-                           backup->string().c_str());
-                    if (!flash_boot(bootdevice.string(), backup->string())) {
-                        LOGE("Failed to restore original boot backup to %s",
-                             bootdevice.string().c_str());
-                        cleanup();
-                        return 1;
-                    }
-                    printf("- Restored original boot from direct-LKM backup\n");
-                    cleanup();
-                    printf("- Restore successfully\n");
-                    printf("- Done!\n");
-                    return 0;
-                }
-                prefer_boot_partition = true;
-                if (backup_status == DirectLkmImageStatus::kContainsCapsule)
-                    printf("- Direct-LKM backup was patched; deleted it and falling back to kernel "
-                           "cleanup\n");
-                else
-                    printf("- Direct-LKM backup could not be verified; falling back to kernel "
-                           "cleanup\n");
-            } else {
-                // A missing backup is the manual ImgPatch recovery case. Probe
-                // boot before allowing automatic selection to choose init_boot.
-                const fs::path probe = fs::path(workdir) / "boot-probe.img";
-                if (exec_dd(bootdevice.string(), probe.string()) &&
-                    inspect_direct_lkm_image(probe, magiskboot, workdir) ==
-                        DirectLkmImageStatus::kContainsCapsule) {
-                    prefer_boot_partition = true;
-                    printf("- Direct-LKM capsule found in boot; using manual kernel cleanup\n");
-                }
-            }
+        const std::string current_boot_device = "/dev/block/by-name/boot" + restore_slot;
+        const fs::path probe = fs::path(workdir) / "boot-probe.img";
+        if (!exec_dd(current_boot_device, probe.string())) {
+            LOGE("Failed to inspect the current boot image before restoration");
+            cleanup();
+            return 1;
         }
+        const auto status = inspect_direct_lkm_image(probe, magiskboot, workdir);
+        if (status == DirectLkmImageStatus::kUnverified) {
+            LOGE("Cannot safely determine whether the current boot image contains ImgPatch");
+            cleanup();
+            return 1;
+        }
+        prefer_boot_partition = status == DirectLkmImageStatus::kContainsCapsule;
     }
 
     // Get KMI for partition detection
@@ -1847,6 +1629,7 @@ int boot_restore(const std::vector<std::string>& args) {
     std::string new_boot;
     bool from_backup = false;
     bool direct_restore = false;
+    std::optional<boot_backup::Backup> used_backup;
 
     // Direct-LKM images have no ramdisk payload to restore. Remove the capsule
     // from the unpacked kernel and repack the complete boot container below.
@@ -1858,6 +1641,16 @@ int boot_restore(const std::vector<std::string>& args) {
             continue;
         if (!boot::lkm_image::contains_capsule(kernel_bytes))
             continue;
+        auto backup = boot_backup::find_imgpatch(bootimage, workdir);
+        if (backup && inspect_direct_lkm_image(backup->image, magiskboot, workdir) ==
+                          DirectLkmImageStatus::kNoCapsule) {
+            new_boot = backup->image.string();
+            used_backup = std::move(backup);
+            from_backup = true;
+            direct_restore = true;
+            printf("- Restoring the stock backup matched to the current ImgPatch image\n");
+            break;
+        }
         auto restored = boot::lkm_image::remove_capsule(kernel_bytes);
         if (!restored) {
             LOGE("Direct-LKM restore failed: %s", restored.error().message.c_str());
@@ -1928,15 +1721,12 @@ int boot_restore(const std::vector<std::string>& args) {
             auto sha_content = read_file(backup_file);
             if (sha_content) {
                 const std::string sha = trim(*sha_content);
-                const std::string backup_path =
-                    std::string(KSU_BACKUP_DIR) + KSU_BACKUP_FILE_PREFIX + sha;
-
-                if (access(backup_path.c_str(), R_OK) == 0) {
-                    new_boot = backup_path;
+                if (auto backup = boot_backup::find_stock(sha, workdir)) {
+                    new_boot = backup->image.string();
+                    used_backup = std::move(backup);
                     from_backup = true;
-                    clean_backup(sha);
                 } else {
-                    printf("- Warning: no backup %s found!\n", backup_path.c_str());
+                    printf("- No valid stock backup matched the ramdisk hash\n");
                 }
             }
         } else {
@@ -2000,8 +1790,8 @@ int boot_restore(const std::vector<std::string>& args) {
 
     // Flash if requested
     if (parsed.flash && !bootdevice.empty()) {
-        if (from_backup) {
-            printf("- Flashing new boot image from %s\n", new_boot.c_str());
+        if (used_backup) {
+            printf("- Flashing verified stock backup: %s\n", used_backup->stored_image.c_str());
         } else {
             printf("- Flashing new boot image\n");
         }
@@ -2011,6 +1801,9 @@ int boot_restore(const std::vector<std::string>& args) {
             return 1;
         }
     }
+
+    if (used_backup && (!parsed.boot_image.empty() || (parsed.flash && !bootdevice.empty())))
+        boot_backup::consume(*used_backup);
 
     cleanup();
     printf("- Done!\n");

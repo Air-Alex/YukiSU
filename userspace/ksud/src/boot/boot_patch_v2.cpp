@@ -1,4 +1,5 @@
 #include "boot_patch_v2.hpp"
+#include "boot_backup.hpp"
 
 #include "../assets.hpp"
 #include "../core/uts_view.hpp"
@@ -501,7 +502,6 @@ int boot_patch_v2(const std::vector<std::string>& args) {
 
     fs::path input_path;
     fs::path requested_input_path;
-    fs::path file_backup_path;
     const fs::path output_path(parsed.output);
     std::string boot_device;
     std::string init_boot_device;
@@ -520,24 +520,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
             cleanup();
             return 1;
         }
-        const fs::path persistent_backup =
-            fs::path("/data/adb/ksu") / ("boot-patch-v2-original" + slot + ".img");
-        std::error_code backup_error;
-        const bool backup_exists =
-            fs::is_regular_file(persistent_backup, backup_error) && !backup_error;
         input_path = current_boot;
-        if (!backup_exists) {
-            if (!ensure_dir_exists("/data/adb/ksu") ||
-                !exec_dd(current_boot.string(), persistent_backup.string())) {
-                LOGE("boot-patch-v2: failed to save original boot backup: %s",
-                     persistent_backup.string().c_str());
-                cleanup();
-                return 1;
-            }
-            printf("- Saved original boot backup: %s\n", persistent_backup.string().c_str());
-        } else {
-            printf("- Preserving original boot backup: %s\n", persistent_backup.string().c_str());
-        }
         init_boot_device = "/dev/block/by-name/init_boot" + slot;
     } else {
         // Magiskboot runs from the temporary workdir, so preserve an absolute
@@ -602,22 +585,13 @@ int boot_patch_v2(const std::vector<std::string>& args) {
     }
 
     if (!device_mode) {
-        const fs::path backup_path = fs::path(parsed.boot + ".yukisu-original.img");
-        file_backup_path = backup_path;
-        std::error_code backup_error;
-        const bool backup_exists = fs::is_regular_file(backup_path, backup_error) && !backup_error;
-        if (backup_exists) {
-            printf("- Preserving original boot backup: %s\n", backup_path.string().c_str());
-        } else {
-            if (!copy_file_data(requested_input_path, backup_path, 0644, false)) {
-                LOGE("boot-patch-v2: failed to save original boot backup %s: %s",
-                     backup_path.string().c_str(), strerror(errno));
-                cleanup();
-                return 1;
-            }
-            printf("- Saved original boot backup: %s\n", backup_path.string().c_str());
+        const fs::path snapshot = work / "boot-input.img";
+        if (!copy_file_data(requested_input_path, snapshot, 0600, false)) {
+            LOGE("boot-patch-v2: failed to snapshot the selected boot image");
+            cleanup();
+            return 1;
         }
-        input_path = requested_input_path;
+        input_path = snapshot;
     }
 
     {
@@ -701,6 +675,30 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         return 1;
     }
     const bool already_patched = boot::lkm_image::contains_capsule(*kernel);
+    std::optional<boot_backup::Backup> previous_backup;
+    if (already_patched)
+        previous_backup = boot_backup::find_imgpatch(input_path, work);
+    fs::path stock_image = previous_backup ? previous_backup->image : input_path;
+    if (!previous_backup && (already_patched || *legacy_cleanup)) {
+        stock_image = work / "stock-boot.img";
+        if (already_patched) {
+            const auto restored = boot::lkm_image::remove_capsule(*kernel);
+            if (!restored || !write_binary(kernel_path, restored.value())) {
+                LOGE("boot-patch-v2: failed to recover the stock kernel for backup");
+                cleanup();
+                return 1;
+            }
+        }
+        const auto stock_repack = exec_command_magiskboot(
+            magiskboot, {"repack", input_path.string(), stock_image.string()}, work.string());
+        if ((already_patched && !write_binary(kernel_path, *kernel)) ||
+            stock_repack.exit_code != 0) {
+            LOGE("boot-patch-v2: failed to prepare the stock image backup");
+            cleanup();
+            return 1;
+        }
+    }
+
     const bool bundled_lkm = parsed.module.empty();
     auto module = load_module(parsed, *kernel, work);
     if (!module) {
@@ -776,6 +774,14 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         return 1;
     }
     printf("- Repacked boot with MagiskbootAlone\n");
+    const auto stock_backup = boot_backup::save_stock(stock_image);
+    const auto patched_backup =
+        stock_backup ? boot_backup::bind_imgpatch(*stock_backup, repacked) : std::nullopt;
+    if (!patched_backup) {
+        LOGE("boot-patch-v2: failed to bind the stock backup to the patched image");
+        cleanup();
+        return 1;
+    }
 
     if (device_mode) {
         if (!flash_partition_image(repacked, boot_device)) {
@@ -791,6 +797,8 @@ int boot_patch_v2(const std::vector<std::string>& args) {
             cleanup();
             return 1;
         }
+        if (previous_backup && previous_backup->reference != patched_backup->reference)
+            boot_backup::consume(*previous_backup);
         print_report(injected.value().report);
         printf("- Flashed direct-kernel patch to %s\n", boot_device.c_str());
         if (init_boot_changed)
@@ -819,15 +827,6 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         }
         cleanup();
         return 1;
-    }
-    const fs::path output_backup = fs::path(parsed.output + ".yukisu-original.img");
-    if (!same_path(file_backup_path, output_backup)) {
-        if (!copy_file_data(file_backup_path, output_backup)) {
-            LOGE("boot-patch-v2: failed to save output's original boot backup %s: %s",
-                 output_backup.string().c_str(), strerror(errno));
-            cleanup();
-            return 1;
-        }
     }
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const fs::path temporary = parent / (".yukisu-boot-v2-" + output_path.filename().string() +
@@ -861,7 +860,7 @@ int boot_patch_v2(const std::vector<std::string>& args) {
         return 1;
     }
     if (!status_is_missing(final_output_status, error)) {
-        if (same_path(input_path, output_path) ||
+        if (same_path(requested_input_path, output_path) ||
             (!parsed.module.empty() && same_path(module_path, output_path))) {
             LOGE("boot-patch-v2: refusing to overwrite an input file");
             std::error_code remove_error;

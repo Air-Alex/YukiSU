@@ -389,6 +389,7 @@ set(KSUD_OUR_SOURCES
     src/module/module_config.cpp
     src/module/metamodule.cpp
     src/boot/boot_patch.cpp
+    src/boot/boot_backup.cpp
     src/boot/boot_patch_v2.cpp
     src/boot/boot_image_btf.cpp
     src/boot/lkm_image_core.cpp
