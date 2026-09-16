@@ -78,6 +78,17 @@ bool kasumi_policy_current_is_view_target(void)
 	return kasumi_policy_current_scope() == KASUMI_POLICY_SCOPE_VIEW;
 }
 
+bool kasumi_policy_current_is_hide_target(void)
+{
+	long ioctl_tgid;
+
+	if (!smp_load_acquire(&kasumi_enabled) ||
+	    kasumi_is_privileged_process())
+		return false;
+	ioctl_tgid = atomic_long_read(&kasumi_ioctl_tgid);
+	return ioctl_tgid <= 0 || ioctl_tgid != (long)task_tgid_vnr(current);
+}
+
 bool kasumi_policy_current_is_spoof_target(void)
 {
 	return kasumi_policy_current_scope() == KASUMI_POLICY_SCOPE_SPOOF;
@@ -816,17 +827,7 @@ static bool kasumi_hide_rule_matches(const char *pathname)
 
 bool kasumi_should_hide(const char *pathname)
 {
-	pid_t pid;
-
-	if (unlikely(!kasumi_enabled || !pathname || !*pathname))
-		return false;
-	pid = task_tgid_vnr(current);
-	if (atomic_long_read(&kasumi_ioctl_tgid) > 0 &&
-	    pid == atomic_long_read(&kasumi_ioctl_tgid))
-		return false;
-	if (unlikely(kasumi_is_privileged_process()))
-		return false;
-	if (!kasumi_policy_current_is_view_target())
+	if (!kasumi_policy_current_is_hide_target())
 		return false;
 	return kasumi_hide_rule_matches(pathname);
 }

@@ -36,6 +36,7 @@ bool kasumi_is_privileged_process(void);
 bool kasumi_policy_current_is_isolated(void);
 enum kasumi_policy_scope kasumi_policy_current_scope(void);
 bool kasumi_policy_current_is_view_target(void);
+bool kasumi_policy_current_is_hide_target(void);
 bool kasumi_policy_current_is_spoof_target(void);
 bool kasumi_policy_uid_is_spoof_target(uid_t uid);
 bool kasumi_rule_get_source_flags(const char *pathname,

@@ -130,8 +130,7 @@ kasumi_filldir_filter(struct dir_context *ctx, const char *name, int namlen,
 		}
 	}
 
-	if (w->view_allowed && kasumi_d_hash_and_lookup && w->dir_has_hidden &&
-	    w->parent_dentry) {
+	if (kasumi_d_hash_and_lookup && w->dir_has_hidden && w->parent_dentry) {
 		struct dentry *child;
 
 		child = kasumi_d_hash_and_lookup(
@@ -287,7 +286,7 @@ kasumi_iterate_prepare_wrapper(struct file *file, struct dir_context *orig_ctx)
 		dir_inode = d_inode(w->parent_dentry);
 		if (dir_inode && dir_inode->i_mapping) {
 			w->dir_has_hidden =
-			    w->view_allowed &&
+			    kasumi_policy_current_is_hide_target() &&
 			    test_bit(AS_FLAGS_KASUMI_DIR_HAS_HIDDEN,
 				     &dir_inode->i_mapping->flags);
 			/* Fast path: if dir has no inject flag, skip
