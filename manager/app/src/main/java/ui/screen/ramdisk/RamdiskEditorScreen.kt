@@ -39,7 +39,6 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,6 +76,8 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.util.SnackbarController
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.getKsud
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -107,7 +108,7 @@ fun RamdiskEditorScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
-    val snackbarHost = remember { SnackbarHostState() }
+    val snackbarHost = rememberSnackbarController()
     var retryGeneration by remember { mutableIntStateOf(0) }
     var loadState by remember {
         mutableStateOf<RamdiskEditorLoadState>(RamdiskEditorLoadState.Loading)
@@ -350,12 +351,11 @@ fun RamdiskEditorScreen(
                     lastRootBackAt != 0L &&
                     now - lastRootBackAt in 0L..ROOT_EXIT_CONFIRM_INTERVAL_MILLIS
                 ) {
-                    snackbarHost.currentSnackbarData?.dismiss()
+                    snackbarHost.dismiss()
                     navigator.popBackStack()
                 } else {
                     lastRootBackAt = now
                     scope.launch {
-                        snackbarHost.currentSnackbarData?.dismiss()
                         snackbarHost.showSnackbar(
                             message = resources.getString(
                                 R.string.ramdisk_editor_press_back_again
@@ -707,7 +707,7 @@ fun RamdiskEditorScreen(
                         }
                     }
                     SnackbarHost(
-                        hostState = snackbarHost,
+                        hostState = snackbarHost.hostState,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(16.dp),
@@ -845,7 +845,7 @@ private fun RamdiskFragmentSelector(
     dirty: Boolean,
     hasRebuiltImage: Boolean,
     isDumping: Boolean,
-    snackbarHost: SnackbarHostState,
+    snackbarHost: SnackbarController,
     onBack: () -> Unit,
     onSelect: (YrcpRamdiskBackend) -> Unit,
     onDump: () -> Unit,
@@ -887,7 +887,7 @@ private fun RamdiskFragmentSelector(
                 )
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHost) },
+        snackbarHost = { SnackbarHost(snackbarHost.hostState) },
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier

@@ -24,6 +24,7 @@ import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.KsuIsValid
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.getFeatureStatus
 import com.anatdx.yukisu.ui.util.getFeatureValue
 import com.anatdx.yukisu.ui.util.getFeatureValueOrNull
@@ -136,7 +137,7 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
     }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val snackbarHost = remember { SnackbarHostState() }
+    val snackbarHost = rememberSnackbarController()
 
     val selinuxHide = rememberFeatureToggleState(Natives.FEATURE_SELINUX_HIDE)
     var suCompact by remember { mutableStateOf(suCompactController.read()) }
@@ -199,7 +200,7 @@ fun FeatureControlScreen(navigator: DestinationsNavigator) {
                 scrollBehavior = scrollBehavior
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHost) },
+        snackbarHost = { SnackbarHost(snackbarHost.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         )

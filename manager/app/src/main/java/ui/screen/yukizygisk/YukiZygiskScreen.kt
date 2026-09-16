@@ -43,7 +43,6 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -78,6 +77,7 @@ import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getFeatureValue
 import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
@@ -316,7 +316,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
         TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
     }
     val scope = rememberCoroutineScope()
-    val snackBarHost = remember { SnackbarHostState() }
+    val snackBarHost = rememberSnackbarController()
 
     var config by remember { mutableStateOf(YzConfig()) }
     var injectionActive by remember { mutableStateOf(false) }
@@ -400,7 +400,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 scrollBehavior = scrollBehavior,
             )
         },
-        snackbarHost = { SnackbarHost(snackBarHost) },
+        snackbarHost = { SnackbarHost(snackBarHost.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         ),

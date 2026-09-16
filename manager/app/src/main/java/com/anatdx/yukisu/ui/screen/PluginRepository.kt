@@ -49,6 +49,7 @@ import com.anatdx.yukisu.ui.component.YukiSwitch
 import com.anatdx.yukisu.ui.theme.CardStyleProvider.getCardColors
 import com.anatdx.yukisu.ui.theme.CardStyleProvider.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.DownloadHandle
 import com.anatdx.yukisu.ui.util.DownloadProgress
 import com.anatdx.yukisu.ui.util.MAX_PLUGIN_PACKAGE_BYTES
@@ -82,7 +83,7 @@ fun PluginRepositoryScreen(navigator: DestinationsNavigator) {
     val resources = LocalResources.current
     val locale = LocalConfiguration.current.locales[0]
     val scope = rememberCoroutineScope()
-    val snackbarHost = remember { SnackbarHostState() }
+    val snackbarHost = rememberSnackbarController()
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = if (isExpressiveUi) {
         TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
@@ -202,7 +203,7 @@ fun PluginRepositoryScreen(navigator: DestinationsNavigator) {
                 scrollBehavior = scrollBehavior,
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHost) },
+        snackbarHost = { SnackbarHost(snackbarHost.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
         ),
@@ -314,7 +315,7 @@ fun PluginRepositorySourcesScreen(navigator: DestinationsNavigator) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
-    val snackbarHost = remember { SnackbarHostState() }
+    val snackbarHost = rememberSnackbarController()
     var showAddDialog by remember { mutableStateOf(false) }
     var deleteSource by remember { mutableStateOf<PluginRepositorySource?>(null) }
 
@@ -345,7 +346,7 @@ fun PluginRepositorySourcesScreen(navigator: DestinationsNavigator) {
                 YukiIcon(Icons.Outlined.Add, stringResource(R.string.repository_add_source))
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHost) },
+        snackbarHost = { SnackbarHost(snackbarHost.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
         ),

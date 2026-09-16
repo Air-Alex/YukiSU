@@ -78,6 +78,7 @@ import com.anatdx.yukisu.ui.component.YukiPullToRefreshBox
 import com.anatdx.yukisu.ui.component.clickHapticFeedback
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.theme.CardConfig
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.module.ModuleModify
 import com.anatdx.yukisu.ui.viewmodel.AppCategory
 import com.anatdx.yukisu.ui.viewmodel.SortType
@@ -116,7 +117,7 @@ fun SuperUserScreen(navigator: DestinationsNavigator) {
     }
     val listState = rememberLazyListState()
     val context = LocalContext.current
-    val snackBarHostState = remember { SnackbarHostState() }
+    val snackBarHostState = rememberSnackbarController()
 
     val bottomSheetState = rememberBottomSheetState(
         initialValue = SheetValue.Hidden,
@@ -218,7 +219,7 @@ fun SuperUserScreen(navigator: DestinationsNavigator) {
                 scrollBehavior = scrollBehavior
             )
         },
-        snackbarHost = { SnackbarHost(snackBarHostState) },
+        snackbarHost = { SnackbarHost(snackBarHostState.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         floatingActionButton = {
             SuperUserFab(viewModel, filteredAndSortedAppGroups, listState, scope)

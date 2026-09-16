@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +55,7 @@ import com.anatdx.yukisu.ui.component.ZipFileInfo
 import com.anatdx.yukisu.ui.screen.BottomBarDestination
 import com.anatdx.yukisu.ui.theme.KernelSUTheme
 import com.anatdx.yukisu.ui.theme.ThemeManager
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.KsuCli
 import com.anatdx.yukisu.ui.util.LocalNavigationLeaveGuard
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
             setContent {
                 KernelSUTheme {
                     val navController = rememberNavController()
-                    val snackBarHostState = remember { SnackbarHostState() }
+                    val snackBarHostState = rememberSnackbarController()
                     val navigationLeaveGuard = remember { NavigationLeaveGuard() }
                     val predictiveBackEnabled by rememberPredictiveBackEnabled()
                     val currentDestination = navController.currentBackStackEntryAsState().value?.destination
@@ -211,7 +211,7 @@ class MainActivity : ComponentActivity() {
                         Scaffold(
                             containerColor = if (predictiveBackEnabled) Color.Transparent else MaterialTheme.colorScheme.surface,
                             snackbarHost = {
-                                if (!predictiveBackEnabled) SnackbarHost(hostState = snackBarHostState)
+                                if (!predictiveBackEnabled) SnackbarHost(hostState = snackBarHostState.hostState)
                             },
                             bottomBar = {
                                 if (!predictiveBackEnabled) {
@@ -234,7 +234,7 @@ class MainActivity : ComponentActivity() {
                                     Scaffold(
                                         containerColor = if (predictive) MaterialTheme.colorScheme.surface else Color.Transparent,
                                         snackbarHost = {
-                                            if (predictive) SnackbarHost(hostState = snackBarHostState)
+                                            if (predictive) SnackbarHost(hostState = snackBarHostState.hostState)
                                         },
                                         bottomBar = {
                                             if (predictive) {

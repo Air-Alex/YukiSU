@@ -80,6 +80,7 @@ import com.anatdx.yukisu.ui.theme.CardConfig.cardElevation
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.util.LocalSnackbarHost
 import com.anatdx.yukisu.ui.util.checkNewVersion
 import com.anatdx.yukisu.ui.util.module.LatestVersionInfo
 import com.anatdx.yukisu.ui.util.reboot
@@ -174,7 +175,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                 // SuperKey 对话框
                 val superKeyDialog = rememberSuperKeyDialog()
                 var superKeyAuthSuccess by remember { mutableStateOf(false) }
-                val snackbarHostState = remember { SnackbarHostState() }
+                val snackbarHostState = LocalSnackbarHost.current
 
                 LaunchedEffect(viewModel.isCoreDataLoaded, superKeyAuthSuccess) {
                     if (viewModel.isCoreDataLoaded) {

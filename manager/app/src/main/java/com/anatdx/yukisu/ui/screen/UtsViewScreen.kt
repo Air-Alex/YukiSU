@@ -43,7 +43,6 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -81,6 +80,7 @@ import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.UTS_FIELD_DOMAINNAME
 import com.anatdx.yukisu.ui.util.UTS_FIELD_MACHINE
 import com.anatdx.yukisu.ui.util.UTS_FIELD_NODENAME
@@ -144,7 +144,7 @@ fun UtsViewScreen(navigator: DestinationsNavigator) {
     } else {
         TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
     }
-    val snackbar = remember { SnackbarHostState() }
+    val snackbar = rememberSnackbarController()
     val scope = rememberCoroutineScope()
     val bootBaselineReady = remember { CompletableDeferred<Unit>() }
     val focusManager = LocalFocusManager.current
@@ -400,7 +400,7 @@ fun UtsViewScreen(navigator: DestinationsNavigator) {
                 scrollBehavior = scrollBehavior,
             )
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         ),

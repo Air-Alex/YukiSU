@@ -57,7 +57,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -91,6 +90,7 @@ import com.anatdx.yukisu.ui.component.YukiSwitch
 import com.anatdx.yukisu.ui.component.rememberConfirmDialog
 import com.anatdx.yukisu.ui.component.rememberFabVisibilityState
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.PluginCommandResult
 import com.anatdx.yukisu.ui.util.copyPluginPackageTo
 import com.anatdx.yukisu.ui.viewmodel.PluginConfigField
@@ -123,7 +123,7 @@ fun PluginScreen(navigator: DestinationsNavigator) {
     val resources = LocalResources.current
     val locale = LocalConfiguration.current.locales[0]
     val scope = rememberCoroutineScope()
-    val snackBarHost = remember { SnackbarHostState() }
+    val snackBarHost = rememberSnackbarController()
     val confirmDialog = rememberConfirmDialog()
     val listState = rememberLazyListState()
     val fabVisible by rememberFabVisibilityState(listState)
@@ -286,7 +286,7 @@ fun PluginScreen(navigator: DestinationsNavigator) {
                 }
             }
         },
-        snackbarHost = { SnackbarHost(snackBarHost) },
+        snackbarHost = { SnackbarHost(snackBarHost.hostState) },
     ) { padding ->
         when {
             viewModel.plugins.isEmpty() && viewModel.isRefreshing -> {

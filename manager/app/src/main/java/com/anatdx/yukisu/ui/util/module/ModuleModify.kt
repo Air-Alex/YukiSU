@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
+import com.anatdx.yukisu.ui.util.SnackbarController
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ksu.KsuPaths
@@ -60,7 +61,7 @@ object ModuleModify {
         }
     }
 
-    suspend fun backupAllowlist(context: Context, snackBarHost: SnackbarHostState, uri: Uri) {
+    suspend fun backupAllowlist(context: Context, snackBarHost: SnackbarController, uri: Uri) {
         withContext(Dispatchers.IO) {
             try {
                 SuFileInputStream.open(KsuPaths.ALLOWLIST).use { input ->
@@ -90,7 +91,7 @@ object ModuleModify {
 
     suspend fun restoreAllowlist(
         context: Context,
-        snackBarHost: SnackbarHostState,
+        snackBarHost: SnackbarController,
         uri: Uri,
         showConfirmDialog: (Boolean) -> Unit,
         confirmResult: CompletableDeferred<Boolean>
@@ -136,7 +137,7 @@ object ModuleModify {
     @Composable
     fun rememberAllowlistBackupLauncher(
         context: Context,
-        snackBarHost: SnackbarHostState,
+        snackBarHost: SnackbarController,
         scope: CoroutineScope = rememberCoroutineScope()
     ) = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -153,7 +154,7 @@ object ModuleModify {
     @Composable
     fun rememberAllowlistRestoreLauncher(
         context: Context,
-        snackBarHost: SnackbarHostState,
+        snackBarHost: SnackbarController,
         scope: CoroutineScope = rememberCoroutineScope()
     ): ActivityResultLauncher<Intent> {
         var showAllowlistRestoreDialog by remember { mutableStateOf(false) }

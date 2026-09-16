@@ -126,7 +126,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val prefs = context.getSharedPreferences("settings", MODE_PRIVATE)
-    val snackBarHost = remember { SnackbarHostState() }
+    val snackBarHost = rememberSnackbarController()
     val scope = rememberCoroutineScope()
     val confirmDialog = rememberConfirmDialog()
     var lastClickTime by remember { mutableStateOf(0L) }
@@ -449,7 +449,7 @@ fun ModuleScreen(navigator: DestinationsNavigator) {
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         ),
-        snackbarHost = { SnackbarHost(hostState = snackBarHost) }
+        snackbarHost = { SnackbarHost(hostState = snackBarHost.hostState) }
     ) { innerPadding ->
         when {
             hasMagisk -> {
@@ -899,7 +899,7 @@ private fun ModuleList(
     onClickModule: (id: String, name: String, hasWebUi: Boolean) -> Unit,
     onAddShortcut: (ModuleViewModel.ModuleInfo) -> Unit,
     context: Context,
-    snackBarHost: SnackbarHostState
+    snackBarHost: SnackbarController
 ) {
     val failedEnable = stringResource(R.string.module_failed_to_enable)
     val failedDisable = stringResource(R.string.module_failed_to_disable)
@@ -922,7 +922,6 @@ private fun ModuleList(
 
     val loadingDialog = rememberLoadingDialog()
     val confirmDialog = rememberConfirmDialog()
-    var lastRebootSnackbarTime by remember { mutableLongStateOf(0L) }
     var activeDownload by remember { mutableStateOf<ModuleDownloadUiState?>(null) }
     var downloadHandle by remember { mutableStateOf<DownloadHandle?>(null) }
 
@@ -1044,14 +1043,12 @@ private fun ModuleList(
         } else {
             null
         }
-        val result = snackBarHost.showSnackbar(
+        snackBarHost.showSnackbar(
             message = message,
             actionLabel = actionLabel,
-            duration = SnackbarDuration.Long
+            duration = SnackbarDuration.Long,
+            onAction = { reboot(if (softReboot) "soft_reboot" else "") },
         )
-        if (result == SnackbarResult.ActionPerformed) {
-            reboot(if (softReboot) "soft_reboot" else "")
-        }
     }
 
     YukiPullToRefreshBox(
@@ -1139,18 +1136,12 @@ private fun ModuleList(
                                 }
                                 if (success) {
                                     viewModel.fetchModuleList()
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastRebootSnackbarTime > 1500) {
-                                        lastRebootSnackbarTime = now
-                                        val result = snackBarHost.showSnackbar(
-                                            message = rebootToApply,
-                                            actionLabel = reboot,
-                                            duration = SnackbarDuration.Long
-                                        )
-                                        if (result == SnackbarResult.ActionPerformed) {
-                                            reboot(if (softReboot) "soft_reboot" else "")
-                                        }
-                                    }
+                                    snackBarHost.showSnackbar(
+                                        message = rebootToApply,
+                                        actionLabel = reboot,
+                                        duration = SnackbarDuration.Long,
+                                        onAction = { reboot(if (softReboot) "soft_reboot" else "") },
+                                    )
                                 } else {
                                     val message = if (newChecked) failedEnable else failedDisable
                                     snackBarHost.showSnackbar(message.format(module.name))

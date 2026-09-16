@@ -6,8 +6,8 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
-import androidx.compose.material3.SnackbarHostState
 import androidx.core.content.edit
+import com.anatdx.yukisu.ui.util.SnackbarController
 import com.anatdx.yukisu.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -231,7 +231,7 @@ suspend fun handlePartitionBackup(
     partition: PartitionInfo,
     slot: String?,
     backupDirectory: String,
-    snackbarHost: SnackbarHostState,
+    snackbarHost: SnackbarController,
 ) {
     val directoryPath = backupDirectory.trim()
     if (directoryPath.isBlank()) {
@@ -314,7 +314,7 @@ suspend fun handleBatchBackup(
     allPartitions: List<PartitionInfo>,
     slot: String?,
     backupDirectory: String,
-    snackbarHost: SnackbarHostState,
+    snackbarHost: SnackbarController,
     onProgress: (current: Int, total: Int, partition: String) -> Unit = { _, _, _ -> },
 ) {
     val partitionsToBackup = allPartitions

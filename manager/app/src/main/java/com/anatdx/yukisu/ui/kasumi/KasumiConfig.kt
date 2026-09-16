@@ -42,6 +42,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.anatdx.yukisu.ui.util.SnackbarController
+import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
@@ -79,7 +81,7 @@ fun KasumiConfigScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val coroutineScope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = rememberSnackbarController()
 
     var selectedTab by remember { mutableStateOf(KasumiTab.STATUS) }
     var isLoading by remember { mutableStateOf(true) }
@@ -139,7 +141,7 @@ fun KasumiConfigScreen(
                 onRefresh = { loadData() },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState.hostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -181,8 +183,8 @@ fun KasumiConfigScreen(
                                     try {
                                         runtimeApplyPending = !KasumiManager.retryApply()
                                         publish(KasumiManager.load())
-                                        if (runtimeApplyPending) snackbarHostState.showSnackbar(resources.getString(R.string.kasumi_apply_failed))
                                     } finally { configSaving = false }
+                                    if (runtimeApplyPending) snackbarHostState.showSnackbar(resources.getString(R.string.kasumi_apply_failed))
                                 }
                             }
                         },
@@ -190,19 +192,19 @@ fun KasumiConfigScreen(
                             if (configSaving) return@onChange
                             configSaving = true
                             coroutineScope.launchUi(snackbarHostState) {
-                                try {
+                                val message = try {
                                     val result = KasumiManager.saveConfig(newConfig)
                                     if (result.noChanges) return@launchUi
                                     if (result.persisted) runtimeApplyPending = result.error != null && newConfig.kernelAvailable
                                     publish(KasumiManager.load())
-                                    val message = when {
+                                    when {
                                         result.error != null && result.persisted -> resources.getString(R.string.kasumi_saved_apply_failed, result.error)
                                         result.error != null -> result.error
                                         result.applied -> resources.getString(R.string.kasumi_saved_applied)
                                         else -> resources.getString(R.string.kasumi_saved_reboot)
                                     }
-                                    snackbarHostState.showSnackbar(message)
                                 } finally { configSaving = false }
+                                snackbarHostState.showSnackbar(message)
                             }
                         },
                     )
@@ -680,7 +682,7 @@ internal fun SettingTextField(
 
 @Composable
 internal fun MapsSpoofCard(
-    snackbarHostState: SnackbarHostState
+    snackbarHostState: SnackbarController
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -1079,7 +1081,7 @@ internal fun LogsTab(
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = rememberSnackbarController()
     val coroutineScope = rememberCoroutineScope()
 
     var selectedLogLevels by remember { mutableStateOf(emptySet<LogLevel>()) }
@@ -1302,7 +1304,7 @@ internal fun LogsTab(
                 )
 
                 SnackbarHost(
-                    hostState = snackbarHostState,
+                    hostState = snackbarHostState.hostState,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(16.dp)
@@ -1312,7 +1314,7 @@ internal fun LogsTab(
     }
 }
 
-private fun CoroutineScope.launchUi(snackbar: SnackbarHostState, action: suspend () -> Unit) = launch {
+private fun CoroutineScope.launchUi(snackbar: SnackbarController, action: suspend () -> Unit) = launch {
     try { action() }
     catch (error: Exception) {
         if (error is CancellationException) throw error

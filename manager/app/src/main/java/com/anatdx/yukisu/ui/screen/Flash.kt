@@ -148,7 +148,7 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
     var hasUpdateExecuted by rememberSaveable { mutableStateOf(false) }
     var hasUpdateCompleted by rememberSaveable { mutableStateOf(false) }
 
-    val snackBarHost = remember { SnackbarHostState() }
+    val snackBarHost = rememberSnackbarController()
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val topAppBarState = rememberTopAppBarState()
@@ -531,7 +531,7 @@ fun FlashScreen(navigator: DestinationsNavigator, flashIt: FlashIt) {
                 )
             }
         },
-        snackbarHost = { SnackbarHost(hostState = snackBarHost) },
+        snackbarHost = { SnackbarHost(hostState = snackBarHost.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->

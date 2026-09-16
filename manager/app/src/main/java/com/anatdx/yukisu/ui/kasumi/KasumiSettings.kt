@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.anatdx.yukisu.ui.util.SnackbarController
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
@@ -35,7 +36,7 @@ internal fun SettingsTab(
     config: Controller.KagamiConfig,
     kasumiStatus: Controller.KasumiStatus,
     features: Controller.FeaturesResult?,
-    snackbarHostState: SnackbarHostState,
+    snackbarHostState: SnackbarController,
     controlsEnabled: Boolean,
     runtimeApplyPending: Boolean,
     onRetryApply: () -> Unit,
@@ -294,7 +295,7 @@ private fun EditableConfigPath(title: Int, subtitle: Int, value: String, enabled
 }
 
 @Composable
-private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarHostState) {
+private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarController) {
     val scope = rememberCoroutineScope()
     val resources = LocalResources.current
     var paths by remember { mutableStateOf(emptyList<String>()) }

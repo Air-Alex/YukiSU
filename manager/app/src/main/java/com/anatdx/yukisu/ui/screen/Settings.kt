@@ -93,7 +93,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
     } else {
         TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
     }
-    val snackBarHost = remember { SnackbarHostState() }
+    val snackBarHost = rememberSnackbarController()
     val context = LocalContext.current
     val resources = LocalResources.current
     val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -122,7 +122,7 @@ fun SettingScreen(navigator: DestinationsNavigator) {
         topBar = {
             TopBar(scrollBehavior = scrollBehavior)
         },
-        snackbarHost = { SnackbarHost(snackBarHost) },
+        snackbarHost = { SnackbarHost(snackBarHost.hostState) },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     ) { paddingValues ->
         val aboutDialog = rememberCustomDialog {
