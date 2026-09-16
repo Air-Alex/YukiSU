@@ -1,4 +1,5 @@
 #include <linux/errno.h>
+#include <linux/kernel.h>
 #include <linux/limits.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -10,12 +11,28 @@
 #include "infra/symbol_resolver.h"
 #include "klog.h"
 
-#define KSU_CONFLICTING_MODULE "kasumi_lkm"
+static const char *const conflicting_modules[] = {
+    "kasumi_lkm",
+    "pathmask",
+    "procguard",
+    "nomount",
+};
 
 static struct mutex *loader_mutex;
 static struct list_head *loaded_modules;
 static bool guard_registered;
-static bool kasumi_blocked;
+static bool modules_blocked;
+
+static bool module_conflicts(const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(conflicting_modules); i++) {
+		if (!strcmp(name, conflicting_modules[i]))
+			return true;
+	}
+	return false;
+}
 
 static int sucompat_module_notify(struct notifier_block *nb,
 				  unsigned long action, void *data)
@@ -23,13 +40,13 @@ static int sucompat_module_notify(struct notifier_block *nb,
 	const struct module *mod = data;
 
 	(void)nb;
-	if (action != MODULE_STATE_COMING ||
-	    strcmp(mod->name, KSU_CONFLICTING_MODULE) ||
-	    !READ_ONCE(kasumi_blocked))
+	if (action != MODULE_STATE_COMING || !READ_ONCE(modules_blocked) ||
+	    !module_conflicts(mod->name))
 		return NOTIFY_DONE;
 
-	pr_warn("kasumi: sucompact: refusing kasumi_lkm while KSM owns the VFS "
-		"view\n");
+	pr_warn("kasumi: refusing conflicting module %s while VFS guard is "
+		"active\n",
+		mod->name);
 	return notifier_from_errno(-EBUSY);
 }
 
@@ -46,21 +63,20 @@ int ksu_sucompat_module_guard_acquire(void)
 	if (!guard_registered)
 		return -EOPNOTSUPP;
 	mutex_lock(loader_mutex);
-	if (kasumi_blocked)
+	if (modules_blocked)
 		goto out;
 	/* Include UNFORMED and GOING modules: both can still race VFS setup. */
 	list_for_each_entry (mod, loaded_modules, list) {
-		if (!strcmp(mod->name, KSU_CONFLICTING_MODULE)) {
-			pr_warn("kasumi: sucompact: kasumi_lkm must be "
-				"unloaded before "
-				"enabling KSM\n");
+		if (module_conflicts(mod->name)) {
+			pr_warn("kasumi: %s must be unloaded before "
+				"initialization\n",
+				mod->name);
 			ret = -EBUSY;
 			goto out;
 		}
 	}
-	/* Module-list insertion uses this mutex before the COMING notification.
-	 */
-	WRITE_ONCE(kasumi_blocked, true);
+	/* Module insertion takes this mutex before the COMING notification. */
+	WRITE_ONCE(modules_blocked, true);
 out:
 	mutex_unlock(loader_mutex);
 	return ret;
@@ -71,7 +87,7 @@ void ksu_sucompat_module_guard_release(void)
 	if (!guard_registered)
 		return;
 	mutex_lock(loader_mutex);
-	WRITE_ONCE(kasumi_blocked, false);
+	WRITE_ONCE(modules_blocked, false);
 	mutex_unlock(loader_mutex);
 }
 

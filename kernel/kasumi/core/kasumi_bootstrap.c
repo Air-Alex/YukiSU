@@ -12,6 +12,7 @@
 #include <linux/vmalloc.h>
 
 #include "kasumi_bootstrap.h"
+#include "kasumi_config_guard.h"
 #include "kasumi_runtime.h"
 #include "kasumi_path_policy.h"
 #include "kasumi_store.h"
@@ -263,6 +264,9 @@ static int kasumi_bootstrap_init(void)
 		ret = 0;
 		goto out;
 	}
+	ret = kasumi_check_builtin_conflicts();
+	if (ret)
+		goto out;
 	ret = ksu_sucompat_module_guard_init();
 	if (ret)
 		goto out;
@@ -305,7 +309,7 @@ static int kasumi_feature_set(u64 value)
 		if (ret)
 			return ret;
 	}
-	/* Disabling only changes the next boot's initialization choice. */
+	/* Disabling is for next boot; live views retain the module guard. */
 	WRITE_ONCE(kasumi_requested, value != 0);
 	return 0;
 }

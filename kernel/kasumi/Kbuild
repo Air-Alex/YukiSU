@@ -1,6 +1,7 @@
 # Imported from Kasumi e648702b42d6068206a5cbc2fffae25d71dc067b.
 kernelsu-objs += $(addprefix kasumi/, \
- core/kasumi_bootstrap.o core/kasumi_runtime.o core/kasumi_fop_bridge.o \
+ core/kasumi_bootstrap.o core/kasumi_config_guard.o \
+ core/kasumi_runtime.o core/kasumi_fop_bridge.o \
  core/kasumi_vnode.o core/kasumi_dirhijack.o core/kasumi_sop_shadow.o \
  control/kasumi_ioctl.o \
  policy/kasumi_path_policy.o overlay/kasumi_overlay.o \
