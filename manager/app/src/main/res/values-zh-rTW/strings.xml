@@ -428,6 +428,8 @@
     <string name="superkey_optional_desc">設定超級密鑰用於 APatch 風格的認證。留空則使用簽名認證。</string>
 
     <!-- SuperKey settings -->
+    <string name="settings_superkey_management">超級密鑰管理</string>
+    <string name="settings_superkey_management_summary">儲存、開機自動驗證與清除已儲存的密鑰</string>
     <string name="settings_donot_store_superkey">不儲存超級密鑰</string>
     <string name="settings_donot_store_superkey_summary">啟用後，管理器不會儲存您的超級密鑰。每次重新啟動後都需要手動輸入密鑰進行認證。</string>
     <string name="settings_auto_authenticate_superkey">開機自動驗證超級密鑰</string>

@@ -609,6 +609,8 @@
     <string name="superkey_optional_desc">Set a SuperKey for APatch-style authentication. Leave empty to use signature-based auth.</string>
     
     <!-- SuperKey settings -->
+    <string name="settings_superkey_management" tools:ignore="MissingTranslation">SuperKey management</string>
+    <string name="settings_superkey_management_summary" tools:ignore="MissingTranslation">Storage, authentication at boot, and clearing the saved key</string>
     <string name="settings_donot_store_superkey">Do not store SuperKey</string>
     <string name="settings_donot_store_superkey_summary">When enabled, the manager will not save your SuperKey. You will need to enter it manually after every reboot.</string>
     <string name="settings_auto_authenticate_superkey" tools:ignore="MissingTranslation">Authenticate SuperKey at boot</string>

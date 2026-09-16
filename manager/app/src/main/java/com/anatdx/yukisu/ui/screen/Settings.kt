@@ -51,7 +51,6 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.BuildConfig
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.magica.MagicaHelper
-import com.anatdx.yukisu.superkey.SuperKeyHelper
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.*
 import com.anatdx.yukisu.ui.theme.CardConfig
@@ -221,63 +220,23 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                             }
                         )
 
-                        var skipStoreSuperKey by remember {
-                            mutableStateOf(SuperKeyHelper.shouldSkipStorage(context))
+                        val superKeyDialog = rememberCustomDialog { dismiss ->
+                            SuperKeySettingsDialog(
+                                onDismiss = dismiss,
+                                onKeyCleared = {
+                                    scope.launch {
+                                        snackBarHost.showSnackbar(
+                                            resources.getString(R.string.clear_super_key) + " ✓"
+                                        )
+                                    }
+                                }
+                            )
                         }
-                        var autoAuthenticateSuperKey by remember {
-                            mutableStateOf(SuperKeyHelper.isAutoAuthenticationEnabled(context))
-                        }
-                        var hasSavedSuperKey by remember {
-                            mutableStateOf(SuperKeyHelper.hasSavedSuperKey(context))
-                        }
-                        SwitchItem(
-                            icon = Icons.Filled.Key,
-                            title = stringResource(R.string.settings_donot_store_superkey),
-                            summary = stringResource(R.string.settings_donot_store_superkey_summary),
-                            checked = skipStoreSuperKey,
-                            onCheckedChange = {
-                                skipStoreSuperKey = it
-                                SuperKeyHelper.setSkipStorage(context, it)
-                                hasSavedSuperKey = SuperKeyHelper.hasSavedSuperKey(context)
-                                autoAuthenticateSuperKey =
-                                    SuperKeyHelper.isAutoAuthenticationEnabled(context)
-                            }
-                        )
-
-                        SwitchItem(
-                            icon = Icons.Filled.Key,
-                            title = stringResource(R.string.settings_auto_authenticate_superkey),
-                            summary = stringResource(
-                                R.string.settings_auto_authenticate_superkey_summary
-                            ),
-                            checked = autoAuthenticateSuperKey,
-                            enabled = hasSavedSuperKey && !skipStoreSuperKey,
-                            onCheckedChange = {
-                                autoAuthenticateSuperKey = it
-                                SuperKeyHelper.setAutoAuthenticationEnabled(context, it)
-                            }
-                        )
-
-                        val clearKeyDialog = rememberConfirmDialog(onConfirm = {
-                            SuperKeyHelper.clearSavedSuperKey(context)
-                            hasSavedSuperKey = false
-                            autoAuthenticateSuperKey = false
-                            scope.launch {
-                                snackBarHost.showSnackbar(resources.getString(R.string.clear_super_key) + " ✓")
-                            }
-                        })
-                        val clearKeyDialogTitle = stringResource(R.string.clear_super_key)
-                        val clearKeyDialogContent = stringResource(R.string.settings_clear_super_key_dialog)
                         SettingItem(
                             icon = Icons.Filled.Key,
-                            title = stringResource(R.string.clear_super_key),
-                            onClick = {
-                                clearKeyDialog.showConfirm(
-                                    title = clearKeyDialogTitle,
-                                    content = clearKeyDialogContent,
-                                    markdown = false
-                                )
-                            }
+                            title = stringResource(R.string.settings_superkey_management),
+                            summary = stringResource(R.string.settings_superkey_management_summary),
+                            onClick = { superKeyDialog.show() }
                         )
 
                         var umountChecked by rememberSaveable { mutableStateOf(Natives.isDefaultUmountModules()) }
