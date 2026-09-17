@@ -1047,16 +1047,69 @@ bool install_daemon_atomically() {
 
 bool copy_optional_file(const std::optional<std::string>& src_path, const char* dst_path,
                         mode_t mode) {
-    if (!src_path) {
+    if (!src_path)
         return true;
-    }
-
-    if (!copy_file_data(*src_path, dst_path)) {
-        LOGE("Failed to copy %s from %s", dst_path, src_path->c_str());
+    const int source = open(src_path->c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if (source < 0) {
+        LOGE("Failed to open %s: %s", src_path->c_str(), strerror(errno));
         return false;
     }
-
-    chmod(dst_path, mode);
+    struct stat status{};
+    if (fstat(source, &status) != 0 || !S_ISREG(status.st_mode)) {
+        LOGE("Input is not a readable regular file: %s", src_path->c_str());
+        close(source);
+        return false;
+    }
+    std::string temporary = std::string(dst_path) + ".tmp.XXXXXX";
+    const int target = mkostemp(temporary.data(), O_CLOEXEC);
+    if (target < 0) {
+        LOGE("Failed to stage %s: %s", dst_path, strerror(errno));
+        close(source);
+        return false;
+    }
+    bool ok = true;
+    std::array<char, 65536> buffer{};
+    while (ok) {
+        const ssize_t count = read(source, buffer.data(), buffer.size());
+        if (count < 0 && errno == EINTR)
+            continue;
+        if (count <= 0) {
+            ok = count == 0;
+            break;
+        }
+        size_t offset = 0;
+        while (offset < static_cast<size_t>(count)) {
+            const ssize_t written =
+                write(target, buffer.data() + offset, static_cast<size_t>(count) - offset);
+            if (written < 0 && errno == EINTR)
+                continue;
+            if (written <= 0) {
+                if (written == 0)
+                    errno = EIO;
+                ok = false;
+                break;
+            }
+            offset += static_cast<size_t>(written);
+        }
+    }
+    if (ok)
+        ok = fchmod(target, mode) == 0 && fsync(target) == 0;
+    int error = errno;
+    close(source);
+    if (close(target) != 0 && ok) {
+        ok = false;
+        error = errno;
+    }
+    // Replace the directory entry, never the target of an existing tool symlink.
+    if (ok && rename(temporary.c_str(), dst_path) != 0) {
+        ok = false;
+        error = errno;
+    }
+    if (!ok) {
+        unlink(temporary.c_str());
+        LOGE("Failed to copy %s from %s: %s", dst_path, src_path->c_str(), strerror(error));
+        return false;
+    }
     (void)restorecon(std::filesystem::path(dst_path), false);
     return true;
 }
