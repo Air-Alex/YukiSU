@@ -6,6 +6,7 @@
 #include "../magisk_compat/su_transition.hpp"
 #include "../module/module.hpp"
 #include "../sulog.hpp"
+#include "../terminal.hpp"
 #include "../utils.hpp"
 #include "../yukizygisk_snapshot.hpp"
 #include "ksucalls.hpp"
@@ -363,7 +364,7 @@ std::map<uint32_t, uint64_t> get_current_feature_values() {
 }
 
 int save_feature_config_files(const std::map<uint32_t, uint64_t>& features) {
-    const std::string config_path = std::string(KSURC_PATH);
+    const std::string config_path = std::string(FEATURE_CONFIG_PATH);
     std::string text = "# KernelSU feature configuration\n";
     for (const auto& [name, id] : get_feature_map()) {
         auto it = features.find(id);
@@ -468,7 +469,9 @@ int feature_get(const std::string& id) {
     printf("Feature: %s (%u)\n", feature_id_to_name(feature_id), feature_id);
     printf("Description: %s\n", feature_id_to_description(feature_id));
     printf("Value: %" PRIu64 "\n", value);
-    printf("Status: %s\n", value != 0 ? "enabled" : "disabled");
+    printf("Status: ");
+    terminal::status(stdout, value != 0 ? "enabled" : "disabled", value != 0);
+    printf("\n");
 
     return 0;
 }
@@ -506,7 +509,7 @@ int feature_set_and_save(const std::string& id, uint64_t value) {
     const bool coupled = is_sucompat_feature_id(feature_id);
     auto previous_sucompat = get_current_feature_values();
     const auto [previous_value, previous_supported] = get_feature(feature_id);
-    const auto previous_text_config = read_file(KSURC_PATH);
+    const auto previous_text_config = read_file(FEATURE_CONFIG_PATH);
     const auto previous_binary_config = read_file(get_feature_config_path());
     if (feature_set_impl(id, feature_id, value) != 0) {
         if (coupled) {
@@ -530,7 +533,7 @@ int feature_set_and_save(const std::string& id, uint64_t value) {
         }
         return unlink(path.c_str()) == 0 || errno == ENOENT;
     };
-    const bool text_restored = restore_file(KSURC_PATH, previous_text_config);
+    const bool text_restored = restore_file(FEATURE_CONFIG_PATH, previous_text_config);
     const bool binary_restored = restore_file(get_feature_config_path(), previous_binary_config);
     if (!text_restored || !binary_restored) {
         LOGW("Failed to restore the previous feature configuration files");
@@ -539,7 +542,7 @@ int feature_set_and_save(const std::string& id, uint64_t value) {
 }
 
 void feature_list() {
-    printf("Available Features:\n");
+    terminal::heading(stdout, "Available Features:\n");
     printf("================================================================================\n");
 
     for (const auto& [name, id] : get_feature_map()) {
@@ -554,7 +557,9 @@ void feature_list() {
             status = "DISABLED";
         }
 
-        printf("[%s] %s (ID=%u)\n", status, name.c_str(), id);
+        printf("[");
+        terminal::status(stdout, status, supported && value != 0);
+        printf("] %s (ID=%u)\n", name.c_str(), id);
         printf("    %s\n", feature_id_to_description(id));
     }
 }
@@ -585,7 +590,7 @@ int feature_load_config() {
         return 1;
     }
 
-    const std::string config_path = std::string(KSURC_PATH);
+    const std::string config_path = std::string(FEATURE_CONFIG_PATH);
     auto content = read_file(config_path);
     if (!content) {
         LOGI("No feature config file found");

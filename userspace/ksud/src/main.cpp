@@ -1,6 +1,6 @@
 #include <cstring>
+#include <optional>
 #include "cli.hpp"
-#include "yzctl.hpp"
 
 #if defined(MAGISKBOOT_ALONE_AVAILABLE) && MAGISKBOOT_ALONE_AVAILABLE
 extern int magiskboot_main(int argc, char** argv);
@@ -38,62 +38,58 @@ int main(int argc, char** argv) {
     // name as argv[1]
     const char* first_arg = (argc >= 2 && argv[1]) ? argv[1] : nullptr;
 
-    auto dispatch = [&base, &first_arg, argc, argv](const char* name, auto main_fn) -> int {
+    const bool dispatcher = base && (std::strcmp(base, "ksud") == 0 || std::strstr(base, ".so"));
+    auto dispatch = [base, first_arg, dispatcher, argc, argv](const char* name,
+                                                              auto main_fn) -> std::optional<int> {
         if (base && std::strcmp(base, name) == 0) {
             return main_fn(argc, argv);
         }
-        if (first_arg && std::strcmp(first_arg, name) == 0) {
+        if (dispatcher && first_arg && std::strcmp(first_arg, name) == 0) {
             return main_fn(argc - 1, argv + 1);
         }
-        return -1;
+        return std::nullopt;
     };
-
-    {
-        const int r = dispatch("yzctl", ksud::yzctl_main);
-        if (r >= 0)
-            return r;
-    }
 
 #if defined(MAGISKBOOT_ALONE_AVAILABLE) && MAGISKBOOT_ALONE_AVAILABLE
     {
-        const int r = dispatch("magiskboot", magiskboot_main);
-        if (r >= 0)
-            return r;
+        const auto r = dispatch("magiskboot", magiskboot_main);
+        if (r)
+            return *r;
     }
 #endif  // #if defined(MAGISKBOOT_ALONE_AVAILABLE)...
 #if defined(BOOTCTL_ALONE_AVAILABLE) && BOOTCTL_ALONE_AVAILABLE
     {
-        const int r = dispatch("bootctl", bootctl_main);
-        if (r >= 0)
-            return r;
+        const auto r = dispatch("bootctl", bootctl_main);
+        if (r)
+            return *r;
     }
 #endif  // #if defined(BOOTCTL_ALONE_AVAILABLE) &&...
 #if defined(RESETPROP_ALONE_AVAILABLE) && RESETPROP_ALONE_AVAILABLE
     {
-        const int r = dispatch("resetprop", resetprop_main);
-        if (r >= 0)
-            return r;
+        const auto r = dispatch("resetprop", resetprop_main);
+        if (r)
+            return *r;
     }
 #endif  // #if defined(RESETPROP_ALONE_AVAILABLE) ...
 #if defined(MKBOOTFS_ALONE_AVAILABLE) && MKBOOTFS_ALONE_AVAILABLE
     {
-        const int r = dispatch("mkbootfs", mkbootfs_main);
-        if (r >= 0)
-            return r;
+        const auto r = dispatch("mkbootfs", mkbootfs_main);
+        if (r)
+            return *r;
     }
 #endif  // #if defined(MKBOOTFS_ALONE_AVAILABLE) ...
 #if defined(TOYBOX_READELF_AVAILABLE) && TOYBOX_READELF_AVAILABLE
     {
-        const int r = dispatch("readelf", yukisu_toybox_main);
-        if (r >= 0)
-            return r;
+        const auto r = dispatch("readelf", yukisu_toybox_main);
+        if (r)
+            return *r;
     }
 #endif  // #if defined(TOYBOX_READELF_AVAILABLE) &&...
 #if defined(NDK_BUSYBOX_AVAILABLE) && NDK_BUSYBOX_AVAILABLE
     {
-        const int r = dispatch("busybox", busybox_main);
-        if (r >= 0)
-            return r;
+        const auto r = dispatch("busybox", busybox_main);
+        if (r)
+            return *r;
     }
     // If invoked via a symlink whose name matches a busybox applet (e.g. "ls"),
     // and it's not one of ksud's own tools or a .so path, delegate to busybox.

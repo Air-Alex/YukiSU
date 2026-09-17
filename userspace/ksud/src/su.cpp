@@ -3,12 +3,14 @@
 #include "defs.hpp"
 #include "log.hpp"
 #include "su_args.hpp"
+#include "terminal.hpp"
 #include "utils.hpp"
 
 #include <fcntl.h>
 #include <getopt.h>
 #include <grp.h>
 #include <pwd.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <array>
@@ -23,16 +25,52 @@ namespace ksud {
 
 namespace {
 
+int su_usage_error(std::string_view message, std::string_view usage) {
+    (void)terminal::usage_error(message, usage);
+    return 1;
+}
+
+void setup_shell_rc(const std::string& shell, bool preserve_env) {
+    if (isatty(STDIN_FILENO) != 1 || isatty(STDERR_FILENO) != 1)
+        return;
+    if (shell != "/system/bin/sh" && shell != "/system/bin/mksh" &&
+        shell != "/data/adb/ksu/bin/sh" && shell != "/data/adb/ksu/bin/ash")
+        return;
+    const char* env = getenv("ENV");
+    if (preserve_env && (!env || strcmp(env, SHELL_RC_PATH) != 0))
+        return;
+    if (env && strcmp(env, FEATURE_CONFIG_PATH) != 0 && strcmp(env, SHELL_RC_PATH) != 0)
+        return;
+    if (env && !preserve_env)
+        unsetenv("ENV");
+    const int rc = open(SHELL_RC_PATH, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if (rc < 0)
+        return;
+    struct stat status{};
+    const bool readable = fstat(rc, &status) == 0 && S_ISREG(status.st_mode);
+    close(rc);
+    if (!readable)
+        return;
+    const char* prompt = getenv("PS1");
+    if (prompt)
+        setenv("KSU_SHELL_PS1", prompt, 1);
+    else
+        unsetenv("KSU_SHELL_PS1");
+    if (!preserve_env)
+        setenv("ENV", SHELL_RC_PATH, 1);
+}
+
 void print_su_usage() {
     printf("YukiSU\n\n");
-    printf("Usage: su [options] [-] [user [command [argument...]]]\n\n");
+    terminal::heading(stdout, "Usage: ");
+    printf("su [options] [-] [user [command [argument...]]]\n\n");
     printf("Options may be given before or after user. A positional command is exec'd\n");
     printf("directly, not through the shell; use -c to run something through the shell.\n\n");
-    printf("Options:\n");
+    terminal::heading(stdout, "Options:\n");
     printf("  -c, --command COMMAND    pass COMMAND to the invoked shell\n");
     printf("  -h, --help               display this help message and exit\n");
     printf("  -l, --login              pretend the shell to be a login shell\n");
-    printf("  -p, --preserve-environment  preserve the entire environment\n");
+    printf("  -p, --preserve-environment  preserve HOME, USER, LOGNAME and SHELL\n");
     printf("  -s, --shell SHELL        use SHELL instead of the default\n");
     printf("  -v, --version            display version number and exit\n");
     printf("  -V                       display version code and exit\n");
@@ -123,6 +161,7 @@ int su_main(int argc, char** argv) {
 int run_su_shell(int argc, char** argv) {
     // Parse options
     std::string command;
+    bool has_command = false;
     std::string shell = "/system/bin/sh";  // Use system shell by default (like Rust version)
     bool is_login = false;
     bool preserve_env = false;
@@ -164,14 +203,16 @@ int run_su_shell(int argc, char** argv) {
     }};
 
     optind = 1;  // Reset getopt
+    opterr = 0;
     int opt;
     // Keep the leading "+": su_args::split has already moved every option ahead of the operands,
     // so stopping at the first operand is correct and does not depend on libc permuting argv.
-    while ((opt = getopt_long(argc, argv, "+c:hlps:vVMg:G:Wz:Z:", long_options.data(), nullptr)) !=
+    while ((opt = getopt_long(argc, argv, "+:c:hlps:vVMg:G:Wz:Z:", long_options.data(), nullptr)) !=
            -1) {
         switch (opt) {
         case 'c':
             command = optarg;
+            has_command = true;
             break;
         case 'h':
             print_su_usage();
@@ -197,16 +238,16 @@ int run_su_shell(int argc, char** argv) {
         case 'g': {
             requested_gid = su_args::parse_numeric_id(optarg);
             if (!requested_gid.has_value()) {
-                LOGE("Invalid GID: %s", optarg);
-                return 1;
+                return su_usage_error("invalid GID '" + std::string(optarg) + "'",
+                                      "su --group <GID>");
             }
             break;
         }
         case 'G': {
             const auto group = su_args::parse_numeric_id(optarg);
             if (!group.has_value()) {
-                LOGE("Invalid supplementary GID: %s", optarg);
-                return 1;
+                return su_usage_error("invalid supplementary GID '" + std::string(optarg) + "'",
+                                      "su --supp-group <GID>");
             }
             groups.push_back(static_cast<gid_t>(*group));
             break;
@@ -222,8 +263,12 @@ int run_su_shell(int argc, char** argv) {
         case OPT_KSU_NO_NEW_PRIVS:
             ksu_no_new_privs = true;
             break;
+        case ':':
+            return su_usage_error("option '" + std::string(argv[optind - 1]) + "' requires a value",
+                                  "su [OPTIONS] [-] [USER [COMMAND...]]");
         default:
-            return 1;
+            return su_usage_error("unknown option '" + std::string(argv[optind - 1]) + "'",
+                                  "su [OPTIONS] [-] [USER [COMMAND...]]");
         }
     }
 
@@ -242,8 +287,8 @@ int run_su_shell(int argc, char** argv) {
                           : std::optional<std::uint32_t>(static_cast<std::uint32_t>(pw->pw_uid));
         requested_uid = su_args::resolve_uid(user, passwd_uid);
         if (!requested_uid.has_value()) {
-            LOGE("Unknown user: %s", user);
-            return 1;
+            return terminal::error("unknown user '" + std::string(user) + "'",
+                                   "Use a username or a decimal UID.");
         }
     }
 
@@ -289,11 +334,6 @@ int run_su_shell(int argc, char** argv) {
     }
     setenv("PATH", new_path.c_str(), 1);
 
-    // Set ENV to KSURC_PATH if exists (for shell initialization)
-    if (access(KSURC_PATH, F_OK) == 0 && getenv("ENV") == nullptr) {
-        setenv("ENV", KSURC_PATH, 1);
-    }
-
     if (!preserve_env) {
         const struct passwd* pw = getpwuid(target_uid);
         if (pw) {
@@ -315,10 +355,13 @@ int run_su_shell(int argc, char** argv) {
         return 1;
     }
 
-    // Last, so the credential switch above still runs in the unrestricted su domain.
+    // Change credentials while still in the unrestricted su domain.
     if (selinux_context.has_value() && !set_selinux_context(*selinux_context)) {
         return 1;
     }
+
+    if (!has_command && !parsed.executable.has_value())
+        setup_shell_rc(shell, preserve_env);
 
     // A positional command wins over -c; su_args::split already resolved which one came first.
     const std::string executable = parsed.executable.value_or(shell);
@@ -333,7 +376,7 @@ int run_su_shell(int argc, char** argv) {
         for (const auto& arg : parsed.exec_args) {
             exec_argv.push_back(arg.c_str());
         }
-    } else if (!command.empty()) {
+    } else if (has_command) {
         exec_argv.push_back("-c");
         exec_argv.push_back(command.c_str());
     }
@@ -342,7 +385,7 @@ int run_su_shell(int argc, char** argv) {
 
     execvp(executable.c_str(), const_cast<char* const*>(exec_argv.data()));
 
-    LOGE("Failed to exec %s: %s", executable.c_str(), strerror(errno));
+    (void)terminal::file_error("cannot execute", executable, errno);
     return 127;
 }
 
@@ -352,10 +395,7 @@ int root_shell() {
     return su_main(1, argv.data());
 }
 
-// Simple grant_root for "debug su" command
-// This is a simplified version that just grants root and execs to sh
-// Used by manager app which may have SECCOMP restrictions
-// Mirrors Rust behavior: grant_root() then immediately exec("sh")
+// Keep the debug shell's credential path compatible with seccomp-constrained callers.
 int grant_root_shell(bool global_mnt) {
     // Grant root first via kernel
     if (grant_root() < 0) {
@@ -384,8 +424,7 @@ int grant_root_shell(bool global_mnt) {
     }
     setenv("PATH", new_path.c_str(), 1);
 
-    // Exec to sh immediately (matching Rust behavior)
-    // This avoids any complex operations that might trigger SECCOMP
+    setup_shell_rc("/system/bin/sh", false);
     std::array<char*, 2> shell_argv = {const_cast<char*>("sh"), nullptr};
     execv("/system/bin/sh", shell_argv.data());
 

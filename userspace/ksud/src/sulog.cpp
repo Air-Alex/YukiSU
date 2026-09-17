@@ -291,8 +291,7 @@ bool parse_log_name(const std::filesystem::path& path, std::string* day, uint32_
             }
         }
         *day = day_part;
-        *index = static_cast<uint32_t>(std::stoul(index_part));
-        return true;
+        return parse_uint32(index_part, index);
     }
 
     return false;

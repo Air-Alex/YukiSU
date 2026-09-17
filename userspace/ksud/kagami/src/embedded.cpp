@@ -10,20 +10,22 @@
 #include "kagami/config.hpp"
 #include "module/metamodule.hpp"
 #include "mount/backend.hpp"
+#include "terminal.hpp"
 
 namespace kagami {
 int embedded_command(const std::vector<std::string>& args) try {
+    if (!args.empty() && (args[0] == "version" || args[0] == "--version"))
+        return run_command(args);
     if (geteuid() != 0) {
-        std::cerr << "ksud kagami requires root\n";
-        return 1;
+        return ksud::terminal::error("Kagami requires root",
+                                     "Run this command from an authorized root shell.");
     }
     if (args.empty() || args[0] == "help" || args[0] == "--help" || args[0] == "-h" ||
         args[0] == "version" || args[0] == "--version" || args[0] == "daemon")
         return run_command(args);
-    return run_via_daemon(args);
+    return run_via_daemon(args, true);
 } catch (const std::exception& error) {
-    std::cerr << "Kagami: " << error.what() << '\n';
-    return 1;
+    return ksud::terminal::error(std::string("Kagami: ") + error.what());
 }
 
 int embedded_mount() try {

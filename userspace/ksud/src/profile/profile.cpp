@@ -2,6 +2,7 @@
 #include "../defs.hpp"
 #include "../log.hpp"
 #include "../sepolicy/sepolicy.hpp"
+#include "../terminal.hpp"
 #include "../utils.hpp"
 
 #include <dirent.h>
@@ -16,7 +17,7 @@ int profile_get_sepolicy(const std::string& package) {
         printf("%s", content->c_str());
         return 0;
     }
-    printf("No sepolicy profile for %s\n", package.c_str());
+    terminal::errorf("No sepolicy profile for %s\n", package.c_str());
     return 1;
 }
 
@@ -40,7 +41,7 @@ int profile_get_template(const std::string& id) {
         printf("%s", content->c_str());
         return 0;
     }
-    printf("Template %s not found\n", id.c_str());
+    terminal::errorf("Template %s not found\n", id.c_str());
     return 1;
 }
 

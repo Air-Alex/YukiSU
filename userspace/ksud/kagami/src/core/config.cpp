@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cerrno>
+#include <climits>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -89,6 +91,59 @@ void prune_config_fields(json::Value& config) {
         else
             ++it;
     }
+}
+
+bool validate_config_patch(const json::Value& patch, std::string& error) {
+    if (!patch.is_object()) {
+        error = "config updates must be a JSON object";
+        return false;
+    }
+    static const auto defaults = json::parse(default_config_json());
+    const auto reject = [&error](const std::string& key, const char* reason) {
+        error = "configuration field '" + key + "' " + reason;
+        return false;
+    };
+    for (const auto& [key, value] : patch.o) {
+        const auto* expected = defaults.find(key);
+        if (!expected)
+            return reject(key, "is unknown");
+        if (value.type != expected->type) {
+            const char* type = "must be a positive integer";
+            if (expected->is_bool())
+                type = "must be a boolean";
+            else if (expected->is_string())
+                type = "must be a string";
+            else if (expected->is_array())
+                type = "must be an array of partition names";
+            return reject(key, type);
+        }
+        if (value.is_string() && value.s.find('\0') != std::string::npos)
+            return reject(key, "must not contain NUL");
+        if (key == "mirror_img_size_mb" && (!std::isfinite(value.n) || value.n < 1 ||
+                                            value.n > INT_MAX || std::floor(value.n) != value.n))
+            return reject(key, "must be an integer between 1 and 2147483647");
+        if ((key == "work_dir" && (value.s.empty() || value.s.front() != '/')) ||
+            (key == "mirror_dir" && !value.s.empty() && value.s.front() != '/'))
+            return reject(key, "must be an absolute path");
+        if (key == "mount_hide_mode" && !value.s.empty() && value.s != "normal" &&
+            value.s != "aggressive")
+            return reject(key, "must be normal or aggressive");
+        if (key == "fs_type" && !value.s.empty() && value.s != "auto" && value.s != "tmpfs" &&
+            value.s != "ext4" && value.s != "erofs")
+            return reject(key, "must be auto, tmpfs, ext4 or erofs");
+        if (key == "mount_backend" && !value.s.empty() && value.s != "auto" &&
+            value.s != "kasumi" && value.s != "overlay" && value.s != "magic" && value.s != "none")
+            return reject(key, "must be auto, kasumi, overlay, magic or none");
+        if (key == "partitions") {
+            for (const auto& partition : value.a) {
+                if (!partition.is_string() || partition.s.empty() || partition.s == "." ||
+                    partition.s == ".." || partition.s.find('/') != std::string::npos ||
+                    partition.s.find('\0') != std::string::npos)
+                    return reject(key, "must contain relative partition names without slashes");
+            }
+        }
+    }
+    return true;
 }
 
 namespace {
@@ -226,6 +281,8 @@ bool merge_config_json(const std::string& updates, std::string& error) {
         return false;
     }
 
+    if (!validate_config_patch(patch, error))
+        return false;
     ConfigFileLock lock;
     if (!lock.acquire(error)) {
         return false;

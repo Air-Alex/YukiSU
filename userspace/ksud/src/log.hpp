@@ -16,6 +16,7 @@ enum class LogLevel {
 void log_init(const char* tag);
 void log_set_level(LogLevel level);
 void log_set_stderr_enabled(bool enabled);
+void log_set_cli_mode(bool verbose);
 /** Flush stderr (log stream). */
 void log_flush();
 void log_v(const char* fmt, ...);

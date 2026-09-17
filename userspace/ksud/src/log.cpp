@@ -6,6 +6,7 @@
 #include <cstring>
 #include <ctime>
 #include <memory>
+#include "terminal.hpp"
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif  // #ifdef __ANDROID__
@@ -18,6 +19,8 @@ constexpr size_t kLogTagSize = 32U;
 
 LogLevel g_log_level = LogLevel::INFO;
 bool g_log_stderr_enabled = true;
+bool g_log_cli_mode = false;
+bool g_log_verbose = false;
 std::array<char, kLogTagSize> g_log_tag = {"KernelSU"};
 
 void log_write(LogLevel level, const char* fmt, va_list args) {
@@ -68,6 +71,12 @@ void log_write(LogLevel level, const char* fmt, va_list args) {
     if (!g_log_stderr_enabled)
         return;
 
+    if (g_log_cli_mode && !g_log_verbose && isatty(STDERR_FILENO) == 1) {
+        if (level >= LogLevel::WARN)
+            terminal::message(stderr, level == LogLevel::ERROR ? "error" : "warning", msg.data());
+        return;
+    }
+
     const time_t now = time(nullptr);
     const struct tm* tm_info = localtime(&now);
     std::array<char, 32> time_buf{};
@@ -95,6 +104,13 @@ void log_set_level(LogLevel level) {
 
 void log_set_stderr_enabled(bool enabled) {
     g_log_stderr_enabled = enabled;
+}
+
+void log_set_cli_mode(bool verbose) {
+    g_log_cli_mode = isatty(STDERR_FILENO) == 1;
+    g_log_verbose = verbose;
+    if (verbose)
+        log_set_level(LogLevel::DEBUG);
 }
 
 void log_flush() {

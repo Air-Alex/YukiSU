@@ -1,6 +1,7 @@
 #include "module_config.hpp"
 #include "../defs.hpp"
 #include "../log.hpp"
+#include "../terminal.hpp"
 #include "../utils.hpp"
 
 #include <dirent.h>
@@ -58,12 +59,12 @@ int module_config_handle(const std::vector<std::string>& args) {
 
     const std::string module_id = get_module_id();
     if (module_id.empty()) {
-        printf("Error: KSU_MODULE environment variable not set\n");
-        return 1;
+        return terminal::error(
+            "KSU_MODULE is not set",
+            "Run module config from a module script or set KSU_MODULE to its ID.");
     }
 
     const std::string config_dir = get_config_dir(module_id);
-    ensure_dir_exists(config_dir);
 
     const std::string persist_path = config_dir + PERSIST_CONFIG_NAME;
     const std::string temp_path = config_dir + TEMP_CONFIG_NAME;
@@ -86,7 +87,7 @@ int module_config_handle(const std::vector<std::string>& args) {
             return 0;
         }
 
-        printf("Key '%s' not found\n", key.c_str());
+        terminal::errorf("Key '%s' not found\n", key.c_str());
         return 1;
     } else if (cmd == "set" && args.size() > 2) {
         const std::string& key = args[1];
@@ -97,8 +98,8 @@ int module_config_handle(const std::vector<std::string>& args) {
         auto config = load_config(path);
         config[key] = value;
 
-        if (!save_config(path, config)) {
-            printf("Failed to save config\n");
+        if (!ensure_dir_exists(config_dir) || !save_config(path, config)) {
+            terminal::errorf("Failed to save config\n");
             return 1;
         }
 
@@ -129,8 +130,8 @@ int module_config_handle(const std::vector<std::string>& args) {
         auto config = load_config(path);
         config.erase(key);
 
-        if (!save_config(path, config)) {
-            printf("Failed to save config\n");
+        if (!ensure_dir_exists(config_dir) || !save_config(path, config)) {
+            terminal::errorf("Failed to save config\n");
             return 1;
         }
 
@@ -139,12 +140,12 @@ int module_config_handle(const std::vector<std::string>& args) {
         const bool is_temp = args.size() > 1 && (args[1] == "-t" || args[1] == "--temp");
 
         const std::string path = is_temp ? temp_path : persist_path;
-        unlink(path.c_str());
-
+        if (unlink(path.c_str()) != 0 && errno != ENOENT)
+            return terminal::file_error("cannot clear configuration", path, errno);
         return 0;
     }
 
-    printf("Unknown config command: %s\n", cmd.c_str());
+    terminal::errorf("Unknown config command: %s\n", cmd.c_str());
     return 1;
 }
 

@@ -3,6 +3,7 @@
 #include "../defs.hpp"
 #include "../log.hpp"
 #include "../magisk_compat/su_transition.hpp"
+#include "../terminal.hpp"
 #include "../utils.hpp"
 #include "ksucalls.hpp"
 
@@ -248,7 +249,7 @@ int su_path_command(const std::vector<std::string>& args) {
         (void)fprintf(stderr, "Usage: ksud su-path get | set [--json] <absolute-path> | reset\n");
     }
     if (ret)
-        (void)fprintf(stderr, "su path: %s (%d)\n", strerror(-ret), -ret);
+        (void)terminal::errorf("cannot update or read the su path: %s (%d)", strerror(-ret), -ret);
     return ret ? 1 : 0;
 }
 

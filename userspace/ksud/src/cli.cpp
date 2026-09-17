@@ -4,6 +4,7 @@
 #include "boot/boot_patch.hpp"
 #include "boot/boot_patch_v2.hpp"
 #include "boot/ramdisk_editor.hpp"
+#include "cli_args.hpp"
 #include "core/feature.hpp"
 #include "core/ksucalls.hpp"
 #include "core/restorecon.hpp"
@@ -26,10 +27,13 @@
 #include "sepolicy/sepolicy.hpp"
 #include "su.hpp"
 #include "sulog.hpp"
+#include "terminal.hpp"
 #include "umount.hpp"
 #include "utils.hpp"
 #include "yzctl.hpp"
 
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <algorithm>
 #include <cerrno>
@@ -40,146 +44,64 @@
 
 namespace ksud {
 
-void CliParser::add_option(const CliOption& opt) {
-    options_.push_back(opt);
-}
-
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-bool CliParser::parse(int argc, char** argv) {
-    for (int i = 1; i < argc; i++) {
-        std::string arg = argv[i];
-
-        if (arg.empty())
-            continue;
-
-        if (!subcommand_.empty()) {
-            positional_args_.push_back(arg);
-            continue;
-        }
-
-        // Check if it's an option
-        if (arg[0] == '-') {
-            bool found = false;  // NOLINT(misc-const-correctness) assigned in loop
-            std::string opt_name;
-            std::string opt_value;
-
-            // Long option
-            if (arg.size() > 1 && arg[1] == '-') {
-                const std::string long_opt = arg.substr(2);
-                const size_t eq_pos = long_opt.find('=');
-                if (eq_pos != std::string::npos) {
-                    opt_name = long_opt.substr(0, eq_pos);
-                    opt_value = long_opt.substr(eq_pos + 1);
-                } else {
-                    opt_name = long_opt;
-                }
-
-                for (const auto& opt : options_) {
-                    if (opt.long_name == opt_name) {
-                        found = true;
-                        if (opt.takes_value && opt_value.empty() && i + 1 < argc) {
-                            opt_value = argv[++i];
-                        }
-                        parsed_options_[opt_name] = opt_value.empty() ? "true" : opt_value;
-                        break;
-                    }
-                }
-            }
-            // Short option
-            else {
-                const char short_opt = arg[1];
-                for (const auto& opt : options_) {
-                    if (opt.short_name == short_opt) {
-                        found = true;
-                        opt_name = opt.long_name;
-                        if (opt.takes_value && i + 1 < argc) {
-                            opt_value = argv[++i];
-                        }
-                        parsed_options_[opt_name] = opt_value.empty() ? "true" : opt_value;
-                        break;
-                    }
-                }
-            }
-
-            if (!found) {
-                LOGE("Unknown option: %s", arg.c_str());
-            }
-        }
-        // Positional argument
-        else {
-            if (subcommand_.empty()) {
-                subcommand_ = arg;
-            } else {
-                positional_args_.push_back(arg);
-            }
-        }
-    }
-
-    return true;
-}
-
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-std::optional<std::string> CliParser::get_option(const std::string& name) const {
-    auto it = parsed_options_.find(name);
-    if (it != parsed_options_.end()) {
-        return it->second;
-    }
-
-    // Return default value if exists
-    for (const auto& opt : options_) {
-        if (opt.long_name == name && !opt.default_value.empty()) {
-            return opt.default_value;
-        }
-    }
-
-    return std::nullopt;
-}
-
-bool CliParser::has_option(const std::string& name) const {
-    return parsed_options_.find(name) != parsed_options_.end();
-}
-
 namespace {
 
-void print_usage() {
-    printf("YukiSU userspace daemon\n\n");
-    printf("USAGE: ksud <COMMAND>\n\n");
-    printf("COMMANDS:\n");
-    printf("  module         Manage KernelSU modules\n");
-    printf("  plugin         Manage Lua plugins\n");
-    printf("  insmod         Load a kernel module with kallsyms access\n");
-    printf("  late-load      Load kernelsu.ko and execute late-load stage scripts\n");
-    printf("  post-fs-data   Trigger post-fs-data event\n");
-    printf("  services       Trigger service event\n");
-    printf("  boot-completed Trigger boot-complete event\n");
-    printf("  soft-reboot    Restart Android and reapply module stages\n");
-    printf("  install        Install KernelSU userspace\n");
-    printf("  uninstall      Uninstall KernelSU\n");
-    printf("  sepolicy       SELinux policy patch tool\n");
-    printf("  profile        Manage app profiles\n");
-    printf("  feature        Manage kernel features\n");
-    printf("  kagami         Manage built-in Kasumi and module mounts\n");
-    printf("  uts-view       Manage UTS identity views\n");
-    printf("  su-path        Configure and persist the Kasumi su path\n");
-    printf("  yzctl          Control YukiZygisk and read kernel state\n");
-    printf("  dynamic        Manage dynamic manager signatures\n");
-    printf("  initrc         Manage init.rc injection\n");
-    printf("  sulogd         Run sulog reader daemon\n");
-    printf("  msud           Run magisk-compat su prompt daemon\n");
-    printf("  magisk-compat  Apply the configured vnode-backed su prompt state\n");
-    printf("  boot-patch     Patch boot image\n");
-    printf(
-        "  boot-patch-v2  Patch boot.img with direct LKM injection (or flash boot with --flash)\n");
-    printf("  boot-restore   Restore boot image\n");
-    printf("  boot-info      Show boot information\n");
-    printf("  ramdisk-editor Run a persistent ramdisk CPIO editor session\n");
-    printf("  boot-ramdisk-editor Edit a boot/init_boot ramdisk without unpacked shards\n");
-    printf("  flash          Flash partition images\n");
-    printf("  umount         Manage umount paths\n");
-    printf("  kernel         Kernel interface\n");
-    printf("  debug          For developers\n");
-    printf("  help           Show this help\n");
-    printf("  version        Show version\n");
+int check_input_file(const std::string& path, bool allow_block = false) {
+    struct stat status{};
+    if (stat(path.c_str(), &status) != 0)
+        return terminal::file_error("cannot read input", path, errno);
+    const auto usable = [allow_block](mode_t mode) {
+        return S_ISREG(mode) || (allow_block && S_ISBLK(mode));
+    };
+    if (!usable(status.st_mode))
+        return terminal::error("input '" + path + "' is not a regular file" +
+                               (allow_block ? " or block device" : ""));
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0)
+        return terminal::file_error("cannot read input", path, errno);
+    const int result = fstat(fd, &status);
+    const int error = errno;
+    close(fd);
+    if (result != 0)
+        return terminal::file_error("cannot inspect input", path, error);
+    if (!usable(status.st_mode))
+        return terminal::error("input file type changed: '" + path + "'");
+    return 0;
+}
+
+int check_input_files(const CliArguments& cli) {
+    const auto& path = cli.path;
+    if (cli.command == "install") {
+        for (const auto* option : {"--libadbroot", "--magiskboot"}) {
+            if (!cli.has(option))
+                continue;
+            const int result = check_input_file(cli.value(option));
+            if (result != 0)
+                return result;
+        }
+    }
+    const bool module = path == "module install" || path == "plugin install";
+    if (module || path == "insmod" || path == "debug insmod" || path == "flash image" ||
+        path == "flash ak3" || path == "flash ak3-info" || path == "sepolicy apply" ||
+        path == "dynamic set-apk" || (path == "dynamic get-sign" && !cli.has("--uid"))) {
+        const size_t offset = path == "insmod" ? 0 : 1;
+        const int result = check_input_file(cli.args[offset], path == "flash image");
+        if (result != 0)
+            return result;
+    }
+    if (cli.command == "boot-patch" || cli.command == "boot-patch-v2" ||
+        cli.command == "boot-restore" || path == "boot-info target-kmi") {
+        for (const auto* option :
+             {"--boot", "--module", "--kernel", "--init", "--uts-config", "--adb-debug-prop"}) {
+            if (!cli.has(option))
+                continue;
+            const int result =
+                check_input_file(cli.value(option), std::string_view(option) == "--boot");
+            if (result != 0)
+                return result;
+        }
+    }
+    return 0;
 }
 
 void print_version() {
@@ -187,19 +109,6 @@ void print_version() {
 }
 
 int cmd_module(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud module <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  install <ZIP>     Install module\n");
-        printf("  uninstall <ID>    Uninstall module\n");
-        printf("  enable <ID>       Enable module\n");
-        printf("  disable <ID>      Disable module\n");
-        printf("  action <ID>       Run module action\n");
-        printf("  list              List all modules\n");
-        printf("  config            Manage module config\n");
-        return 1;
-    }
-
     // Switch to init mount namespace
     if (!switch_mnt_ns(1)) {
         LOGE("Failed to switch mount namespace");
@@ -231,24 +140,17 @@ int cmd_module(const std::vector<std::string>& args) {
         return module_config_handle(std::vector<std::string>(args.begin() + 1, args.end()));
     }
 
-    printf("Unknown module subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown module subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
 int cmd_initrc(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud initrc <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  refresh        Regenerate preinit modules.rc\n");
-        return 1;
-    }
-
     const std::string& subcmd = args[0];
     if (subcmd == "refresh") {
         return regenerate_preinit_rc();
     }
 
-    printf("Unknown initrc subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown initrc subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
@@ -257,27 +159,24 @@ int cmd_yzctl(const std::vector<std::string>& args) {
 }
 
 int cmd_feature(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud feature <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  get <ID>        Get feature value\n");
-        printf("  set <ID> <VAL>  Set feature value\n");
-        printf("  set-save <ID> <VAL>  Set and persist atomically\n");
-        printf("  list            List all features\n");
-        printf("  check <ID>      Check feature status\n");
-        printf("  load            Load config from file\n");
-        printf("  save            Save config to file\n");
-        return 1;
-    }
-
     const std::string& subcmd = args[0];
 
     if (subcmd == "get" && args.size() > 1) {
         return feature_get(args[1]);
     } else if (subcmd == "set" && args.size() > 2) {
-        return feature_set(args[1], std::stoull(args[2]));
+        uint64_t value = 0;
+        if (!parse_uint64(args[2], &value))
+            return terminal::usage_error(
+                "invalid value '" + args[2] + "': expected an unsigned 64-bit integer",
+                "ksud feature set <ID> <VALUE>");
+        return feature_set(args[1], value);
     } else if (subcmd == "set-save" && args.size() > 2) {
-        return feature_set_and_save(args[1], std::stoull(args[2]));
+        uint64_t value = 0;
+        if (!parse_uint64(args[2], &value))
+            return terminal::usage_error(
+                "invalid value '" + args[2] + "': expected an unsigned 64-bit integer",
+                "ksud feature set-save <ID> <VALUE>");
+        return feature_set_and_save(args[1], value);
     } else if (subcmd == "list") {
         feature_list();
         return 0;
@@ -289,24 +188,11 @@ int cmd_feature(const std::vector<std::string>& args) {
         return feature_save_config();
     }
 
-    printf("Unknown feature subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown feature subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
 int cmd_debug(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud debug <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  set-manager [PKG]  Set manager app\n");
-        printf("  insmod <KO> [PARAMS...]  Load a kernel module (legacy alias)\n");
-        printf("  su [-g]            Root shell\n");
-        printf("  version            Get kernel version\n");
-        printf("  info               Get kernel compatibility and load information\n");
-        printf("  mark <get|mark|unmark|refresh> [PID]\n");
-        printf("  sulogd             Launch sulog daemon now\n");
-        return 1;
-    }
-
     const std::string& subcmd = args[0];
 
     if (subcmd == "set-manager") {
@@ -335,55 +221,23 @@ int cmd_debug(const std::vector<std::string>& args) {
         return ensure_sulogd_running();
     }
 
-    printf("Unknown debug subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown debug subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
 int cmd_insmod(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud insmod <KO> [PARAMS...]\n");
-        return 1;
-    }
-
     return debug_insmod(args[0], std::vector<std::string>(args.begin() + 1, args.end()));
 }
 
-int cmd_umount(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud umount <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  add <MNT> [-f|--flags <N>]  Add mount point (flags default: 0)\n");
-        printf("  del <MNT>                   Delete mount point (alias: remove)\n");
-        printf("  list                        List all mount points\n");
-        printf("  save                        Save kernel list to config\n");
-        printf("  apply                       Apply config to kernel\n");
-        printf("  clear-custom                Clear custom paths from kernel and config\n");
-        return 1;
-    }
-
+int cmd_umount(const std::vector<std::string>& args, const CliArguments& cli) {
     const std::string& subcmd = args[0];
 
     if (subcmd == "add") {
-        std::string path;
+        const std::string& path = args[1];
         uint32_t flags = 0;
-        for (size_t i = 1; i < args.size(); ++i) {
-            const std::string& a = args[i];
-            if ((a == "-f" || a == "--flags") && i + 1 < args.size()) {
-                if (!parse_uint32(args[++i], &flags)) {
-                    printf("Invalid flags value: %s\n", args[i].c_str());
-                    return 1;
-                }
-            } else if (path.empty()) {
-                path = a;
-            } else {
-                printf("Unexpected argument: %s\n", a.c_str());
-                return 1;
-            }
-        }
-        if (path.empty()) {
-            printf("USAGE: ksud umount add <MNT> [-f|--flags <N>]\n");
-            return 1;
-        }
+        if (cli.has("--flags") && !parse_uint32(cli.value("--flags"), &flags))
+            return terminal::usage_error("invalid flags: expected an unsigned 32-bit integer",
+                                         "ksud umount add <MOUNT> [--flags <UINT32>]");
         return umount_list_add(path, flags) < 0 ? 1 : 0;
     } else if ((subcmd == "del" || subcmd == "remove") && args.size() > 1) {
         return umount_del_entry(args[1]);
@@ -401,20 +255,11 @@ int cmd_umount(const std::vector<std::string>& args) {
         return umount_clear_config();
     }
 
-    printf("Unknown umount subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown umount subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
-int cmd_kernel(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud kernel <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  nuke-ext4-sysfs <MNT>  Nuke ext4 sysfs\n");
-        printf("  umount <add|del|wipe>  Manage umount list\n");
-        printf("  notify-module-mounted  Notify module mounted\n");
-        return 1;
-    }
-
+int cmd_kernel(const std::vector<std::string>& args, const CliArguments& cli) {
     const std::string& subcmd = args[0];
 
     if (subcmd == "nuke-ext4-sysfs" && args.size() > 1) {
@@ -422,26 +267,11 @@ int cmd_kernel(const std::vector<std::string>& args) {
     } else if (subcmd == "umount" && args.size() > 1) {
         const std::string& op = args[1];
         if (op == "add" && args.size() > 2) {
-            std::string path;
+            const std::string& path = args[2];
             uint32_t flags = 0;
-            for (size_t i = 2; i < args.size(); ++i) {
-                const std::string& a = args[i];
-                if ((a == "-f" || a == "--flags") && i + 1 < args.size()) {
-                    if (!parse_uint32(args[++i], &flags)) {
-                        printf("Invalid flags value: %s\n", args[i].c_str());
-                        return 1;
-                    }
-                } else if (path.empty()) {
-                    path = a;
-                } else {
-                    printf("Unexpected argument: %s\n", a.c_str());
-                    return 1;
-                }
-            }
-            if (path.empty()) {
-                printf("USAGE: ksud kernel umount add <MNT> [-f|--flags <N>]\n");
-                return 1;
-            }
+            if (cli.has("--flags") && !parse_uint32(cli.value("--flags"), &flags))
+                return terminal::usage_error("invalid flags: expected an unsigned 32-bit integer",
+                                             "ksud kernel umount add <MOUNT> [--flags <UINT32>]");
             return umount_list_add(path, flags);
         } else if (op == "del" && args.size() > 2) {
             return umount_list_del(args[2]);
@@ -453,20 +283,11 @@ int cmd_kernel(const std::vector<std::string>& args) {
         return 0;
     }
 
-    printf("Unknown kernel subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown kernel subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
 int cmd_sepolicy(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud sepolicy <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  patch <POLICY>   Patch sepolicy\n");
-        printf("  apply <FILE>     Apply sepolicy from file\n");
-        printf("  check <POLICY>   Check sepolicy\n");
-        return 1;
-    }
-
     const std::string& subcmd = args[0];
 
     if (subcmd == "patch" && args.size() > 1) {
@@ -477,23 +298,11 @@ int cmd_sepolicy(const std::vector<std::string>& args) {
         return sepolicy_check_rule(args[1]);
     }
 
-    printf("Unknown sepolicy subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown sepolicy subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
 int cmd_profile(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud profile <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  get-sepolicy <PKG>       Get SELinux policy\n");
-        printf("  set-sepolicy <PKG> <POL> Set SELinux policy\n");
-        printf("  get-template <ID>        Get template\n");
-        printf("  set-template <ID> <TPL>  Set template\n");
-        printf("  delete-template <ID>     Delete template\n");
-        printf("  list-templates           List templates\n");
-        return 1;
-    }
-
     const std::string& subcmd = args[0];
 
     if (subcmd == "get-sepolicy" && args.size() > 1) {
@@ -510,36 +319,20 @@ int cmd_profile(const std::vector<std::string>& args) {
         return profile_list_templates();
     }
 
-    printf("Unknown profile subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown profile subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
-int cmd_boot_info(const std::vector<std::string>& args) {
-    if (args.empty()) {
-        printf("USAGE: ksud boot-info <SUBCOMMAND>\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  current-kmi         Show current KMI\n");
-        printf("  target-kmi [--ota | --boot PATH]  Show patch target KMI\n");
-        printf("  supported-kmis      Show supported KMIs\n");
-        printf("  is-ab-device        Check A/B device\n");
-        printf("  default-partition   Show default partition\n");
-        printf("  available-partitions List partitions\n");
-        printf("  slot-suffix [-u]    Show slot suffix\n");
-        return 1;
-    }
-
+int cmd_boot_info(const std::vector<std::string>& args, const CliArguments& cli) {
     const std::string& subcmd = args[0];
 
     if (subcmd == "current-kmi") {
         return boot_info_current_kmi();
     } else if (subcmd == "target-kmi") {
-        const bool ota = args.size() == 2 && args[1] == "--ota";
-        const bool boot_image = args.size() == 3 && args[1] == "--boot" && !args[2].empty();
-        if (args.size() != 1 && !ota && !boot_image) {
-            printf("USAGE: ksud boot-info target-kmi [--ota | --boot PATH]\n");
-            return 1;
-        }
-        return boot_info_target_kmi(ota, boot_image ? args[2] : "");
+        if (cli.has("--ota") && cli.has("--boot"))
+            return terminal::usage_error("--ota and --boot cannot be used together",
+                                         "ksud boot-info target-kmi [--ota | --boot <PATH>]");
+        return boot_info_target_kmi(cli.has("--ota"), cli.value("--boot"));
     } else if (subcmd == "supported-kmis") {
         return boot_info_supported_kmis();
     } else if (subcmd == "is-ab-device") {
@@ -549,11 +342,11 @@ int cmd_boot_info(const std::vector<std::string>& args) {
     } else if (subcmd == "available-partitions") {
         return boot_info_available_partitions();
     } else if (subcmd == "slot-suffix") {
-        const bool ota = args.size() > 1 && (args[1] == "-u" || args[1] == "--ota");
+        const bool ota = cli.has("--ota");
         return boot_info_slot_suffix(ota);
     }
 
-    printf("Unknown boot-info subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown boot-info subcommand: %s\n", subcmd.c_str());
     return 1;
 }
 
@@ -583,39 +376,8 @@ int cmd_ramdisk_editor(const std::vector<std::string>& args, bool boot_image) {
     return result;
 }
 
-int cmd_flash_new(const std::vector<std::string>& args) {
+int cmd_flash_new(const std::vector<std::string>& args, const CliArguments& cli) {
     using namespace flash;
-
-    if (args.empty()) {
-        printf("USAGE: ksud flash <SUBCOMMAND> [OPTIONS]\n\n");
-        printf("SUBCOMMANDS:\n");
-        printf("  ak3 <ZIP>                  Flash an AnyKernel3 package\n");
-        printf("  ak3-info <ZIP>             Inspect an AnyKernel3 package\n");
-        printf("  image <IMAGE> <PARTITION>  Flash image to partition\n");
-        printf("  backup <PARTITION> <OUT>   Backup partition to file\n");
-        printf("  list [--slot SLOT] [--all] List available partitions\n");
-        printf("  info <PARTITION>           Show partition info\n");
-        printf("  slots                      Show slot information (A/B devices)\n");
-        printf("  map <SLOT>                 Map logical partitions for inactive slot\n");
-        printf("  avb                        Show AVB/dm-verity status\\n");
-        printf("  avb disable                Disable AVB/dm-verity\\n");
-        printf("  kernel [--slot SLOT]       Show kernel version\\n");
-        printf("  boot-info                  Show boot slot information\\n");
-        printf("\nOPTIONS:\n");
-        printf("  --slot <a|b|_a|_b>         Target specific slot (for A/B devices)\n");
-        printf("                             Default: current active slot\n");
-        printf("  --use-mkbootfs             Let AK3 use ksud's built-in mkbootfs\n");
-        printf("  --all                      List all partitions (not just common ones)\n");
-        printf("\nEXAMPLES:\n");
-        printf("  ksud flash image boot.img boot\n");
-        printf("  ksud flash ak3 kernel.zip --slot _b\n");
-        printf("  ksud flash image boot.img boot --slot _b\n");
-        printf("  ksud flash backup boot /sdcard/boot-backup.img --slot _a\n");
-        printf("  ksud flash list\n");
-        printf("  ksud flash list --all\n");
-        printf("  ksud flash slots\n");
-        return 1;
-    }
 
     const std::string& subcmd = args[0];
 
@@ -626,7 +388,7 @@ int cmd_flash_new(const std::vector<std::string>& args) {
         }
         const auto info = inspect_ak3_package(args[1]);
         if (!info.valid) {
-            (void)fprintf(stderr, "Invalid AnyKernel3 package: %s\n", info.error.c_str());
+            (void)terminal::errorf("Invalid AnyKernel3 package: %s", info.error.c_str());
             return 1;
         }
         printf("valid=1\n");
@@ -650,55 +412,32 @@ int cmd_flash_new(const std::vector<std::string>& args) {
         }
         Ak3FlashConfig config;
         config.zip_path = args[1];
-        for (size_t i = 2; i < args.size(); ++i) {
-            if (args[i] == "--slot" && i + 1 < args.size()) {
-                config.target_slot = args[++i];
-            } else if (args[i] == "--log" && i + 1 < args.size()) {
-                config.log_path = args[++i];
-            } else if (args[i] == "--use-mkbootfs") {
-                config.use_mkbootfs = true;
-            } else if (args[i] != "-v" && args[i] != "--verbose") {
-                (void)fprintf(stderr, "Unknown AnyKernel3 option: %s\n", args[i].c_str());
-                return 1;
-            }
-        }
+        config.target_slot = cli.value("--slot");
+        config.log_path = cli.value("--log");
+        config.use_mkbootfs = cli.has("--use-mkbootfs");
         return flash_ak3_package(config);
     }
 
-    // Parse common options
-    std::string target_slot;
-    bool scan_all = false;
-    std::vector<std::string> filtered_args;
-
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--slot" && i + 1 < args.size()) {
-            target_slot = args[++i];
-            // Normalize slot format (_a, a -> _a)
-            if (!target_slot.empty() && target_slot[0] != '_') {
-                target_slot.insert(0, 1, '_');
-            }
-        } else if (args[i] == "--all") {
-            scan_all = true;
-        } else {
-            filtered_args.push_back(args[i]);
-        }
-    }
+    std::string target_slot = cli.value("--slot");
+    if (!target_slot.empty() && target_slot[0] != '_')
+        target_slot.insert(0, 1, '_');
+    const bool scan_all = cli.has("--all");
+    const auto& filtered_args = args;
 
     if (filtered_args[0] == "image" && filtered_args.size() >= 3) {
         const std::string& image_path = filtered_args[1];
         const std::string& partition = filtered_args[2];
 
-        printf("Flashing %s to %s", image_path.c_str(), partition.c_str());
-        if (!target_slot.empty()) {
-            printf(" (slot: %s)", target_slot.c_str());
-        }
-        printf("...\n");
+        std::string progress = "Flashing " + image_path + " to " + partition;
+        if (!target_slot.empty())
+            progress += " (slot: " + target_slot + ")";
+        terminal::message(stderr, "info", progress);
 
         if (ksud::flash::flash_partition(image_path, partition, target_slot)) {
-            printf("Flash successful!\n");
+            terminal::message(stderr, "success", "Flash successful!");
             return 0;
         } else {
-            printf("Flash failed!\n");
+            terminal::error("Flash failed!");
             return 1;
         }
 
@@ -706,17 +445,16 @@ int cmd_flash_new(const std::vector<std::string>& args) {
         const std::string& partition = filtered_args[1];
         const std::string& output = filtered_args[2];
 
-        printf("Backing up %s to %s", partition.c_str(), output.c_str());
-        if (!target_slot.empty()) {
-            printf(" (slot: %s)", target_slot.c_str());
-        }
-        printf("...\n");
+        std::string progress = "Backing up " + partition + " to " + output;
+        if (!target_slot.empty())
+            progress += " (slot: " + target_slot + ")";
+        terminal::message(stderr, "info", progress);
 
         if (ksud::flash::backup_partition(partition, output, target_slot)) {
-            printf("Backup successful!\n");
+            terminal::message(stderr, "success", "Backup successful!");
             return 0;
         } else {
-            printf("Backup failed!\n");
+            terminal::error("Backup failed!");
             return 1;
         }
 
@@ -754,7 +492,7 @@ int cmd_flash_new(const std::vector<std::string>& args) {
         auto info = ksud::flash::get_partition_info(partition, slot);
 
         if (!info.exists) {
-            printf("Partition %s not found\n", partition.c_str());
+            terminal::errorf("Partition %s not found", partition.c_str());
             return 1;
         }
 
@@ -797,32 +535,33 @@ int cmd_flash_new(const std::vector<std::string>& args) {
             slot = "_" + slot;
         }
 
-        printf("Mapping logical partitions for slot %s...\n", slot.c_str());
+        terminal::message(stderr, "info", "Mapping logical partitions for slot " + slot);
         if (ksud::flash::map_logical_partitions(slot)) {
-            printf("Mapping successful!\n");
-            printf("You can now use 'ksud flash list --slot %s --all' to see mapped partitions\n",
-                   slot.c_str());
+            terminal::message(stderr, "success", "Mapping successful!");
+            terminal::message(
+                stderr, "hint",
+                "Use 'ksud flash list --slot " + slot + " --all' to see mapped partitions.");
             return 0;
         } else {
-            printf("Mapping failed or no partitions to map\n");
+            terminal::error("Mapping failed or no partitions to map");
             return 1;
         }
 
     } else if (filtered_args[0] == "avb") {
         if (filtered_args.size() >= 2 && filtered_args[1] == "disable") {
-            printf("Disabling AVB/dm-verity...\n");
+            terminal::message(stderr, "info", "Disabling AVB/dm-verity");
             if (ksud::flash::patch_vbmeta_disable_verification()) {
-                printf("AVB/dm-verity disabled successfully!\n");
-                printf("Reboot required for changes to take effect.\n");
+                terminal::message(stderr, "success", "AVB/dm-verity disabled successfully!");
+                terminal::message(stderr, "info", "Reboot required for changes to take effect.");
                 return 0;
             } else {
-                printf("Failed to disable AVB/dm-verity\n");
+                terminal::errorf("Failed to disable AVB/dm-verity\n");
                 return 1;
             }
         } else {
             const std::string status = ksud::flash::get_avb_status();
             if (status.empty()) {
-                printf("Failed to get AVB status\n");
+                terminal::errorf("Failed to get AVB status\n");
                 return 1;
             }
             printf("AVB/dm-verity status: %s\n", status.c_str());
@@ -832,7 +571,7 @@ int cmd_flash_new(const std::vector<std::string>& args) {
     } else if (filtered_args[0] == "kernel") {
         const std::string version = ksud::flash::get_kernel_version(target_slot);
         if (version.empty()) {
-            printf("Failed to get kernel version\n");
+            terminal::errorf("Failed to get kernel version\n");
             return 1;
         }
         printf("Kernel version: %s\n", version.c_str());
@@ -844,54 +583,20 @@ int cmd_flash_new(const std::vector<std::string>& args) {
         return 0;
     }
 
-    printf("Unknown flash subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown flash subcommand: %s\n", subcmd.c_str());
     printf("Run 'ksud flash' for usage\n");
     return 1;
 }
 
-int cmd_late_load(const std::vector<std::string>& args) {
-    bool post_magica = false;
-    bool allow_shell = false;
-    std::optional<uint16_t> magica_port;
-
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--post-magica") {
-            post_magica = true;
-            continue;
-        }
-
-        if (args[i] == "--allow-shell") {
-            allow_shell = true;
-            continue;
-        }
-
-        if (args[i] == "--magica") {
-            uint16_t port = 5555;
-            if (i + 1 < args.size() && !args[i + 1].empty() && args[i + 1].rfind("--", 0) != 0) {
-                char* end = nullptr;
-                errno = 0;
-                long const parsed_long = std::strtol(args[++i].c_str(), &end, 10);
-                if (end == args[i].c_str() || *end != '\0' || errno == ERANGE || parsed_long <= 0 ||
-                    parsed_long > 65535) {
-                    printf("Invalid magica port: %s\n", args[i].c_str());
-                    return 1;
-                }
-                port = static_cast<uint16_t>(parsed_long);
-            }
-            magica_port = port;
-            continue;
-        }
-
-        printf("Unknown late-load option: %s\n", args[i].c_str());
-        printf("Usage: ksud late-load [--magica [PORT]] [--post-magica] [--allow-shell]\n");
-        return 1;
+int cmd_late_load(const CliArguments& cli) {
+    if (cli.has("--magica")) {
+        uint32_t port = 0;
+        if (!parse_uint32(cli.value("--magica"), &port) || port == 0 || port > 65535)
+            return terminal::usage_error("invalid Magica port: expected 1 through 65535",
+                                         "ksud late-load --magica [PORT] [--allow-shell]");
+        return magica::run(static_cast<uint16_t>(port), cli.has("--allow-shell"));
     }
-
-    if (magica_port.has_value()) {
-        return magica::run(*magica_port, allow_shell);
-    }
-
-    return late_load::run(post_magica, allow_shell);
+    return late_load::run(cli.has("--post-magica"), cli.has("--allow-shell"));
 }
 
 }  // namespace
@@ -899,6 +604,7 @@ int cmd_late_load(const std::vector<std::string>& args) {
 int cli_run(int argc, char** argv) {
     // Initialize logging
     log_init("KernelSU");
+    log_set_cli_mode(false);
     setup_sigsys_handler();
 
     // Check if invoked as su or sh
@@ -934,15 +640,46 @@ int cli_run(int argc, char** argv) {
         _exit(127);
     }
 
-    if (argc < 2) {
-        print_usage();
-        return 0;
+    CliArguments cli;
+    std::vector<std::string> input(argv + 1, argv + argc);
+    if (basename == "yzctl")
+        input.insert(input.begin(), "yzctl");
+    const int parse_result = parse_cli(input, cli);
+    if (parse_result >= 0)
+        return parse_result;
+    log_set_cli_mode(cli.verbose);
+    const int input_result = check_input_files(cli);
+    if (input_result != 0)
+        return input_result;
+    const auto& cmd = cli.command;
+    auto& args = cli.args;
+    if (cli.has("--temp"))
+        args.emplace_back("--temp");
+    if (cli.path == "debug su" && cli.has("-g"))
+        args.emplace_back("-g");
+    if (cmd == "su-path" && cli.has("--json"))
+        args.insert(args.begin() + 1, "--json");
+    if (cmd == "yzctl" && cli.has("--json"))
+        args.emplace_back("--json");
+    if (cmd == "msud" && cli.has("--ready-fd"))
+        args = {"--ready-fd", cli.value("--ready-fd")};
+    if (cli.path == "plugin daemon") {
+        args.emplace_back("--ready-fd");
+        args.push_back(cli.value("--ready-fd"));
     }
-
-    const std::string cmd = argv[1];
-    std::vector<std::string> args;
-    for (int i = 2; i < argc; i++) {
-        args.push_back(argv[i]);
+    if (cli.path == "dynamic get-sign") {
+        const std::string target = cli.has("--uid") ? cli.value("--uid") : args[1];
+        args = {"get-sign"};
+        if (cli.has("--json"))
+            args.emplace_back("--json");
+        args.emplace_back(cli.has("--uid") ? "--uid" : "--");
+        args.push_back(target);
+    }
+    if (cli.forward_options || cmd == "boot-patch-v2")
+        args.insert(args.end(), cli.option_args.begin(), cli.option_args.end());
+    if (cli.path.rfind("plugin config ", 0) == 0) {
+        args.resize(args.size() - cli.option_args.size());
+        args.insert(args.begin() + 1, {"--id", cli.value("--id")});
     }
 
     const bool plugin_command = cmd == "plugin";
@@ -950,24 +687,18 @@ int cli_run(int argc, char** argv) {
         plugin_command && !args.empty() && (args[0] == "action" || args[0] == "run");
     if (plugin_command)
         log_set_stderr_enabled(false);
-    LOGI("command: %s", cmd.c_str());
+    LOGD("command: %s", cmd.c_str());
     if (plugin_command && !plugin_callback_command)
         log_set_stderr_enabled(true);
 
     // Dispatch commands
-    if (cmd == "help" || cmd == "-h" || cmd == "--help") {
-        print_usage();
-        return 0;
-    } else if (cmd == "version" || cmd == "-v" || cmd == "-V" || cmd == "--version") {
-        // -V is the conventional version flag (upstream's clap-based ksud
-        // accepts it); some root-gating apps probe `ksud -V` and treat its
-        // absence as "no/incompatible root". Alias it to `version`.
+    if (cmd == "version") {
         print_version();
         return 0;
     } else if (cmd == "insmod") {
         return cmd_insmod(args);
     } else if (cmd == "late-load") {
-        return cmd_late_load(args);
+        return cmd_late_load(cli);
     } else if (cmd == "post-fs-data") {
         return on_post_data_fs();
     } else if (cmd == "services") {
@@ -983,23 +714,17 @@ int cli_run(int argc, char** argv) {
     } else if (cmd == "plugin") {
         return plugin_handle(args);
     } else if (cmd == "install") {
-        std::optional<std::string> magiskboot;
-        std::optional<std::string> libadbroot;
-        for (size_t i = 0; i < args.size(); i++) {
-            if (args[i] == "--magiskboot" && i + 1 < args.size()) {
-                magiskboot = args[i + 1];
-            } else if (args[i] == "--libadbroot" && i + 1 < args.size()) {
-                libadbroot = args[i + 1];
-            }
-        }
+        const auto magiskboot = cli.has("--magiskboot")
+                                    ? std::optional<std::string>(cli.value("--magiskboot"))
+                                    : std::nullopt;
+        const auto libadbroot = cli.has("--libadbroot")
+                                    ? std::optional<std::string>(cli.value("--libadbroot"))
+                                    : std::nullopt;
         return install(magiskboot, libadbroot);
     } else if (cmd == "uninstall") {
-        std::optional<std::string> magiskboot;
-        for (size_t i = 0; i < args.size(); i++) {
-            if (args[i] == "--magiskboot" && i + 1 < args.size()) {
-                magiskboot = args[i + 1];
-            }
-        }
+        const auto magiskboot = cli.has("--magiskboot")
+                                    ? std::optional<std::string>(cli.value("--magiskboot"))
+                                    : std::nullopt;
         return uninstall(magiskboot);
     } else if (cmd == "sepolicy") {
         return cmd_sepolicy(args);
@@ -1045,24 +770,22 @@ int cli_run(int argc, char** argv) {
     } else if (cmd == "boot-restore") {
         return boot_restore(args);
     } else if (cmd == "boot-info") {
-        return cmd_boot_info(args);
+        return cmd_boot_info(args, cli);
     } else if (cmd == "ramdisk-editor") {
         return cmd_ramdisk_editor(args, false);
     } else if (cmd == "boot-ramdisk-editor") {
         return cmd_ramdisk_editor(args, true);
     } else if (cmd == "umount") {
-        return cmd_umount(args);
+        return cmd_umount(args, cli);
     } else if (cmd == "kernel") {
-        return cmd_kernel(args);
+        return cmd_kernel(args, cli);
     } else if (cmd == "debug") {
         return cmd_debug(args);
     } else if (cmd == "flash") {
-        return cmd_flash_new(args);
+        return cmd_flash_new(args, cli);
     }
 
-    printf("Unknown command: %s\n", cmd.c_str());
-    print_usage();
-    return 1;
+    return terminal::usage_error("unknown command '" + cmd + "'", "ksud <COMMAND>");
 }
 
 }  // namespace ksud

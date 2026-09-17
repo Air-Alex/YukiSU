@@ -1,4 +1,5 @@
 #include "core/daemon.hpp"
+#include "terminal.hpp"
 #include "utils.hpp"
 
 #include "core/command.hpp"
@@ -397,7 +398,7 @@ int start_background(bool report_status) {
 }
 }  // namespace
 
-int run_via_daemon(const std::vector<std::string>& args) {
+int run_via_daemon(const std::vector<std::string>& args, bool display_errors) {
     if (args.empty()) {
         return 1;
     }
@@ -406,6 +407,10 @@ int run_via_daemon(const std::vector<std::string>& args) {
     std::string error;
     if (send_request(args, 0, response, error) != 0) {
         if (start_background(false) != 0 || send_request(args, 0, response, error) != 0) {
+            if (display_errors)
+                return ksud::terminal::error(
+                    "mount daemon unavailable: " + error,
+                    "Inspect 'ksud kagami daemon status' and retry with --verbose.");
             std::cerr << "daemon unavailable: " << error << "\n";
             return 1;
         }
@@ -413,6 +418,8 @@ int run_via_daemon(const std::vector<std::string>& args) {
 
     JsonValue envelope;
     if (!parse_json(response, envelope, error) || !envelope.is_object()) {
+        if (display_errors)
+            return ksud::terminal::error("invalid mount daemon response: " + error);
         std::cerr << "invalid daemon response: " << error << "\n";
         return 1;
     }
@@ -420,11 +427,16 @@ int run_via_daemon(const std::vector<std::string>& args) {
     const JsonValue* out = envelope.find("stdout");
     const JsonValue* err = envelope.find("stderr");
     if (!code || !code->is_number() || !out || !out->is_string() || !err || !err->is_string()) {
+        if (display_errors)
+            return ksud::terminal::error("invalid mount daemon response fields");
         std::cerr << "invalid daemon response fields\n";
         return 1;
     }
     std::cout << out->s;
-    std::cerr << err->s;
+    if (display_errors && code->n != 0 && !err->s.empty())
+        ksud::terminal::diagnostics(err->s);
+    else
+        std::cerr << err->s;
     return static_cast<int>(code->n);
 }
 

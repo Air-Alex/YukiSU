@@ -927,7 +927,7 @@ suspend fun setUtsViewTemplate(global: Boolean, template: UtsTemplate): Boolean 
                 if (normalized.mask and bit != 0) {
                     append(" --")
                     append(name)
-                    append(' ')
+                    append('=')
                     append(shellArg(normalized.valueFor(bit)))
                 } else {
                     append(" --inherit ")
@@ -1302,7 +1302,7 @@ private fun patchBootImage(
 
     // Add superkey if specified
     if (!superKey.isNullOrBlank()) {
-        cmd += " --superkey ${shellArg(superKey)}"
+        cmd += " --superkey=${shellArg(superKey)}"
         // Add signature bypass flag if enabled
         if (signatureBypass) {
             cmd += " --signature-bypass"
@@ -1456,7 +1456,7 @@ fun patchBootImageV2(
                 append(shellArg(module.absolutePath))
             }
             if (!superKey.isNullOrBlank()) {
-                append(" --superkey ")
+                append(" --superkey=")
                 append(shellArg(superKey))
                 if (signatureBypass) {
                     append(" --signature-bypass")
@@ -1985,19 +1985,19 @@ fun clearPluginLog(id: String): Boolean =
 
 fun getPluginConfig(id: String, key: String): PluginCommandResult =
     runPluginCommand(
-        "plugin config --id ${shellArg(id)} get ${shellArg(key)}",
+        "plugin config --id ${shellArg(id)} get -- ${shellArg(key)}",
     )
 
 fun savePluginConfig(id: String, key: String, value: String): Boolean =
     runPluginCommand(
-        "plugin config --id ${shellArg(id)} set " +
+        "plugin config --id ${shellArg(id)} set -- " +
             "${shellArg(key)} ${shellArg(value)}",
         newShell = true,
     ).isSuccess
 
 fun deletePluginConfig(id: String, key: String): Boolean =
     runPluginCommand(
-        "plugin config --id ${shellArg(id)} delete ${shellArg(key)}",
+        "plugin config --id ${shellArg(id)} delete -- ${shellArg(key)}",
         newShell = true,
     ).isSuccess
 

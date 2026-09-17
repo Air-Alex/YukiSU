@@ -1,4 +1,5 @@
 #include "plugin.hpp"
+#include "../terminal.hpp"
 
 #include "../core/restorecon.hpp"
 #include "../defs.hpp"
@@ -72,7 +73,7 @@ bool regular_file_exists(const fs::path& path) {
 void print_error(const char* format, ...) {
     va_list arguments;
     va_start(arguments, format);
-    (void)std::vfprintf(stderr, format, arguments);
+    (void)terminal::verrorf(format, arguments);
     va_end(arguments);
 }
 
@@ -1934,20 +1935,13 @@ int plugin_handle(const std::vector<std::string>& args) {
     if (command == "clear-log" && args.size() == 2)
         return plugin_clear_log(args[1]);
     if (command == "config") {
-        std::string id;
-        std::vector<std::string> config_args;
-        for (size_t index = 1; index < args.size(); ++index) {
-            if (args[index] == "--id" && index + 1 < args.size())
-                id = args[++index];
-            else
-                config_args.push_back(args[index]);
-        }
-        if (id.empty()) {
+        if (args.size() < 4 || args[1] != "--id") {
             print_error(
                 "Usage: ksud plugin config --id <ID> <get|set|delete|list> [KEY] [VALUE]\n");
             return 1;
         }
-        return plugin_config_handle(id, config_args);
+        return plugin_config_handle(args[2],
+                                    std::vector<std::string>(args.begin() + 3, args.end()));
     }
 
     print_usage();

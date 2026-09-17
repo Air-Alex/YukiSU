@@ -3,6 +3,7 @@
 #include "core/json.hpp"
 #include "defs.hpp"
 #include "log.hpp"
+#include "terminal.hpp"
 #include "utils.hpp"
 
 #include <sys/stat.h>
@@ -160,11 +161,11 @@ std::string signs_to_json(const std::vector<DynamicManagerSign>& signs) {
 
 bool save_signs(const std::vector<DynamicManagerSign>& signs) {
     if (!ensure_dir_exists(WORKING_DIR)) {
-        printf("Failed to create %s\n", WORKING_DIR);
+        terminal::errorf("Failed to create %s\n", WORKING_DIR);
         return false;
     }
     if (!write_file(DYNAMIC_MANAGER_CONFIG_PATH, signs_to_json(signs))) {
-        printf("Failed to write %s\n", DYNAMIC_MANAGER_CONFIG_PATH);
+        terminal::errorf("Failed to write %s\n", DYNAMIC_MANAGER_CONFIG_PATH);
         return false;
     }
     chmod(DYNAMIC_MANAGER_CONFIG_PATH, 0600);
@@ -179,7 +180,7 @@ int apply_signs(const std::vector<DynamicManagerSign>& signs) {
     }
 
     if (set_dynamic_managers(signs) != 0) {
-        printf("Failed to send dynamic manager signatures to kernel\n");
+        terminal::errorf("Failed to send dynamic manager signatures to kernel\n");
         return 1;
     }
     return 0;
@@ -223,17 +224,17 @@ void print_apk_signature(const ApkSignatureInfo& info, bool json) {
         printf("hash: %s\n", info.v2.hash.c_str());
     }
     if (info.v1 || info.v3 || info.v31) {
-        printf("Warning: Found v1/v3/v3.1 sign data\n");
+        terminal::message(stderr, "warning", "Found v1/v3/v3.1 sign data");
     }
     if (!info.v2.has) {
-        printf("Warning: v2 sign data not found\n");
+        terminal::message(stderr, "warning", "v2 sign data not found");
     }
 }
 
 int print_apk_signature(const std::string& apk, bool json) {
     const auto info = get_apk_signature(apk);
     if (!info.valid) {
-        printf("Failed to get APK signature: %s\n", apk.c_str());
+        terminal::errorf("Failed to get APK signature: %s\n", apk.c_str());
         return 1;
     }
 
@@ -245,11 +246,11 @@ bool sign_from_hash_args(const std::string& size_arg, const std::string& hash_ar
                          DynamicManagerSign* sign) {
     DynamicManagerSign parsed{};
     if (!parse_size(size_arg, &parsed.size)) {
-        printf("Invalid size: %s\n", size_arg.c_str());
+        terminal::errorf("Invalid size: %s\n", size_arg.c_str());
         return false;
     }
     if (!normalize_hash(hash_arg, parsed.hash)) {
-        printf("Invalid hash: %s\n", hash_arg.c_str());
+        terminal::errorf("Invalid hash: %s\n", hash_arg.c_str());
         return false;
     }
 
@@ -260,7 +261,7 @@ bool sign_from_hash_args(const std::string& size_arg, const std::string& hash_ar
 bool sign_from_apk(const std::string& apk, DynamicManagerSign* sign) {
     const auto info = get_apk_signature(apk);
     if (!info.valid) {
-        printf("Failed to get APK signature: %s\n", apk.c_str());
+        terminal::errorf("Failed to get APK signature: %s\n", apk.c_str());
         return false;
     }
 
@@ -275,7 +276,7 @@ bool sign_from_apk(const std::string& apk, DynamicManagerSign* sign) {
     DynamicManagerSign parsed{};
     parsed.size = info.v2.size;
     if (!normalize_hash(info.v2.hash, parsed.hash)) {
-        printf("Invalid v2 hash extracted from APK: %s\n", apk.c_str());
+        terminal::errorf("Invalid v2 hash extracted from APK: %s\n", apk.c_str());
         return false;
     }
 
@@ -481,6 +482,12 @@ int cmd_dynamic_manager(const std::vector<std::string>& args) {
         std::string target;
 
         for (size_t i = 1; i < args.size(); i++) {
+            if (args[i] == "--") {
+                if (!target.empty() || i + 2 != args.size())
+                    return terminal::error("expected one APK path after --");
+                target = args[i + 1];
+                break;
+            }
             if (args[i] == "--json") {
                 json = true;
             } else if (args[i] == "--uid" && i + 1 < args.size()) {
@@ -503,7 +510,7 @@ int cmd_dynamic_manager(const std::vector<std::string>& args) {
         if (uid_mode) {
             uint32_t uid = 0;
             if (!parse_size(target, &uid)) {
-                printf("Invalid uid: %s\n", target.c_str());
+                terminal::errorf("Invalid uid: %s\n", target.c_str());
                 return 1;
             }
 
@@ -535,7 +542,7 @@ int cmd_dynamic_manager(const std::vector<std::string>& args) {
     if (subcmd == "set-uid" && args.size() == 2) {
         uint32_t uid = 0;
         if (!parse_size(args[1], &uid)) {
-            printf("Invalid uid: %s\n", args[1].c_str());
+            terminal::errorf("Invalid uid: %s\n", args[1].c_str());
             return 1;
         }
 
@@ -583,7 +590,7 @@ int cmd_dynamic_manager(const std::vector<std::string>& args) {
         return apply_signs(signs);
     }
 
-    printf("Unknown dynamic subcommand: %s\n", subcmd.c_str());
+    terminal::errorf("Unknown dynamic subcommand: %s\n", subcmd.c_str());
     print_help();
     return 1;
 }

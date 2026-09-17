@@ -1,7 +1,9 @@
 #include "debug.hpp"
+#include <climits>
 #include "core/ksucalls.hpp"
 #include "kernelsu_loader.hpp"
 #include "log.hpp"
+#include "terminal.hpp"
 #include "utils.hpp"
 
 #include <sys/stat.h>
@@ -29,7 +31,7 @@ bool get_pkg_uid(const std::string& pkg, uint32_t& uid) {
     const std::string data_path = "/data/data/" + pkg;
     struct stat st{};
     if (stat(data_path.c_str(), &st) != 0) {
-        printf("Failed to stat %s: %s\n", data_path.c_str(), strerror(errno));
+        terminal::errorf("Failed to stat %s: %s\n", data_path.c_str(), strerror(errno));
         return false;
     }
     uid = st.st_uid;
@@ -49,7 +51,7 @@ int debug_set_manager(const std::string& pkg) {
     // Get package UID
     uint32_t uid;
     if (!get_pkg_uid(pkg, uid)) {
-        printf("Failed to get UID for package: %s\n", pkg.c_str());
+        terminal::errorf("Failed to get UID for package: %s\n", pkg.c_str());
         return 1;
     }
 
@@ -62,7 +64,7 @@ int debug_set_manager(const std::string& pkg) {
     read_u32(param_path, before_uid);
 
     if (!write_u32(param_path, uid)) {
-        printf("Failed to write manager UID to kernel parameter\n");
+        terminal::errorf("Failed to write manager UID to kernel parameter\n");
         return 1;
     }
 
@@ -86,7 +88,8 @@ int debug_insmod(const std::string& module, const std::vector<std::string>& para
     std::error_code ec;
     const auto resolved_path = std::filesystem::canonical(module, ec);
     if (ec) {
-        printf("Failed to resolve module path %s: %s\n", module.c_str(), ec.message().c_str());
+        terminal::errorf("Failed to resolve module path %s: %s\n", module.c_str(),
+                         ec.message().c_str());
         return 1;
     }
 
@@ -99,7 +102,7 @@ int debug_insmod(const std::string& module, const std::vector<std::string>& para
     }
 
     if (!kernelsu_loader::load_module(resolved_path.c_str(), param_values)) {
-        printf("Failed to load kernel module: %s\n", resolved_path.c_str());
+        terminal::errorf("Failed to load kernel module: %s\n", resolved_path.c_str());
         return 1;
     }
 
@@ -114,7 +117,11 @@ int debug_mark(const std::vector<std::string>& args) {
     }
 
     const std::string& cmd = args[0];
-    const int32_t pid = args.size() > 1 ? std::stoi(args[1]) : 0;
+    uint32_t parsed_pid = 0;
+    if (args.size() > 1 && (!parse_uint32(args[1], &parsed_pid) || parsed_pid > INT_MAX))
+        return terminal::usage_error("invalid PID: expected an integer between 0 and 2147483647",
+                                     "ksud debug mark <get|mark|unmark> [PID]");
+    const int32_t pid = static_cast<int32_t>(parsed_pid);
 
     if (cmd == "get") {
         const uint32_t result = mark_get(pid);
@@ -126,28 +133,28 @@ int debug_mark(const std::vector<std::string>& args) {
         return 0;
     } else if (cmd == "mark") {
         if (mark_set(pid) < 0) {
-            printf("Failed to mark process %d\n", pid);
+            terminal::errorf("Failed to mark process %d\n", pid);
             return 1;
         }
         printf("Marked process %d\n", pid);
         return 0;
     } else if (cmd == "unmark") {
         if (mark_unset(pid) < 0) {
-            printf("Failed to unmark process %d\n", pid);
+            terminal::errorf("Failed to unmark process %d\n", pid);
             return 1;
         }
         printf("Unmarked process %d\n", pid);
         return 0;
     } else if (cmd == "refresh") {
         if (mark_refresh() < 0) {
-            printf("Failed to refresh marks\n");
+            terminal::errorf("Failed to refresh marks\n");
             return 1;
         }
         printf("Refreshed all process marks\n");
         return 0;
     }
 
-    printf("Unknown mark command: %s\n", cmd.c_str());
+    terminal::errorf("Unknown mark command: %s\n", cmd.c_str());
     return 1;
 }
 

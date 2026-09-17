@@ -372,6 +372,8 @@ endif()
 set(KSUD_OUR_SOURCES
     src/main.cpp
     src/cli.cpp
+    src/cli_args.cpp
+    src/terminal.cpp
     src/defs.cpp
     src/log.cpp
     src/utils.cpp
