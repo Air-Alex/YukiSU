@@ -3,6 +3,7 @@
 case $- in *i*) ;; *) return ;; esac
 
 if [ -n "${KSH_VERSION-}" ] && [ -r /system/etc/mkshrc ]; then
+    # shellcheck source=/dev/null
     . /system/etc/mkshrc
 fi
 
@@ -25,7 +26,8 @@ else
     fi
 fi
 _ksu_prompt() {
-    local status=$1 path=${PWD:-?} home=${HOME-} tail parent identity
+    # shellcheck disable=SC3043
+    local status="$1" path="${PWD:-?}" home="${HOME-}" tail parent identity
     if [ -n "$home" ]; then
         case $path in
             "$home") path='~' ;;
@@ -37,12 +39,16 @@ _ksu_prompt() {
         parent=${path%/*}
         path=".../${parent##*/}/$tail"
     fi
+    # shellcheck disable=SC3060
     path=${path//[[:cntrl:]]/?}
     identity='\u@\h'
     if [ -n "${KSH_VERSION-}" ]; then
+        # shellcheck disable=SC3028
         identity="${USER:-root}@${HOSTNAME:-android}"
+        # shellcheck disable=SC3060
         identity=${identity//[[:cntrl:]]/?}
     else
+        # shellcheck disable=SC3060
         path=${path//\\/\\\\}
     fi
     REPLY=
@@ -63,5 +69,6 @@ unset KSU_SHELL_PS1
 
 # User customization is separate from the feature configuration and shipped defaults.
 if [ -r /data/adb/ksu/.shellrc ]; then
+    # shellcheck source=/dev/null
     . /data/adb/ksu/.shellrc
 fi
