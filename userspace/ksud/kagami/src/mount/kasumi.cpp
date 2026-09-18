@@ -5,6 +5,7 @@
 #include "kagami/kasumi_client.hpp"
 #include "mount/mount_fs.hpp"
 #include "uapi/kasumi.h"
+#include "utils.hpp"
 
 #include <dirent.h>
 #include <sys/mount.h>
@@ -28,6 +29,8 @@ namespace fs = std::filesystem;
 using fsutil::mlog;
 
 namespace {
+
+bool user_hide_restore_pending = false;
 
 fs::path active_file() {
     return runtime_data_dir() / "run" / "kasumi_active";
@@ -269,6 +272,7 @@ bool apply_feature_config(const Config& config, std::string& error) {
 }
 
 bool disable_control_state(std::string& error) {
+    user_hide_restore_pending = false;
     bool ok = true;
     if (!::kagami::kasumi::set_enabled(false)) {
         error = "failed to disable Kasumi";
@@ -280,17 +284,100 @@ bool disable_control_state(std::string& error) {
     return ok;
 }
 
-bool restore_persisted_hide_rules(std::string& error) {
-    bool ok = true;
-    for (const auto& path : load_user_hide_rules()) {
-        if (!::kagami::kasumi::hide_path(path)) {
-            ok = false;
-        }
+namespace {
+bool restore_user_hide_rules(std::string& error, bool retry) {
+    if (ksud::getprop("sys.boot_completed") != "1" || !::kagami::kasumi::is_available()) {
+        user_hide_restore_pending = false;
+        return true;
     }
+    bool managed = false;
+    if (!::kagami::kasumi::managed_hide_mode(managed)) {
+        error = "failed to query user hide ownership";
+        return false;
+    }
+    if (managed) {
+        user_hide_restore_pending = false;
+        std::vector<::kagami::kasumi::UserHideRule> registered;
+        if (!::kagami::kasumi::user_hide_rules(registered)) {
+            error = "failed to query managed user hide rules";
+            return false;
+        }
+        const auto paths = load_user_hide_rules();
+        bool ok = true;
+        for (const auto& rule : registered) {
+            if (std::find(paths.begin(), paths.end(), rule.path) == paths.end())
+                ok = ::kagami::kasumi::delete_user_hide(rule.path, rule.id) && ok;
+        }
+        for (const auto& path : paths) {
+            const auto found = std::find_if(registered.begin(), registered.end(),
+                                            [&](const auto& rule) { return rule.path == path; });
+            if (found == registered.end())
+                ok = ::kagami::kasumi::upsert_user_hide(path) && ok;
+        }
+        if (!ok)
+            error = "failed to synchronize managed user hide rules; module rules remain active";
+        return ok;
+    }
+    const int enabled = ::kagami::kasumi::enabled_state();
+    if (enabled == 0) {
+        user_hide_restore_pending = false;
+        return true;
+    }
+    if (enabled < 0) {
+        user_hide_restore_pending = true;
+        error = "failed to query Kasumi state before restoring user hide rules";
+        if (!retry)
+            mlog("kasumi: " + error, logging::Level::Error);
+        return false;
+    }
+    const bool ok = fsutil::run_in_init_mount_ns([retry]() {
+        bool restored = true;
+        for (const auto& path : load_user_hide_rules()) {
+            struct stat parent = {};
+            const bool parent_ready =
+                !retry || (stat(fs::path(path).parent_path().c_str(), &parent) == 0 &&
+                           S_ISDIR(parent.st_mode));
+            const bool hidden = parent_ready && ::kagami::kasumi::hide_path(path);
+            if (!retry)
+                mlog("user hide path=" + path +
+                         (hidden ? " ok" : " failed errno=" + std::to_string(errno)),
+                     hidden ? logging::Level::Debug : logging::Level::Error);
+            restored = hidden && restored;
+        }
+        return restored;
+    });
+    user_hide_restore_pending = !ok;
     if (!ok) {
-        error = "failed to restore one or more persistent hide rules";
+        error = "user hide rules pending retry; module rules remain active";
+        if (!retry)
+            mlog("kasumi: " + error, logging::Level::Error);
+    } else if (retry) {
+        mlog("kasumi: pending user hide rules restored");
     }
     return ok;
+}
+}  // namespace
+
+bool restore_persisted_hide_rules(std::string& error) {
+    return restore_user_hide_rules(error, false);
+}
+
+bool has_pending_hide_rules() {
+    return user_hide_restore_pending;
+}
+
+void retry_pending_hide_rules() {
+    if (!user_hide_restore_pending)
+        return;
+    Config config;
+    std::string error;
+    if (!read_config_file(config, error))
+        return;
+    if (!config.kasumi_enabled) {
+        user_hide_restore_pending = false;
+        return;
+    }
+    (void)restore_user_hide_rules(error, true);
 }
 
 bool deactivate(std::string& error) {
@@ -311,24 +398,6 @@ bool mount_modules(const std::vector<ModuleEntry>& modules, const Config& config
         mlog("kasumi: backend requested but protocol is unavailable");
         return false;
     }
-    const auto persisted_hide_rules = load_user_hide_rules();
-    if (modules.empty()) {
-        std::string error;
-        const bool ok = restore_persisted_hide_rules(error);
-        if (ok) {
-            if (!write_boot_marker(active_file())) {
-                mlog("kasumi: failed to record restored runtime state", logging::Level::Error);
-            }
-            mlog("kasumi: installed add=0 merge=0 hide=" +
-                 std::to_string(persisted_hide_rules.size()));
-        } else {
-            std::error_code ec;
-            fs::remove(active_file(), ec);
-            mlog("kasumi: one or more persistent hide rules failed", logging::Level::Error);
-        }
-        return ok;
-    }
-
     // Kasumi redirects each target straight to the real module tree under
     // /data/adb/modules; the vnode clones the source inode's SELinux SID, so no
     // relabeled mirror is needed (unlike OverlayFS, which exposes the lowerdir's
@@ -374,9 +443,6 @@ bool mount_modules(const std::vector<ModuleEntry>& modules, const Config& config
              added ? logging::Level::Debug : logging::Level::Error);
         ok = added && ok;
     }
-    for (const auto& path : persisted_hide_rules) {
-        batch.hide.insert(path);
-    }
     for (const auto& path : batch.hide) {
         const bool hidden = ::kagami::kasumi::hide_path(path);
         mlog("hide path=" + path + (hidden ? " ok" : " failed errno=" + std::to_string(errno)),
@@ -420,6 +486,7 @@ bool is_active() {
 }
 
 void invalidate_active_state() {
+    user_hide_restore_pending = false;
     std::error_code ec;
     fs::remove(active_file(), ec);
 }

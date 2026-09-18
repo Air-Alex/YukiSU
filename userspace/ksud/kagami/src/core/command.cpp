@@ -68,6 +68,7 @@ void print_usage() {
                  "list|add|delete|set-mode|add-rule|remove-rule|hot-mount|hot-unmount|check-"
                  "conflicts|mount-all|unmount|normalize\n"
               << "  ksud kagami recovery status|reset\n"
+              << "  ksud kagami hide list|apply|add|remove\n"
               << "  ksud kagami kasumi "
                  "version|list|enable|disable|clear|fix-mounts|hide-overlay-xattrs|mount-hide "
                  "off|normal|aggressive|maps\n";
@@ -379,12 +380,6 @@ int apply_config_file(bool force_enable = false) {
         std::cerr << error << "\n";
         return 1;
     }
-    if (!mount::kasumi::restore_persisted_hide_rules(error)) {
-        std::string cleanup_error;
-        (void)mount::kasumi::disable_control_state(cleanup_error);
-        std::cerr << error << "\n";
-        return 1;
-    }
     if (!mount::kasumi::apply_feature_config(config, error)) {
         std::string cleanup_error;
         (void)mount::kasumi::disable_control_state(cleanup_error);
@@ -404,6 +399,7 @@ int apply_config_file(bool force_enable = false) {
         std::cerr << "failed to enable Kasumi after config apply\n";
         return 1;
     }
+    (void)mount::kasumi::restore_persisted_hide_rules(error);
     return print_kasumi_snapshot_json();
 }
 
@@ -1127,6 +1123,19 @@ int handle_kasumi(const std::vector<std::string>& args) {
 
 int handle_hide(const std::vector<std::string>& args) {
     const auto sub = arg_or_default(args, 1, "");
+    if (sub == "apply") {
+        Config config;
+        std::string error;
+        if (!read_config_file(config, error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
+        if (config.kasumi_enabled && !mount::kasumi::restore_persisted_hide_rules(error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
+        return 0;
+    }
     if (sub == "list") {
         const auto rules = load_user_hide_rules();
         print_string_array(rules);
@@ -1146,7 +1155,10 @@ int handle_hide(const std::vector<std::string>& args) {
         if (!save_user_hide_rules(rules)) {
             return 1;
         }
-        if (kasumi::is_available() && !kasumi::hide_path(path)) {
+        bool managed = false;
+        if (kasumi::is_available() &&
+            (!kasumi::managed_hide_mode(managed) ||
+             !(managed ? kasumi::upsert_user_hide(path) : kasumi::hide_path(path)))) {
             std::cerr << "hide rule saved, but the kernel rejected it: " << std::strerror(errno)
                       << "\n";
             return 1;
@@ -1160,7 +1172,10 @@ int handle_hide(const std::vector<std::string>& args) {
         if (!save_user_hide_rules(rules)) {
             return 1;
         }
-        if (kasumi::is_available() && !kasumi::delete_rule(path)) {
+        bool managed = false;
+        if (kasumi::is_available() &&
+            (!kasumi::managed_hide_mode(managed) ||
+             !(managed ? kasumi::delete_user_hide(path) : kasumi::delete_rule(path)))) {
             std::cerr << "hide rule removed from config, but kernel removal failed: "
                       << std::strerror(errno) << "\n";
             return 1;

@@ -15,10 +15,12 @@ bool apply_feature_config(const Config& config, std::string& error);
 // Disable the global gate and runtime features without discarding path rules.
 bool disable_control_state(std::string& error);
 
-// Restore user-managed HIDE rules without rebuilding module mappings. This is
-// safe after a post-boot LKM load even when modules already use a fallback
-// OverlayFS or Magic Mount backend.
+// Restore user HIDE rules in init's mount namespace after boot completion,
+// only while Kasumi is enabled. Failures must not roll back module mappings.
 bool restore_persisted_hide_rules(std::string& error);
+bool has_pending_hide_rules();
+// Called by the daemon's event loop; reloads current rules before retrying.
+void retry_pending_hide_rules();
 
 // Disable Kasumi and clear path rules without requiring an active mirror.
 bool deactivate(std::string& error);

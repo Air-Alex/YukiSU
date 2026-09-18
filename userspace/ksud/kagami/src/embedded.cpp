@@ -11,6 +11,7 @@
 #include "module/metamodule.hpp"
 #include "mount/backend.hpp"
 #include "terminal.hpp"
+#include "utils.hpp"
 
 namespace kagami {
 int embedded_command(const std::vector<std::string>& args) try {
@@ -58,6 +59,12 @@ int embedded_mount() try {
 void embedded_boot_completed() {
     logging::write(logging::Level::Info, "boot", "boot completed");
     mount::recovery_boot_completed();
+    if (ksud::is_safe_mode() || !embedded_external_mount_owner().empty()) {
+        return;
+    }
+    if (run_via_daemon({"hide", "apply"}) != 0) {
+        logging::write(logging::Level::Error, "boot", "failed to restore user hide rules");
+    }
 }
 
 void embedded_post_fs_data() {

@@ -20,6 +20,9 @@
 
 namespace kagami::kasumi {
 
+static_assert(sizeof(kasumi_user_hide_arg) == 4160);
+static_assert(offsetof(kasumi_user_hide_arg, path) == 64);
+
 static_assert(static_cast<std::uint32_t>(MountHideMode::Normal) == KSM_MOUNT_HIDE_MODE_NORMAL);
 static_assert(static_cast<std::uint32_t>(MountHideMode::Aggressive) ==
               KSM_MOUNT_HIDE_MODE_AGGRESSIVE);
@@ -127,6 +130,8 @@ int features() {
 
 std::vector<std::string> feature_names(int bitmask) {
     std::vector<std::string> names;
+    if (bitmask & KSM_FEATURE_MANAGED_HIDE)
+        names.emplace_back("managed_hide");
     if (bitmask & KSM_FEATURE_MOUNT_HIDE)
         names.emplace_back("mount_hide");
     if (bitmask & KSM_FEATURE_MAPS_SPOOF)
@@ -144,6 +149,113 @@ std::vector<std::string> feature_names(int bitmask) {
     if (bitmask & KSM_FEATURE_MOUNT_HIDE_AGGRESSIVE)
         names.emplace_back("mount_hide_aggressive");
     return names;
+}
+
+namespace {
+bool hide_request_path(kasumi_user_hide_arg& arg, const std::string& path) {
+    if (path.empty() || path.front() != '/' || path.find('\0') != std::string::npos) {
+        errno = EINVAL;
+        return false;
+    }
+    if (path.size() >= sizeof(arg.path)) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    arg.size = sizeof(arg);
+    arg.path_len = static_cast<std::uint32_t>(path.size());
+    std::memcpy(arg.path, path.c_str(), path.size() + 1);
+    return true;
+}
+
+bool hide_reply(const kasumi_user_hide_arg& arg, UserHideRule& result) {
+    if (arg.size != sizeof(arg) || arg.path_len >= sizeof(arg.path) || arg.path[arg.path_len] ||
+        std::strlen(arg.path) != arg.path_len) {
+        errno = EPROTO;
+        return false;
+    }
+    result = {arg.rule_id, arg.generation, arg.management,
+              arg.binding, arg.error,      std::string(arg.path, arg.path_len)};
+    return true;
+}
+}  // namespace
+
+bool user_hide_rules(std::vector<UserHideRule>& rules) {
+    std::vector<UserHideRule> snapshot;
+    std::uint64_t cursor = 0;
+    for (;;) {
+        kasumi_user_hide_arg arg = {};
+        arg.size = sizeof(arg);
+        arg.rule_id = cursor;
+        if (execute(KSM_IOC_USER_HIDE_QUERY, &arg))
+            return false;
+        UserHideRule rule;
+        if (!hide_reply(arg, rule))
+            return false;
+        if (!rule.id) {
+            rules = std::move(snapshot);
+            return true;
+        }
+        if (rule.id <= cursor || snapshot.size() >= 4096) {
+            errno = EOVERFLOW;
+            return false;
+        }
+        cursor = rule.id;
+        snapshot.push_back(std::move(rule));
+    }
+}
+
+bool upsert_user_hide(const std::string& path, UserHideRule* result) {
+    kasumi_user_hide_arg arg = {};
+    if (!hide_request_path(arg, path) || execute(KSM_IOC_USER_HIDE_UPSERT, &arg))
+        return false;
+    UserHideRule reply;
+    if (!hide_reply(arg, reply))
+        return false;
+    if (result)
+        *result = std::move(reply);
+    return true;
+}
+
+bool delete_user_hide(const std::string& path, std::uint64_t id) {
+    kasumi_user_hide_arg arg = {};
+    arg.rule_id = id;
+    return hide_request_path(arg, path) && !execute(KSM_IOC_USER_HIDE_DELETE, &arg);
+}
+
+bool managed_hide_mode(bool& managed) {
+    const auto caps = feature_capabilities();
+    if (!caps.ok) {
+        errno = caps.last_errno;
+        return false;
+    }
+    if (caps.bitmask & KSM_FEATURE_MANAGED_HIDE) {
+        managed = true;
+        return true;
+    }
+    std::vector<UserHideRule> rules;
+    if (user_hide_rules(rules)) {
+        managed = !rules.empty();
+        return true;
+    }
+    if (errno != EINVAL && errno != ENOTTY && errno != EOPNOTSUPP)
+        return false;
+    managed = false;
+    return true;
+}
+
+bool retry_user_hide(const std::string& path) {
+    std::vector<UserHideRule> rules;
+    if (!user_hide_rules(rules))
+        return false;
+    for (const auto& rule : rules) {
+        if (rule.path != path)
+            continue;
+        kasumi_user_hide_arg arg = {};
+        arg.rule_id = rule.id;
+        return hide_request_path(arg, path) && !execute(KSM_IOC_USER_HIDE_RETRY, &arg);
+    }
+    errno = ENOENT;
+    return false;
 }
 
 std::vector<std::string> active_modules_from_rules(const std::string& rules) {

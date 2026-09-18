@@ -562,6 +562,8 @@ bool refresh_kasumi_modules(const Config& config) {
     if (!ok) {
         std::string cleanup_error;
         (void)kasumi::deactivate(cleanup_error);
+    } else {
+        (void)kasumi::restore_persisted_hide_rules(error);
     }
     return ok;
 }

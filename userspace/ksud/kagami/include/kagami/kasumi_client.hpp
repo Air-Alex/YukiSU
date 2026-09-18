@@ -28,6 +28,22 @@ struct FeatureCapabilities {
     int bitmask = 0;
 };
 
+struct UserHideRule {
+    std::uint64_t id = 0;
+    std::uint64_t generation = 0;
+    std::uint32_t management = 0;
+    std::uint32_t binding = 0;
+    int error = 0;
+    std::string path;
+};
+
+bool user_hide_rules(std::vector<UserHideRule>& rules);
+bool upsert_user_hide(const std::string& path, UserHideRule* result = nullptr);
+bool delete_user_hide(const std::string& path, std::uint64_t id = 0);
+bool retry_user_hide(const std::string& path);
+// A retained managed definition prevents switching to legacy HIDE after an error.
+bool managed_hide_mode(bool& managed);
+
 enum class MountHideMode : std::uint32_t {
     Normal = 0,
     Aggressive = 1,

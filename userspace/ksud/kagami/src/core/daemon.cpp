@@ -8,6 +8,7 @@
 #include "core/runtime.hpp"
 #include "kagami/config.hpp"
 #include "kagami/kasumi_client.hpp"
+#include "mount/kasumi.hpp"
 
 #include <cerrno>
 #include <chrono>
@@ -270,8 +271,43 @@ int serve_foreground(int ready_fd = -1) {
         close(ready_fd);
     }
 
+    int mounts_fd = open("/proc/1/mountinfo", O_RDONLY | O_CLOEXEC);
+    if (mounts_fd < 0)
+        append_log("cannot watch storage mounts: " + std::string(std::strerror(errno)),
+                   logging::Level::Error);
+    if (config_error.empty() && log_config.kasumi_enabled) {
+        std::string restore_error;
+        if (!mount::kasumi::restore_persisted_hide_rules(restore_error))
+            append_log(restore_error, logging::Level::Error);
+    }
     bool stopping = false;
+    int exit_code = 0;
     while (!stopping) {
+        const bool pending_hides = mount::kasumi::has_pending_hide_rules();
+        pollfd descriptors[] = {{server_fd, POLLIN, 0},
+                                {pending_hides ? mounts_fd : -1, POLLPRI, 0}};
+        const int ready = poll(descriptors, 2, -1);
+        if (ready < 0) {
+            if (errno == EINTR)
+                continue;
+            append_log(std::string("poll failed: ") + std::strerror(errno), logging::Level::Error);
+            exit_code = 1;
+            break;
+        }
+        if ((descriptors[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            exit_code = 1;
+            break;
+        }
+        if ((descriptors[1].revents & (POLLHUP | POLLNVAL)) != 0 ||
+            ((descriptors[1].revents & POLLERR) != 0 && (descriptors[1].revents & POLLPRI) == 0)) {
+            close(mounts_fd);
+            mounts_fd = -1;
+            append_log("storage mount watch lost", logging::Level::Error);
+        }
+        if ((descriptors[1].revents & POLLPRI) != 0)
+            mount::kasumi::retry_pending_hide_rules();
+        if ((descriptors[0].revents & POLLIN) == 0)
+            continue;
         const int client_fd = accept4(server_fd, nullptr, nullptr, SOCK_CLOEXEC);
         if (client_fd < 0) {
             if (errno == EINTR) {
@@ -330,11 +366,13 @@ int serve_foreground(int ready_fd = -1) {
     }
 
     append_log("kagamid stopped");
+    if (mounts_fd >= 0)
+        close(mounts_fd);
     close(server_fd);
     fs::remove(runtime_socket_file(), ec);
     fs::remove(runtime_pid_file(), ec);
     close(lock_fd);
-    return 0;
+    return exit_code;
 }
 
 int start_background(bool report_status) {

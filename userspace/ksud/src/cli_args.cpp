@@ -355,6 +355,7 @@ const std::vector<Command>& commands() {
         {"kagami debug stealth", "Set stealth mode: enable or disable", "<STATE>", 1, 1},
         {"kagami hide", "Manage persistent path hiding", "<COMMAND>"},
         {"kagami hide list", "Read persistent hidden paths", ""},
+        {"kagami hide apply", "Restore hidden paths after boot completion", ""},
         {"kagami hide add", "Add an absolute path", "<ABSOLUTE-PATH>", 1, 1},
         {"kagami hide remove", "Remove an absolute path", "<ABSOLUTE-PATH>", 1, 1},
         {"kagami recovery", "Manage mount recovery state", "<COMMAND>"},
