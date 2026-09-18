@@ -104,6 +104,8 @@ struct kasumi_dh_child {
 	u32 name_hash;
 	u16 name_len;
 	u8 flags;
+	unsigned int hide_users;
+	bool legacy;
 	u8 hide; /* 1 = suppress-only: negative lookup, no
 		  * vnode, not emitted in readdir (Slice 2) */
 	u8 lookup_only; /* 1 = dh serves lookup (vnode) but not
@@ -199,15 +201,22 @@ static bool kasumi_dh_current_sees(void)
 	return kasumi_policy_current_is_view_target();
 }
 
+static bool kasumi_dh_current_hides(const struct kasumi_dh_child *child,
+				    const struct inode *parent)
+{
+	return (child->hide || READ_ONCE(child->hide_users)) &&
+	       kasumi_dirhijack_enabled() &&
+	       kasumi_policy_current_is_hide_target(parent);
+}
+
 static bool kasumi_dh_current_targets(const struct kasumi_dh_child *child,
 				      const struct inode *parent)
 {
 	if (child->flags & KASUMI_VNODE_F_SU)
 		return ksu_sucompat_vfs_current_ino(child->v_ino);
-	if (child->hide)
-		return kasumi_dirhijack_enabled() &&
-		       kasumi_policy_current_is_hide_target(parent);
-	return kasumi_dh_current_sees();
+	if (kasumi_dh_current_hides(child, parent))
+		return true;
+	return child->legacy && !child->hide && kasumi_dh_current_sees();
 }
 
 static bool kasumi_dh_hidden_name(struct inode *parent, const struct qstr *name)
@@ -222,8 +231,8 @@ static bool kasumi_dh_hidden_name(struct inode *parent, const struct qstr *name)
 	child =
 	    kasumi_dh_find_child(m->dir, name->name, (u16)name->len,
 				 full_name_hash(parent, name->name, name->len));
-	if (child && child->hide)
-		hidden = kasumi_dh_current_targets(child, parent);
+	if (child)
+		hidden = kasumi_dh_current_hides(child, parent);
 	rcu_read_unlock();
 	return hidden;
 }
@@ -332,8 +341,9 @@ static struct dentry *KASUMI_NOCFI kasumi_dh_lookup_inner(struct inode *dir,
 			vpath = kstrdup(c->vpath, GFP_ATOMIC);
 		v_ino = c->v_ino;
 		cflags = c->flags;
-		is_hide = c->hide || ((c->flags & KASUMI_VNODE_F_SU) &&
-				      !ksu_sucompat_vfs_visible());
+		is_hide = kasumi_dh_current_hides(c, dir) ||
+			  ((c->flags & KASUMI_VNODE_F_SU) &&
+			   !ksu_sucompat_vfs_visible());
 		found = true;
 	}
 	rcu_read_unlock();
@@ -481,8 +491,10 @@ kasumi_dh_proxy_actor(struct dir_context *ctx, const char *name, int namelen,
 		 * (inject / hide).  A lookup_only child leaves readdir to the
 		 * overlay filldir, which already emits and dedups the name, so
 		 * it must pass through here untouched. */
-		injected = c && !c->lookup_only &&
-			   kasumi_dh_current_targets(c, p->dir->dir_inode);
+		injected =
+		    c && (kasumi_dh_current_hides(c, p->dir->dir_inode) ||
+			  (!c->lookup_only &&
+			   kasumi_dh_current_targets(c, p->dir->dir_inode)));
 		rcu_read_unlock();
 	}
 	if (injected)
@@ -533,7 +545,8 @@ static int kasumi_dh_emit_children(struct dir_context *ctx,
 			  : kasumi_dh_current_sees()))
 			continue;
 
-		if (c->hide || c->lookup_only)
+		if (c->hide || c->lookup_only ||
+		    kasumi_dh_current_hides(c, dir->dir_inode))
 			continue; /* suppress-only, or readdir owned by the
 				   * overlay filldir: occupies no readdir slot
 				   */
@@ -694,7 +707,7 @@ static int KASUMI_NOCFI kasumi_dh_revalidate_inner(
 		    full_name_hash(dir, name->name, name->len));
 		if (c) {
 			governed = true;
-			child_hide = c->hide;
+			child_hide = c->hide || kasumi_dh_current_hides(c, dir);
 			sees = kasumi_dh_current_targets(c, dir);
 			if (c->flags & KASUMI_VNODE_F_SU) {
 				bool enabled =
@@ -751,7 +764,7 @@ static int KASUMI_NOCFI kasumi_dh_revalidate_inner(
 	if (!child_hide) { /* inject */
 		if (sees)
 			return is_virtual ? 1 : 0;
-		if (is_virtual)
+		if (is_virtual || synthetic_negative)
 			return 0;
 		*chain_orig = true;
 		return 1;
@@ -1276,6 +1289,8 @@ static int kasumi_dh_dir_add_child(struct kasumi_dh_dir *dir, const char *name,
 	c->name_len = len;
 	c->flags = flags;
 	c->hide = hide ? 1 : 0;
+	c->legacy = true;
+	c->hide_users = 0;
 	c->lookup_only = lookup_only ? 1 : 0;
 	memcpy(c->name, name, len);
 	c->name[len] = '\0';
@@ -1294,8 +1309,10 @@ static int kasumi_dh_dir_add_child(struct kasumi_dh_dir *dir, const char *name,
 		kasumi_dh_child_free(c);
 		return -EEXIST;
 	}
-	if (old)
+	if (old) {
+		c->hide_users = old->hide_users;
 		hlist_del_rcu(&old->node);
+	}
 	hlist_add_head_rcu(&c->node, &dir->children);
 	spin_unlock(&dir->lock);
 	if (old)
@@ -1683,11 +1700,13 @@ int kasumi_dirhijack_hide(const char *visible_path)
 	return kasumi_dh_register(visible_path, NULL, 0, 0, true, false, NULL);
 }
 
-static KASUMI_NOCFI int
-kasumi_dh_unregister(struct path ppath, const char *child, unsigned long su_ino)
+static KASUMI_NOCFI int kasumi_dh_unregister(struct path ppath,
+					     const char *child,
+					     unsigned long su_ino, bool user)
 {
 	struct kasumi_dh_iop *m;
-	struct kasumi_dh_child *c = NULL;
+	struct kasumi_dh_child *c = NULL, *replacement = NULL;
+	bool keep = false;
 	struct kasumi_dh_dir *dead_dir = NULL;
 	struct kasumi_dh_dop_meta *dm;
 	struct hlist_node *htmp;
@@ -1701,6 +1720,22 @@ kasumi_dh_unregister(struct path ppath, const char *child, unsigned long su_ino)
 	mutex_lock(&kasumi_dh_lock);
 	m = kasumi_dh_iop_of(d_inode(ppath.dentry));
 	if (m && m->dir) {
+		c = kasumi_dh_find_child(
+		    m->dir, child, (u16)child_len,
+		    full_name_hash(m->dir->dir_inode, child, child_len));
+		if (!user && !su_ino && c && c->hide_users) {
+			replacement = kzalloc(
+			    sizeof(*replacement) + child_len + 1, GFP_KERNEL);
+			if (!replacement) {
+				mutex_unlock(&kasumi_dh_lock);
+				return -ENOMEM;
+			}
+			replacement->hide = 1;
+			replacement->hide_users = c->hide_users;
+			replacement->name_hash = c->name_hash;
+			replacement->name_len = c->name_len;
+			memcpy(replacement->name, c->name, child_len + 1);
+		}
 		spin_lock(&m->dir->lock);
 		c = kasumi_dh_find_child(
 		    m->dir, child, (u16)child_len,
@@ -1710,14 +1745,28 @@ kasumi_dh_unregister(struct path ppath, const char *child, unsigned long su_ino)
 		    (!su_ino && c && (c->flags & KASUMI_VNODE_F_SU))) {
 			spin_unlock(&m->dir->lock);
 			mutex_unlock(&kasumi_dh_lock);
+			kfree(replacement);
 			return su_ino ? -ENOENT : -EPERM;
 		}
-		if (c)
+		if (user && c) {
+			if (WARN_ON_ONCE(!c->hide_users)) {
+				spin_unlock(&m->dir->lock);
+				mutex_unlock(&kasumi_dh_lock);
+				return -ENOENT;
+			}
+			WRITE_ONCE(c->hide_users, c->hide_users - 1);
+			keep = c->hide_users || c->legacy;
+		}
+		if (c && !keep) {
 			hlist_del_rcu(&c->node);
+			if (replacement)
+				hlist_add_head_rcu(&replacement->node,
+						   &m->dir->children);
+		}
 		if (c && hlist_empty(&m->dir->children))
 			dead_dir = m->dir;
 		spin_unlock(&m->dir->lock);
-		if (c)
+		if (c && !keep)
 			call_rcu(&c->rcu, kasumi_dh_child_free_rcu);
 
 		/* A d_splice_alias path can leave more than one held dentry for
@@ -1781,6 +1830,129 @@ kasumi_dh_unregister(struct path ppath, const char *child, unsigned long su_ino)
 	return c ? 0 : -ENOENT;
 }
 
+struct kasumi_hide_binding {
+	struct dentry *parent;
+	char name[];
+};
+
+bool kasumi_dirhijack_hide_matches(const struct kasumi_hide_binding *binding,
+				   const struct path *parent)
+{
+	return binding && binding->parent == parent->dentry &&
+	       !d_unlinked(binding->parent);
+}
+
+int kasumi_dirhijack_hide_get(const struct path *parent, const char *name,
+			      struct kasumi_hide_binding **result)
+{
+	struct inode *inode = d_inode(parent->dentry);
+	struct kasumi_hide_binding *binding;
+	struct kasumi_dh_dir *dir = NULL, *rollback = NULL;
+	struct kasumi_dh_child *child;
+	bool registered = false;
+	size_t len = strlen(name);
+	int ret = 0;
+	struct qstr qname = QSTR_INIT(name, len);
+	struct dentry *cached;
+
+	if (!READ_ONCE(kasumi_dh_ready))
+		return -EOPNOTSUPP;
+	if (!inode || !S_ISDIR(inode->i_mode) || !len || len > NAME_MAX)
+		return -EINVAL;
+	if (inode->i_sb->s_magic == FUSE_SUPER_MAGIC &&
+	    !READ_ONCE(kasumi_dh_fuse_registered))
+		return -EOPNOTSUPP;
+	if (kasumi_vnode_is_ours(inode))
+		return -EOPNOTSUPP;
+	binding = kmalloc(sizeof(*binding) + len + 1, GFP_KERNEL);
+	if (!binding)
+		return -ENOMEM;
+	memcpy(binding->name, name, len + 1);
+	binding->parent = dget(parent->dentry);
+	mutex_lock(&kasumi_dh_lock);
+	if (!kasumi_dh_iop_of(inode)) {
+		ret = kasumi_sop_shadow_register_dh(inode->i_sb);
+		if (ret)
+			goto out;
+		registered = true;
+	}
+	dir = kasumi_dh_install_dir(inode, true, registered, &ret);
+	if (!dir) {
+		ret = ret ?: -ENOMEM;
+		if (registered)
+			kasumi_sop_shadow_unregister_dh(inode->i_sb);
+		goto out;
+	}
+	child = kasumi_dh_find_child(dir, name, len,
+				     full_name_hash(inode, name, len));
+	if (child && (child->flags & KASUMI_VNODE_F_SU)) {
+		ret = -EPERM;
+		goto out;
+	}
+	if (!child) {
+		ret = kasumi_dh_dir_add_child(dir, name, len, NULL, 0, 0, true,
+					      false, NULL);
+		if (ret) {
+			if (registered) {
+				kasumi_dh_detach_dir_locked(dir);
+				rollback = dir;
+			}
+			goto out;
+		}
+		child = kasumi_dh_find_child(dir, name, len,
+					     full_name_hash(inode, name, len));
+		WRITE_ONCE(child->legacy, false);
+	}
+	WRITE_ONCE(child->hide_users, child->hide_users + 1);
+	qname.hash = full_name_hash(parent->dentry, name, len);
+	cached = d_lookup(parent->dentry, &qname);
+	if (cached) {
+		d_drop(cached);
+		dput(cached);
+	}
+out:
+	mutex_unlock(&kasumi_dh_lock);
+	if (rollback)
+		kasumi_dh_release_detached_dir(rollback);
+	else if (ret && registered && !dir)
+		kasumi_sop_shadow_reap();
+	if (ret) {
+		dput(binding->parent);
+		kfree(binding);
+	} else {
+		*result = binding;
+	}
+	return ret;
+}
+
+void kasumi_dirhijack_hide_put(struct kasumi_hide_binding *binding)
+{
+	struct super_block *sb;
+	struct path parent = {};
+
+	if (!binding)
+		return;
+	parent.dentry = binding->parent;
+	sb = parent.dentry->d_sb;
+	/* No long-lived mount reference: ordinary umount must remain possible.
+	 * Keep the superblock alive until the last held dentry is released. */
+	atomic_inc(&sb->s_active);
+	kasumi_dh_unregister(parent, binding->name, 0, true);
+	dput(binding->parent);
+	kfree(binding);
+	deactivate_super(sb);
+}
+
+bool kasumi_dirhijack_hidden(struct inode *parent, const char *name, int len)
+{
+	struct qstr qname = QSTR_INIT(name, len);
+	int idx = srcu_read_lock(&kasumi_dh_srcu);
+	bool hidden = kasumi_dh_hidden_name(parent, &qname);
+
+	srcu_read_unlock(&kasumi_dh_srcu, idx);
+	return hidden;
+}
+
 int kasumi_dirhijack_del(const char *visible_path)
 {
 	char *parent = NULL;
@@ -1793,7 +1965,7 @@ int kasumi_dirhijack_del(const char *visible_path)
 		return ret;
 	ret = kern_path(parent, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &ppath);
 	if (!ret) {
-		ret = kasumi_dh_unregister(ppath, child, 0);
+		ret = kasumi_dh_unregister(ppath, child, 0, false);
 		path_put(&ppath);
 	} else if (ret == -ENOENT) {
 		ret = 0;
@@ -1806,7 +1978,7 @@ void kasumi_dirhijack_del_su(const struct path *parent, const char *name,
 			     unsigned long v_ino)
 {
 	if (parent->dentry && v_ino)
-		kasumi_dh_unregister(*parent, name, v_ino);
+		kasumi_dh_unregister(*parent, name, v_ino, false);
 }
 
 static void kasumi_dh_shrink_dead_sbs(struct list_head *dead_dirs)
