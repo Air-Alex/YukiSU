@@ -6,7 +6,17 @@
 #include <linux/zlib.h>
 
 #include "infra/symbol_resolver.h"
+#include "kasumi_base.h"
 #include "kasumi_config_guard.h"
+
+static noinline KASUMI_NOCFI int
+kasumi_inflate_config(typeof(zlib_inflate_blob) *inflate_blob, void *dst,
+		      unsigned int dst_size, const void *src,
+		      unsigned int src_size)
+{
+	/* Symbol lookup can return a raw function without a CFI jump table. */
+	return inflate_blob(dst, dst_size, src, src_size);
+}
 
 static int kasumi_check_config_data(void)
 {
@@ -45,8 +55,8 @@ static int kasumi_check_config_data(void)
 	if (!config)
 		return -ENOMEM;
 
-	ret =
-	    inflate_blob(config, config_size, data + 10, compressed_size - 18);
+	ret = kasumi_inflate_config(inflate_blob, config, config_size,
+				    data + 10, compressed_size - 18);
 	if (ret < 0)
 		goto out;
 	if ((u32)ret != config_size || memchr(config, '\0', config_size)) {
