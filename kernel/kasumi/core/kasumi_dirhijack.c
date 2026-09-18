@@ -1613,6 +1613,47 @@ int kasumi_dirhijack_add_su(const char *visible_path, unsigned long v_ino,
 				  false, false, parent);
 }
 
+int kasumi_dirhijack_match_su(const char *visible_path,
+			      const struct path *parent, unsigned long v_ino)
+{
+	struct kasumi_dh_iop *m;
+	struct kasumi_dh_child *c;
+	struct path resolved;
+	char *parent_name;
+	const char *child;
+	size_t len;
+	int idx, ret;
+
+	if (!parent->dentry || !v_ino)
+		return 0;
+	ret = kasumi_dh_split_parent(visible_path, &parent_name, &child);
+	if (ret)
+		return ret;
+	ret =
+	    kern_path(parent_name, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &resolved);
+	if (ret)
+		goto out;
+	if (!path_equal(&resolved, parent))
+		goto out_path;
+	len = strlen(child);
+	idx = srcu_read_lock(&kasumi_dh_srcu);
+	rcu_read_lock();
+	m = kasumi_dh_iop_of(d_inode(resolved.dentry));
+	if (m && m->dir && !READ_ONCE(m->dir->retiring)) {
+		c = kasumi_dh_find_child(
+		    m->dir, child, (u16)len,
+		    full_name_hash(m->dir->dir_inode, child, len));
+		ret = c && (c->flags & KASUMI_VNODE_F_SU) && c->v_ino == v_ino;
+	}
+	rcu_read_unlock();
+	srcu_read_unlock(&kasumi_dh_srcu, idx);
+out_path:
+	path_put(&resolved);
+out:
+	kfree(parent_name);
+	return ret;
+}
+
 /*
  * Register a lookup-only child at @visible_path backed by @source: VFS lookup
  * resolves it to a Kasumi vnode (open/stat/readlink), but dirhijack does not

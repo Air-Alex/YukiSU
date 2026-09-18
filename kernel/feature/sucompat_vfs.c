@@ -141,10 +141,21 @@ static int su_bind_locked(const char *path)
 	lockdep_assert_held(&su_view_lock);
 	if (!ksu_cred)
 		return -EAGAIN;
-	if (su_next_ino == ULONG_MAX)
-		return -EOVERFLOW;
-	ino = ++su_next_ino;
 	old = override_creds(ksu_cred);
+	if (su_enabled && !strcmp(path, su_path)) {
+		ret = kasumi_dirhijack_match_su(path, &su_parent,
+						READ_ONCE(su_ino));
+		if (ret) {
+			if (ret > 0)
+				ret = 0;
+			goto out;
+		}
+	}
+	if (su_next_ino == ULONG_MAX) {
+		ret = -EOVERFLOW;
+		goto out;
+	}
+	ino = ++su_next_ino;
 	ret = kasumi_dirhijack_add_su(path, ino, &parent);
 	if (!ret) {
 		unsigned long previous = READ_ONCE(su_ino);
@@ -159,6 +170,7 @@ static int su_bind_locked(const char *path)
 		su_parent = parent;
 		strscpy(su_name, strrchr(path, '/') + 1, sizeof(su_name));
 	}
+out:
 	revert_creds(old);
 	return ret;
 }

@@ -42,6 +42,9 @@ int kasumi_dirhijack_add(const char *visible_path, const struct path *source,
 
 int kasumi_dirhijack_add_su(const char *visible_path, unsigned long v_ino,
 			    struct path *parent);
+/* Return 1 for an unchanged binding, 0 for a mismatch, or a negative errno. */
+int kasumi_dirhijack_match_su(const char *visible_path,
+			      const struct path *parent, unsigned long v_ino);
 void kasumi_dirhijack_del_su(const struct path *parent, const char *name,
 			     unsigned long v_ino);
 
