@@ -151,4 +151,13 @@
     <string name="kasumi_views_off">已关闭</string>
     <string name="kasumi_views_on">已启用</string>
     <string name="kasumi_disable_unsupported">此内核不支持，可关闭以清理已保存的设置。</string>
+    <string name="kasumi_hide_saved">已保存，尚未登记</string>
+    <string name="kasumi_hide_pending">等待存储或父目录就绪</string>
+    <string name="kasumi_hide_binding">正在应用</string>
+    <string name="kasumi_hide_bound">已生效</string>
+    <string name="kasumi_hide_suspended">已暂停</string>
+    <string name="kasumi_hide_permission">应用失败：权限不足</string>
+    <string name="kasumi_hide_unsupported">应用失败：不支持此文件系统</string>
+    <string name="kasumi_hide_error">应用失败（错误 %1$d）</string>
+    <string name="kasumi_hide_retry">重试规则</string>
 </resources>

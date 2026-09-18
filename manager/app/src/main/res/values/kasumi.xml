@@ -155,4 +155,13 @@
     <string name="kasumi_views_off">Disabled</string>
     <string name="kasumi_views_on">Enabled</string>
     <string name="kasumi_disable_unsupported">Unsupported here; switch off to clear the saved setting.</string>
+    <string name="kasumi_hide_saved">Saved, not registered</string>
+    <string name="kasumi_hide_pending">Waiting for storage or parent directory</string>
+    <string name="kasumi_hide_binding">Applying</string>
+    <string name="kasumi_hide_bound">Active</string>
+    <string name="kasumi_hide_suspended">Paused</string>
+    <string name="kasumi_hide_permission">Could not apply: permission denied</string>
+    <string name="kasumi_hide_unsupported">Could not apply: filesystem unsupported</string>
+    <string name="kasumi_hide_error">Could not apply (error %1$d)</string>
+    <string name="kasumi_hide_retry">Retry rule</string>
 </resources>

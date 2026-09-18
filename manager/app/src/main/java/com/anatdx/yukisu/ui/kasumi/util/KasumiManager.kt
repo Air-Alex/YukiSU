@@ -188,6 +188,9 @@ object KasumiManager {
     }
 
     suspend fun clearRules() = mutate { command("kasumi", "clear") }
+    suspend fun retryUserHide(path: String) = mutate {
+        Natives.kasumiRetryUserHide(path.toByteArray(Charsets.UTF_8))
+    }
     suspend fun addMapsRule(numbers: List<String>, path: String) = mutate {
         require(numbers.size == 4 && numbers.all { it.toULongOrNull() != null } && path.startsWith('/'))
         Natives.kasumiAddMapsRule(numbers.map { it.toULong().toLong() }.toLongArray(), path.toByteArray(Charsets.UTF_8))

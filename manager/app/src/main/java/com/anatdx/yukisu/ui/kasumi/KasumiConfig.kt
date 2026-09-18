@@ -1021,6 +1021,10 @@ private fun RuleItem(rule: KasumiManager.ActiveRule, index: Int = 0, count: Int 
                     fontFamily = if (rule.type in listOf("mount_hide", "maps_spoof", "statfs_spoof", "stealth"))
                         FontFamily.Default else FontFamily.Monospace,
                 )
+                if (rule.hideState != null) {
+                    Text(userHideStatus(rule), style = MaterialTheme.typography.bodySmall,
+                        color = if (rule.hideState == 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (rule.target != null) {
                     ScrollableRuleText(
                         text = "→ ${rule.target}",

@@ -12,7 +12,8 @@ object KasumiUiAdapter {
     enum class KasumiStatus { AVAILABLE, NOT_PRESENT, KERNEL_TOO_OLD, MODULE_TOO_OLD }
     data class FeaturesResult(val bitmask: Int, val names: List<String>)
     data class ModuleInfo(val id: String, val name: String, val mode: String, val strategy: String)
-    data class ActiveRule(val type: String, val src: String, val target: String? = null, val isUserDefined: Boolean = false)
+    data class ActiveRule(val type: String, val src: String, val target: String? = null, val isUserDefined: Boolean = false,
+        val hideState: Int? = null, val hideError: Int = 0)
     data class PartitionInfo(val name: String)
     data class MountStats(
         val totalMounts: Int, val overlayfsMounts: Int,
@@ -76,6 +77,27 @@ object KasumiUiAdapter {
             type == "hide" && path in userRules)
     }.toList()
 
+    private fun userRules(snapshot: KasumiManager.Snapshot): List<ActiveRule> {
+        val registered = snapshot.system.optJSONArray("user_hide") ?: return snapshot.hideRules.map {
+            ActiveRule("hide", it, isUserDefined = true)
+        }
+        val live = (0 until registered.length()).map(registered::getJSONObject).associateBy { it.getString("path") }
+        return (snapshot.hideRules + live.keys).distinct().map { path ->
+            val state = live[path]
+            ActiveRule("hide", path, isUserDefined = true,
+                hideState = when {
+                    state == null -> -1
+                    state.optInt("management") == 1 -> 4
+                    else -> state.optInt("binding")
+                }, hideError = state?.optInt("error") ?: 0)
+        }
+    }
+
+    private fun activeRules(snapshot: KasumiManager.Snapshot): List<ActiveRule> {
+        val legacy = rules(snapshot.system.optString("rules"), if (snapshot.system.has("user_hide")) emptySet() else snapshot.hideRules.toSet())
+        return if (snapshot.system.has("user_hide")) legacy + userRules(snapshot) else legacy
+    }
+
     private fun size(value: Long): String {
         val units = listOf("B", "KiB", "MiB", "GiB", "TiB")
         var amount = value.toDouble()
@@ -129,7 +151,7 @@ object KasumiUiAdapter {
                 protocol != 0 && protocol != 17, null,
                 stats?.let { MountStats(it.optInt("total_mounts"), it.optInt("overlayfs_mounts")) }, partitions,
                 sys.optString("hooks"), sys.optBoolean("enabled")),
-            storage, rules(rawRules, snapshot.hideRules.toSet()), FeaturesResult(features.optInt("bitmask"), supported),
+            storage, activeRules(snapshot), FeaturesResult(features.optInt("bitmask"), supported),
         )
     }
 
@@ -169,9 +191,14 @@ object KasumiUiAdapter {
 
     suspend fun getActiveRules(): List<ActiveRule> = withContext(Dispatchers.IO) {
         val snapshot = KasumiManager.snapshot()
-        rules(snapshot.system.optString("rules"), snapshot.hideRules.toSet())
+        activeRules(snapshot)
     }
     suspend fun listUserHideRules(): List<String> = KasumiManager.snapshot().hideRules
+    suspend fun userHideStates(): List<ActiveRule> {
+        val snapshot = KasumiManager.snapshot()
+        return userRules(snapshot).filter { it.src in snapshot.hideRules }
+    }
+    suspend fun retryUserHide(path: String) = success { KasumiManager.retryUserHide(path) }
     suspend fun addUserHideRule(path: String) = success { KasumiManager.saveHide(path) }
     suspend fun removeUserHideRule(path: String) = success { KasumiManager.saveHide(path, true) }
     suspend fun clearAllRules() = success { KasumiManager.clearRules() }

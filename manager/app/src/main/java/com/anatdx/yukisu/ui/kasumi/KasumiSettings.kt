@@ -298,11 +298,12 @@ private fun EditableConfigPath(title: Int, subtitle: Int, value: String, enabled
 private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarController) {
     val scope = rememberCoroutineScope()
     val resources = LocalResources.current
-    var paths by remember { mutableStateOf(emptyList<String>()) }
+    var states by remember { mutableStateOf(emptyList<Controller.ActiveRule>()) }
+    val paths = states.map { it.src }
     var newPath by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        try { paths = Controller.listUserHideRules() }
+        try { states = Controller.userHideStates() }
         catch (error: Exception) { if (error is CancellationException) throw error; snackbar.showSnackbar(error.message.orEmpty()) }
     }
     fun change(path: String, remove: Boolean) {
@@ -311,13 +312,37 @@ private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarController) {
         scope.launch {
             try {
                 val ok = if (remove) Controller.removeUserHideRule(path) else Controller.addUserHideRule(path)
-                paths = Controller.listUserHideRules()
+                states = Controller.userHideStates()
+                working = false
                 if (ok) newPath = "" else snackbar.showSnackbar(resources.getString(R.string.operation_failed))
-            } catch (error: Exception) { if (error is CancellationException) throw error; snackbar.showSnackbar(error.message.orEmpty()) }
+            } catch (error: Exception) { working = false; if (error is CancellationException) throw error; snackbar.showSnackbar(error.message.orEmpty()) }
             finally { working = false }
         }
     }
+    fun refresh(path: String? = null) {
+        if (working) return
+        working = true
+        scope.launch {
+            try {
+                val ok = when {
+                    path == null -> true
+                    states.find { it.src == path }?.hideState == -1 -> Controller.addUserHideRule(path)
+                    else -> Controller.retryUserHide(path)
+                }
+                states = Controller.userHideStates()
+                working = false
+                if (!ok) snackbar.showSnackbar(resources.getString(R.string.operation_failed))
+            } catch (error: Exception) {
+                working = false
+                if (error is CancellationException) throw error
+                snackbar.showSnackbar(error.message.orEmpty())
+            } finally { working = false }
+        }
+    }
     ConfigSection(stringResource(R.string.kasumi_user_hide_title)) {
+        TextButton(onClick = { refresh() }, enabled = !working) {
+            Text(stringResource(R.string.kasumi_rules_refresh))
+        }
         Text(stringResource(R.string.kasumi_quick_hide), style = MaterialTheme.typography.bodyMedium)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val externalStorage = android.os.Environment.getExternalStorageDirectory()
@@ -325,8 +350,18 @@ private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarController) {
                 AssistChip(onClick = { change(path, false) }, enabled = enabled && !working && path !in paths, label = { Text(path) })
             }
         }
-        paths.forEach { path -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(path, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        states.forEach { rule -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val path = rule.src
+            Column(Modifier.weight(1f)) {
+                Text(path, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                if (rule.hideState != null) Text(userHideStatus(rule), style = MaterialTheme.typography.bodySmall,
+                    color = if (rule.hideState == 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (rule.hideState == 3 || rule.hideState == 0 || rule.hideState == -1) {
+                IconButton(onClick = { refresh(path) }, enabled = enabled && !working) {
+                    YukiIcon(Icons.Filled.Refresh, stringResource(R.string.kasumi_hide_retry))
+                }
+            }
             IconButton(onClick = { change(path, true) }, enabled = enabled && !working) {
                 YukiIcon(Icons.Filled.Delete, stringResource(R.string.kasumi_user_hide_remove))
             }
@@ -338,6 +373,20 @@ private fun UserHideRulesCard(enabled: Boolean, snackbar: SnackbarController) {
                 Text(stringResource(R.string.kasumi_user_hide_add))
             }
         }
+    }
+}
+
+@Composable
+internal fun userHideStatus(rule: Controller.ActiveRule): String = when (rule.hideState) {
+    -1 -> stringResource(R.string.kasumi_hide_saved)
+    0 -> stringResource(R.string.kasumi_hide_pending)
+    1 -> stringResource(R.string.kasumi_hide_binding)
+    2 -> stringResource(R.string.kasumi_hide_bound)
+    4 -> stringResource(R.string.kasumi_hide_suspended)
+    else -> when (rule.hideError) {
+        -13, -1 -> stringResource(R.string.kasumi_hide_permission)
+        -95 -> stringResource(R.string.kasumi_hide_unsupported)
+        else -> stringResource(R.string.kasumi_hide_error, -rule.hideError)
     }
 }
 

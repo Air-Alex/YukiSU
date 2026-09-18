@@ -2,6 +2,7 @@
 
 #include "kagami/embedded_paths.hpp"
 #include "kagami/kasumi_client.hpp"
+#include "uapi/kasumi.h"
 #include "userspace/common/su_path.hpp"
 
 #include <algorithm>
@@ -390,6 +391,26 @@ std::string kernel_snapshot() {
   }
   out += "]},\"enabled\":";
   out += enabled ? "true" : "false";
+  std::vector<ksm::UserHideRule> user_rules;
+  const bool queried = ksm::user_hide_rules(user_rules);
+  if (queried &&
+      ((caps.bitmask & KSM_FEATURE_MANAGED_HIDE) || !user_rules.empty())) {
+    out += ",\"user_hide\":[";
+    bool first_rule = true;
+    for (const auto &rule : user_rules) {
+      if (!first_rule)
+        out += ',';
+      first_rule = false;
+      out += "{\"path\":" + quote(rule.path) +
+             ",\"id\":" + std::to_string(rule.id) +
+             ",\"management\":" + std::to_string(rule.management) +
+             ",\"binding\":" + std::to_string(rule.binding) +
+             ",\"error\":" + std::to_string(rule.error) + "}";
+    }
+    out += ']';
+  } else if (caps.bitmask & KSM_FEATURE_MANAGED_HIDE) {
+    failure("Kasumi user hide state");
+  }
   out += ",\"hooks\":" + quote(ksm::hooks()) +
          ",\"rules\":" + quote(ksm::active_rules()) + "}";
   return out;
@@ -472,6 +493,24 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_anatdx_yukisu_Natives_kasumiKernelSnapshot(JNIEnv *env,
                                                     jobject /* thiz */) {
   return result(env, kernel_snapshot);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_anatdx_yukisu_Natives_kasumiRetryUserHide(JNIEnv *env,
+                                                   jobject /* thiz */,
+                                                   jbyteArray path) {
+  try {
+    const auto input = std::make_shared<const std::string>(bytes(env, path));
+    return result(env, [input] {
+      if (!ksm::retry_user_hide(*input))
+        failure("Retry user hide rule");
+      return std::string("{}");
+    });
+  } catch (const std::exception &error) {
+    if (!env->ExceptionCheck())
+      env->ThrowNew(env->FindClass("java/io/IOException"), error.what());
+    return nullptr;
+  }
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

@@ -25,6 +25,7 @@ object Natives {
 
     external fun kagamiRequest(ksudPath: ByteArray, request: ByteArray): ByteArray
     external fun kasumiKernelSnapshot(): ByteArray
+    external fun kasumiRetryUserHide(path: ByteArray): ByteArray
     external fun kasumiIsInitialized(): Boolean
     external fun kasumiClearMapsRules()
     external fun kasumiAddMapsRule(numbers: LongArray, path: ByteArray)
