@@ -22,6 +22,7 @@
 #include "kasumi_vfs_view.h"
 #include "kasumi_iop_override.h"
 #include "kasumi_dirhijack.h"
+#include "kasumi_hide_rules.h"
 #include "kasumi_sop_shadow.h"
 #include "kasumi_fop_override.h"
 #include "kasumi_fake_mountinfo.h"
@@ -191,6 +192,9 @@ err_buffers:
 static void kasumi_stop_views(void)
 {
 	pr_info("kasumi: shutting down\n");
+	mutex_lock(&kasumi_mutation_mutex);
+	kasumi_hide_rules_stop();
+	mutex_unlock(&kasumi_mutation_mutex);
 	kasumi_vfs_view_stop();
 	kasumi_vfs_view_drain();
 

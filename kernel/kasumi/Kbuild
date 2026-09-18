@@ -3,6 +3,7 @@ kernelsu-objs += $(addprefix kasumi/, \
  core/kasumi_bootstrap.o core/kasumi_config_guard.o \
  core/kasumi_runtime.o core/kasumi_fop_bridge.o \
  core/kasumi_vnode.o core/kasumi_dirhijack.o core/kasumi_sop_shadow.o \
+ core/kasumi_hide_events.o core/kasumi_hide_rules.o \
  control/kasumi_ioctl.o \
  policy/kasumi_path_policy.o overlay/kasumi_overlay.o \
  hooks/kasumi_proc_read_hooks.o \

@@ -44,6 +44,7 @@
 #include "kasumi_store.h"
 #include "kasumi_path_policy.h"
 #include "kasumi_dirhijack.h"
+#include "kasumi_hide_rules.h"
 #include "policy/allowlist.h"
 
 #define KASUMI_MEDIA_RW_GID 1023
@@ -71,7 +72,7 @@ static enum kasumi_policy_scope kasumi_policy_scope_for_uid(uid_t uid)
 
 enum kasumi_policy_scope kasumi_policy_current_scope(void)
 {
-	if (!smp_load_acquire(&kasumi_enabled))
+	if (kasumi_hide_rules_resolving() || !smp_load_acquire(&kasumi_enabled))
 		return KASUMI_POLICY_SCOPE_NONE;
 	return kasumi_policy_scope_for_uid(__kuid_val(task_uid(current)));
 }

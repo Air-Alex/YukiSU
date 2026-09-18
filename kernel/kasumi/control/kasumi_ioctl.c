@@ -40,6 +40,7 @@
 #include <asm/unistd.h>
 #include "kasumi_runtime.h"
 #include "kasumi_dirhijack.h"
+#include "kasumi_hide_rules.h"
 #include "kasumi_vnode.h"
 #include "kasumi_bootstrap.h"
 #include "feature/sucompat_vfs.h"
@@ -164,6 +165,7 @@ static KASUMI_NOCFI int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
 	int ret = 0;
 
 	if (cmd == KSM_IOC_CLEAR_ALL) {
+		kasumi_hide_rules_clear();
 		mutex_lock(&kasumi_config_mutex);
 		kasumi_cleanup_locked();
 		mutex_unlock(&kasumi_config_mutex);
@@ -232,6 +234,7 @@ static KASUMI_NOCFI int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
 		}
 		kasumi_log("Kasumi %s\n",
 			   READ_ONCE(kasumi_enabled) ? "enabled" : "disabled");
+		kasumi_hide_rules_changed();
 		return 0;
 	}
 
@@ -658,6 +661,8 @@ static KASUMI_NOCFI int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
 
 	if (cmd == KSM_IOC_GET_FEATURES) {
 		int features = 0;
+		if (kasumi_hide_rules_available())
+			features |= KSM_FEATURE_MANAGED_HIDE;
 		features |= KSM_FEATURE_KSTAT_SPOOF;
 		features |= KSM_FEATURE_MERGE_DIR;
 		if (kasumi_overlay_xattr_available())
@@ -1319,7 +1324,6 @@ static KASUMI_NOCFI int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
  * concurrent CLEAR_ALL cannot return while an older update is still applying
  * those side effects or re-enable the module afterwards.
  */
-static DEFINE_MUTEX(kasumi_ioctl_mutex);
 long kasumi_handle_ioctl(unsigned int cmd, void __user *arg)
 {
 	long ret = kasumi_control_begin();
@@ -1327,9 +1331,16 @@ long kasumi_handle_ioctl(unsigned int cmd, void __user *arg)
 	if (ret)
 		return ret;
 
-	mutex_lock(&kasumi_ioctl_mutex);
+	mutex_lock(&kasumi_mutation_mutex);
 	atomic_long_set(&kasumi_ioctl_tgid, (long)task_tgid_vnr(current));
 	switch (cmd) {
+	case KSM_IOC_USER_HIDE_UPSERT:
+	case KSM_IOC_USER_HIDE_DELETE:
+	case KSM_IOC_USER_HIDE_QUERY:
+	case KSM_IOC_USER_HIDE_RETRY:
+	case KSM_IOC_USER_HIDE_CLEAR:
+		ret = kasumi_hide_rules_ioctl(cmd, arg);
+		break;
 	case KSM_IOC_GET_VERSION:
 	case KSM_IOC_GET_ENABLED:
 	case KSM_IOC_SET_ENABLED:
@@ -1371,7 +1382,7 @@ long kasumi_handle_ioctl(unsigned int cmd, void __user *arg)
 			    "kasumi: failed to rebind internal su node: %d\n",
 			    refresh);
 	}
-	mutex_unlock(&kasumi_ioctl_mutex);
+	mutex_unlock(&kasumi_mutation_mutex);
 	kasumi_control_end();
 	return ret;
 }
