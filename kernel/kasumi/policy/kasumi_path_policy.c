@@ -91,9 +91,12 @@ bool kasumi_hide_storage_parent(const struct inode *parent)
 static bool kasumi_hide_scope_allowed(bool storage_managed)
 {
 	long ioctl_tgid;
+	uid_t uid = __kuid_val(current_uid());
 
 	if (!smp_load_acquire(&kasumi_enabled) ||
 	    kasumi_is_privileged_process())
+		return false;
+	if (is_appuid(uid) && ksu_is_allow_uid(uid))
 		return false;
 	/* Storage services need the backing view, not a global hide exemption.
 	 */
