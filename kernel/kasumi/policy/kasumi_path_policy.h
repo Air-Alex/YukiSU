@@ -5,8 +5,14 @@
 #include <linux/path.h>
 #include <linux/stat.h>
 #include <linux/types.h>
+#include <uapi/linux/magic.h>
+
+#ifndef FUSE_SUPER_MAGIC
+#define FUSE_SUPER_MAGIC 0x65735546
+#endif
 
 struct kasumi_entry;
+struct inode;
 
 struct kasumi_rule_source {
 	struct path path;
@@ -36,7 +42,8 @@ bool kasumi_is_privileged_process(void);
 bool kasumi_policy_current_is_isolated(void);
 enum kasumi_policy_scope kasumi_policy_current_scope(void);
 bool kasumi_policy_current_is_view_target(void);
-bool kasumi_policy_current_is_hide_target(void);
+bool kasumi_hide_storage_parent(const struct inode *parent);
+bool kasumi_policy_current_is_hide_target(const struct inode *parent);
 bool kasumi_policy_current_is_spoof_target(void);
 bool kasumi_policy_uid_is_spoof_target(uid_t uid);
 bool kasumi_rule_get_source_flags(const char *pathname,

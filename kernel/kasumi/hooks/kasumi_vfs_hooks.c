@@ -286,7 +286,7 @@ kasumi_iterate_prepare_wrapper(struct file *file, struct dir_context *orig_ctx)
 		dir_inode = d_inode(w->parent_dentry);
 		if (dir_inode && dir_inode->i_mapping) {
 			w->dir_has_hidden =
-			    kasumi_policy_current_is_hide_target() &&
+			    kasumi_policy_current_is_hide_target(dir_inode) &&
 			    test_bit(AS_FLAGS_KASUMI_DIR_HAS_HIDDEN,
 				     &dir_inode->i_mapping->flags);
 			/* Fast path: if dir has no inject flag, skip
