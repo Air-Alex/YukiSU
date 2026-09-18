@@ -362,6 +362,7 @@ struct kasumi_dh_proxy {
 	struct dir_context *orig;
 	struct kasumi_dh_dir *dir;
 	int emitted;
+	bool stopped;
 };
 
 static KASUMI_DH_ACTOR_RET KASUMI_NOCFI
@@ -386,14 +387,15 @@ kasumi_dh_proxy_actor(struct dir_context *ctx, const char *name, int namelen,
 		injected = c && !c->lookup_only && kasumi_dh_current_targets(c);
 		rcu_read_unlock();
 	}
-	if (injected) {
-		p->ctx.pos = offset;
+	if (injected)
 		return KASUMI_DH_ACTOR_OK;
-	}
 	p->orig->pos = p->ctx.pos;
 	ret = p->orig->actor(p->orig, name, namelen, offset, ino, d_type);
 	p->ctx.pos = p->orig->pos;
-	p->emitted++;
+	if (ret == KASUMI_DH_ACTOR_OK)
+		p->emitted++;
+	else
+		p->stopped = true;
 	return ret;
 }
 
@@ -457,10 +459,20 @@ static int KASUMI_NOCFI kasumi_dh_iterate_inner(
 	proxy.ctx.pos = ctx->pos;
 	proxy.orig = ctx;
 	proxy.dir = dn;
-	ret = orig->iterate_shared(file, &proxy.ctx);
-	ctx->pos = proxy.ctx.pos;
-	if (ret < 0)
-		return ret;
+	for (;;) {
+		loff_t before = proxy.ctx.pos;
+
+		proxy.emitted = 0;
+		proxy.stopped = false;
+		ret = orig->iterate_shared(file, &proxy.ctx);
+		ctx->pos = proxy.ctx.pos;
+		if (ret < 0 || proxy.stopped || proxy.emitted)
+			return ret;
+		if (proxy.ctx.pos == before)
+			break;
+		/* Hidden-only batches must not signal EOF to the caller. */
+		cond_resched();
+	}
 	if (!kasumi_dh_current_sees() && !ksu_sucompat_vfs_enabled())
 		return ret;
 
