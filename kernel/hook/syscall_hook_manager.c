@@ -12,6 +12,7 @@
 #include <asm/syscall.h>
 #include <linux/mutex.h>
 #include <linux/ptrace.h>
+#include <linux/sched/task_stack.h>
 #include <linux/tracepoint.h>
 #include <trace/events/syscalls.h>
 
