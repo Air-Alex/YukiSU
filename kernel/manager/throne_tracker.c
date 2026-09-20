@@ -12,6 +12,8 @@
 #include "manager/dynamic_manager.h"
 #include "manager/manager_identity.h"
 #include "manager/throne_tracker.h"
+#include "ksu.h"
+#include "util.h"
 
 uid_t ksu_manager_uid = KSU_INVALID_UID;
 uid_t ksu_manager_appid = KSU_INVALID_UID;
@@ -462,8 +464,8 @@ static void search_manager(const char *path, int depth,
 			struct file *file;
 
 			if (!stop) {
-				file = filp_open(pos->dirpath,
-						 O_RDONLY | O_NOFOLLOW, 0);
+				file = ksu_filp_open_nonotify(
+				    pos->dirpath, O_RDONLY | O_NOFOLLOW | O_NOATIME);
 				if (IS_ERR(file)) {
 					pr_err("Failed to open directory: %s, "
 					       "err: %ld\n",
@@ -537,6 +539,7 @@ static bool is_uid_exist(uid_t uid, char *package, void *data)
 
 void track_throne(bool prune_only)
 {
+	const struct cred *old_cred = override_creds(ksu_cred);
 	struct list_head uid_list;
 	struct uid_data *np, *n;
 	struct file *fp;
@@ -556,7 +559,7 @@ void track_throne(bool prune_only)
 	if (IS_ERR(fp)) {
 		pr_err("%s: open " SYSTEM_PACKAGES_LIST_PATH " failed: %ld\n",
 		       __func__, PTR_ERR(fp));
-		return;
+		goto out;
 	}
 
 	size = i_size_read(file_inode(fp));
@@ -676,6 +679,7 @@ out:
 		list_del(&np->list);
 		kfree(np);
 	}
+	revert_creds(old_cred);
 }
 
 /*
