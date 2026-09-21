@@ -19,23 +19,11 @@
 #include "klog.h" // IWYU pragma: keep
 #include "ksu.h"
 #include "infra/su_mount_ns.h"
+#include "util.h"
 
 extern int path_mount(const char *dev_name, struct path *path,
 		      const char *type_page, unsigned long flags,
 		      void *data_page);
-
-extern long __arm64_sys_setns(const struct pt_regs *regs);
-
-static long ksu_sys_setns(int fd, int flags)
-{
-	struct pt_regs regs;
-	memset(&regs, 0, sizeof(regs));
-
-	PT_REGS_PARM1(&regs) = fd;
-	PT_REGS_PARM2(&regs) = flags;
-
-	return __arm64_sys_setns(&regs);
-}
 
 static void ksu_mnt_ns_global(void)
 {
@@ -111,11 +99,7 @@ try_setns:
 	fd_install(fd, ns_file);
 	ret = ksu_sys_setns(fd, CLONE_NEWNS);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 11, 0)
-	ksys_close(fd);
-#else
-	close_fd(fd);
-#endif // #if LINUX_VERSION_CODE < KERNEL_VERSION...
+	ksu_close_fd(fd);
 
 	if (ret) {
 		pr_warn("call setns failed: %ld\n", ret);
