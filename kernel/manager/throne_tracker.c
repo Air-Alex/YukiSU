@@ -465,7 +465,8 @@ static void search_manager(const char *path, int depth,
 
 			if (!stop) {
 				file = ksu_filp_open_nonotify(
-				    pos->dirpath, O_RDONLY | O_NOFOLLOW | O_NOATIME);
+				    pos->dirpath,
+				    O_RDONLY | O_NOFOLLOW | O_NOATIME);
 				if (IS_ERR(file)) {
 					pr_err("Failed to open directory: %s, "
 					       "err: %ld\n",
