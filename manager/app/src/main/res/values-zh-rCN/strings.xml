@@ -511,6 +511,9 @@
     <!-- Settings related strings -->
     <string name="show_more_module_info">显示更多模块信息</string>
     <string name="show_more_module_info_summary">显示额外的模块信息，如更新配置 URL 等</string>
+    <string name="settings_module_description_max_lines">模块描述最大行数</string>
+    <string name="settings_module_description_max_lines_summary">超过此行数的模块介绍将自动折叠。</string>
+    <string name="unit_lines">行</string>
     <string name="kernel_simple_kernel">内核版本简洁模式</string>
     <string name="kernel_simple_kernel_summary">启用或禁用 YukiSU 内核版本显示的简洁模式</string>
     <!-- 备份和还原相关字符串 -->

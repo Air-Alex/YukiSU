@@ -293,6 +293,12 @@ class MoreSettingsHandlers(
         state.showMoreModuleInfo = newValue
     }
 
+    fun handleModuleDescriptionMaxLinesChange(newValue: Int) {
+        val lines = newValue.coerceIn(1, 5)
+        prefs.edit { putInt("module_description_max_lines", lines) }
+        state.moduleDescriptionMaxLines = lines
+    }
+
     fun handleWebDebuggingChange(newValue: Boolean) {
         prefs.edit { putBoolean("enable_web_debugging", newValue) }
         state.enableWebDebugging = newValue

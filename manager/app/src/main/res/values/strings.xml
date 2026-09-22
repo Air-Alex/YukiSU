@@ -516,6 +516,9 @@
     <string name="app_categories">Application Type Selection</string>
     <string name="show_more_module_info">Show More Module Info</string>
     <string name="show_more_module_info_summary">Display additional module information like update JSON URLs</string>
+    <string name="settings_module_description_max_lines" tools:ignore="MissingTranslation">Module description max lines</string>
+    <string name="settings_module_description_max_lines_summary" tools:ignore="MissingTranslation">Descriptions exceeding this line count are folded automatically.</string>
+    <string name="unit_lines" tools:ignore="MissingTranslation">Lines</string>
     <string name="kernel_simple_kernel">Kernel Version Concise Mode</string>
     <string name="kernel_simple_kernel_summary">Enable or disable the clean mode displayed by the YukiSU kernel version</string>
     <string name="home_zygisk_implement">Zygisk implement</string>

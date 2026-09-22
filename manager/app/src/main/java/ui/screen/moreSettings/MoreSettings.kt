@@ -306,6 +306,8 @@ private fun CustomizationSettings(
             onChange = handlers::handleShowMoreModuleInfoChange
         )
 
+        ModuleDescriptionLinesSetting(state, handlers)
+
 
         SwitchSettingItem(
             icon = Icons.Filled.Brush,
@@ -333,6 +335,49 @@ private fun CustomizationSettings(
 
         HideOptionsSettings(state = state, handlers = handlers)
     }
+}
+
+@Composable
+private fun ModuleDescriptionLinesSetting(
+    state: MoreSettingsState,
+    handlers: MoreSettingsHandlers
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        YukiIcon(
+            Icons.Filled.Description,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.settings_module_description_max_lines),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = stringResource(R.string.settings_module_description_max_lines_summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            text = "${state.moduleDescriptionMaxLines} " + stringResource(R.string.unit_lines),
+            style = MaterialTheme.typography.labelMedium
+        )
+    }
+    Slider(
+        value = state.moduleDescriptionMaxLines.toFloat(),
+        onValueChange = { handlers.handleModuleDescriptionMaxLinesChange(it.toInt()) },
+        valueRange = 1f..5f,
+        steps = 3,
+        modifier = Modifier.padding(horizontal = 16.dp)
+    )
 }
 
 @Composable

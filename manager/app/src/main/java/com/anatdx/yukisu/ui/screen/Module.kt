@@ -1203,6 +1203,9 @@ fun ModuleItem(
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
+    val moduleDescriptionMaxLines = context.getSharedPreferences("settings", MODE_PRIVATE)
+        .getInt("module_description_max_lines", 4)
+        .coerceIn(1, 5)
     val (isHideTagRow, showMoreModuleInfo) = remember {
         val p = context.getSharedPreferences("settings", MODE_PRIVATE)
         Pair(p.getBoolean("is_hide_tag_row", false), p.getBoolean("show_more_module_info", false))
@@ -1346,7 +1349,7 @@ fun ModuleItem(
                 lineHeight = MaterialTheme.typography.bodySmall.lineHeight,
                 fontWeight = MaterialTheme.typography.bodySmall.fontWeight,
                 overflow = TextOverflow.Ellipsis,
-                maxLines = 4,
+                maxLines = moduleDescriptionMaxLines,
                 textDecoration = textDecoration,
             )
 

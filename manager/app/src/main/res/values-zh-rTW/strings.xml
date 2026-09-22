@@ -338,6 +338,9 @@
     <string name="app_categories">應用程式類型選擇</string>
     <string name="show_more_module_info">顯示更多模組資訊</string>
     <string name="show_more_module_info_summary">顯示額外的模組資訊，如更新設定 URL 等</string>
+    <string name="settings_module_description_max_lines">模組描述最大行數</string>
+    <string name="settings_module_description_max_lines_summary">超過此行數的模組介紹將自動折疊。</string>
+    <string name="unit_lines">行</string>
     <string name="kernel_simple_kernel">內核版本簡潔模式</string>
     <string name="kernel_simple_kernel_summary">啟用或停用 YukiSU 內核版本顯示的簡潔模式</string>
     <string name="home_zygisk_implement">Zygisk 實現</string>

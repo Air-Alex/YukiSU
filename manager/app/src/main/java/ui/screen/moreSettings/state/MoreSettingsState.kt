@@ -54,6 +54,9 @@ class MoreSettingsState(
     var isHideTagRow by mutableStateOf(prefs.getBoolean("is_hide_tag_row", false))
     var isKernelSimpleMode by mutableStateOf(prefs.getBoolean("is_kernel_simple_mode", false))
     var showMoreModuleInfo by mutableStateOf(prefs.getBoolean("show_more_module_info", false))
+    var moduleDescriptionMaxLines by mutableIntStateOf(
+        prefs.getInt("module_description_max_lines", 4).coerceIn(1, 5)
+    )
     var enableWebDebugging by mutableStateOf(prefs.getBoolean("enable_web_debugging", false))
     var useWebUIXEruda by mutableStateOf(prefs.getBoolean("use_webuix_eruda", false))
     var webuiEngine by mutableStateOf(prefs.getString("webui_engine", "default") ?: "default")
