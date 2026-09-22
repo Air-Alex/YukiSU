@@ -29,11 +29,18 @@
 #include <unistd.h>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
+#include <regex>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
 
 namespace ksud {
 
@@ -131,6 +138,88 @@ bool run_soft_reboot_command(const char* command) {
 
     LOGW("%s failed with exit code %d: %s", command, result.exit_code, result.stderr_str.c_str());
     return false;
+}
+
+constexpr std::chrono::milliseconds kServicePollInterval{200};
+constexpr std::chrono::seconds kServiceStopTimeout{5};
+
+std::vector<std::string> list_services() {
+    const auto result = exec_command({"/system/bin/service", "list"});
+    if (result.exit_code != 0)
+        return {};
+
+    std::vector<std::string> services;
+    const std::regex entry(R"(^\s*\d+\s+([^\s:]+):\s+\[[^\]]*\]\s*$)");
+    for (size_t begin = 0; begin < result.stdout_str.size();) {
+        const size_t end = result.stdout_str.find('\n', begin);
+        const std::string line =
+            result.stdout_str.substr(begin, end == std::string::npos ? end : end - begin);
+        std::smatch match;
+        if (std::regex_match(line, match, entry))
+            services.emplace_back(match[1].str());
+        if (end == std::string::npos)
+            break;
+        begin = end + 1;
+    }
+    return services;
+}
+
+std::optional<pid_t> service_pid(const std::string& name) {
+    const auto result = exec_command({"/system/bin/service", "call", name, "1599097156"});
+    if (result.exit_code != 0)
+        return std::nullopt;
+
+    std::smatch match;
+    if (!std::regex_search(result.stdout_str, match,
+                           std::regex(R"(Result:\s+Parcel\(\s*([0-9A-Fa-f]{8}))")))
+        return std::nullopt;
+
+    char* end = nullptr;
+    const auto value = std::strtoul(match[1].str().c_str(), &end, 16);
+    if (!end || *end != '\0')
+        return std::nullopt;
+    return static_cast<pid_t>(value);
+}
+
+std::vector<std::string> collect_system_server_services() {
+    const auto services = list_services();
+    if (services.empty())
+        return {};
+
+    const auto activity_pid = service_pid("activity");
+    std::vector<std::string> tracked;
+    for (const auto& service : services) {
+        if (service == "activity") {
+            tracked.push_back(service);
+            continue;
+        }
+        const auto pid = service_pid(service);
+        if ((activity_pid && pid && *pid == *activity_pid) ||
+            (!activity_pid && (service == "package" || service == "user")))
+            tracked.push_back(service);
+    }
+    LOGI("Tracking %zu system_server services during soft reboot", tracked.size());
+    return tracked;
+}
+
+void wait_for_system_server_services(const std::vector<std::string>& tracked) {
+    if (tracked.empty())
+        return;
+
+    const auto deadline = std::chrono::steady_clock::now() + kServiceStopTimeout;
+    std::unordered_set<std::string> tracked_set(tracked.begin(), tracked.end());
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto running = list_services();
+        for (const auto& service : running)
+            tracked_set.erase(service);
+        if (tracked_set.empty()) {
+            LOGI("system_server services stopped");
+            return;
+        }
+        std::this_thread::sleep_for(kServicePollInterval);
+    }
+
+    LOGW("Timed out waiting for system_server services to stop");
 }
 
 // Catch boot logs (logcat/dmesg) to file
@@ -597,8 +686,12 @@ int soft_reboot() {
 
     run_stage("emulated-soft-reboot", true);
 
+    const auto system_server_services = collect_system_server_services();
+
     LOGI("Stopping Android services");
     (void)run_soft_reboot_command("stop");
+
+    wait_for_system_server_services(system_server_services);
 
     LOGI("Running post-fs-data after stop");
     (void)on_post_data_fs();
