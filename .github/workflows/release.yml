@@ -15,6 +15,8 @@ jobs:
   release:
     needs:
       - build-manager
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -35,15 +37,12 @@ jobs:
         run: |
           mkdir -p ksud
           for dir in ./ksud-*; do
-              if [ -d "$dir" ]; then
-                 echo "----- Rename $dir -----"
-                 ksud_platform_name=$(basename "$dir")
-                 find "$dir" -type f -name "ksud" -path "*/release/*" | while read -r ksud_file; do
-                   if [ -f "$ksud_file" ]; then
-                     mv "$ksud_file" "ksud/$ksud_platform_name"
-                   fi
-                 done
-              fi
+            if [ -d "$dir" ]; then
+              echo "----- Rename $dir -----"
+              ksud_platform_name=$(basename "$dir")
+              mv "$dir/ksud" "ksud/$ksud_platform_name"
+              mv "$dir/ksud.sig" "ksud/$ksud_platform_name.sig"
+            fi
           done
       - name: Zip AnyKernel3
         run: |
