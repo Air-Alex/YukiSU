@@ -429,6 +429,11 @@ class SuperUserViewModel : ViewModel() {
     }
 
     private suspend fun fetchAppListFromService(forceRefresh: Boolean) {
+        if (!withContext(Dispatchers.IO) { KsuCli.SHELL.isRoot }) {
+            Log.w(TAG, "Root access is required to load the app list")
+            return
+        }
+
         val binder = connectKsuService() ?: return
 
         withContext(Dispatchers.IO) {
