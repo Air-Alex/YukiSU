@@ -28,7 +28,8 @@ struct selinux_policy *backup_sepolicy;
 static struct policydb *get_policydb(void)
 {
 	struct policydb *db;
-	struct selinux_policy *policy = selinux_state.policy;
+	struct selinux_policy *policy = rcu_dereference_protected(
+	    selinux_state.policy, lockdep_is_held(&selinux_state.policy_mutex));
 	db = &policy->policydb;
 	return db;
 }
@@ -44,7 +45,9 @@ static void backup_original_sepolicy_once(void)
 	if (backup_sepolicy)
 		return;
 
-	backup_sepolicy = ksu_dup_sepolicy(selinux_state.policy);
+	backup_sepolicy = ksu_dup_sepolicy(rcu_dereference_protected(
+	    selinux_state.policy,
+	    lockdep_is_held(&selinux_state.policy_mutex)));
 	if (IS_ERR(backup_sepolicy)) {
 		pr_err("failed to create backup sepolicy: %ld\n",
 		       PTR_ERR(backup_sepolicy));
@@ -1037,6 +1040,7 @@ void apply_kernelsu_rules(void)
 	}
 
 	mutex_lock(&ksu_rules);
+	mutex_lock(&selinux_state.policy_mutex);
 
 	backup_original_sepolicy_once();
 
@@ -1118,6 +1122,7 @@ void apply_kernelsu_rules(void)
 	ksu_allow(db, "system_server", "system_server", "process", "execmem");
 	// https://android-review.googlesource.com/c/platform/system/logging/+/3725346
 	ksu_dontaudit(db, "untrusted_app", KERNEL_SU_DOMAIN, "dir", "getattr");
+	mutex_unlock(&selinux_state.policy_mutex);
 	mutex_unlock(&ksu_rules);
 }
 
@@ -1424,9 +1429,9 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 
 	mutex_lock(&selinux_state.policy_mutex);
 
-	old_pol = selinux_state.policy;
-	pol = ksu_dup_sepolicy(rcu_dereference_protected(
-	    old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+	old_pol = rcu_dereference_protected(
+	    selinux_state.policy, lockdep_is_held(&selinux_state.policy_mutex));
+	pol = ksu_dup_sepolicy(old_pol);
 	if (IS_ERR(pol)) {
 		ret = PTR_ERR(pol);
 		pr_err("ksu_dup_sepolicy err: %d\n", ret);
