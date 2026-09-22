@@ -229,6 +229,8 @@ api_level_arch_detect() {
     exit 1
   fi
   ARCH=arm64
+  ABI32=armeabi-v7a
+  IS64BIT=true
 }
 
 #################
