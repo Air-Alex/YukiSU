@@ -173,7 +173,7 @@ struct yz_safemode_status_cmd {
 
 struct yz_module_load_policy_cmd {
   __u32 pid;
-  __s32 dirfd;
+  __s32 dirfd; // Module directory or read-only source memfd.
 };
 
 #define KSU_IOCTL_YZ_SET_DLOPEN32 _IOC(_IOC_WRITE, 'K', 62, 0)
@@ -203,6 +203,8 @@ enum yz_runtime_abi {
 
 #define YZ_RUNTIME_F_EARLY_NATIVE (1U << 0)
 
+#define YZ_RUNTIME_CAP_MODULE_IMAGE_POLICY (1U << 0)
+
 struct yz_runtime_record {
   __u32 pid;
   __u32 generation;
@@ -224,7 +226,7 @@ struct yz_runtime_query_cmd {
   __u32 generation;
   __u32 safe_mode;
   __u32 zygote_crashes;
-  __u32 reserved;
+  __u32 capabilities; // Zero on kernels with directory-only load policy.
   char safe_mode_zygote[YZ_ZYGOTE_NAME_MAX];
 };
 
