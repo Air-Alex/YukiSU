@@ -139,7 +139,7 @@
             android:name=".magica.BootCompletedReceiver"
             android:directBootAware="true"
             android:enabled="false"
-            android:exported="true"
+            android:exported="false"
             android:process=":boot">
             <intent-filter>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
