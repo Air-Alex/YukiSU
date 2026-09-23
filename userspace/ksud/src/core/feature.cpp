@@ -12,6 +12,7 @@
 #include "ksucalls.hpp"
 #include "su_path.hpp"
 
+#include <fcntl.h>
 #include <unistd.h>
 #include <cerrno>
 #include <cinttypes>
@@ -19,6 +20,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace ksud {
@@ -32,6 +34,14 @@ const std::string& get_feature_config_path() {
 constexpr uint32_t FEATURE_MAGIC = 0x7f4b5355;
 constexpr uint32_t FEATURE_VERSION = 1;
 constexpr const char* LEGACY_HIDE_BOOTLOADER_CONFIG = "/data/adb/ksu/.hide_bootloader";
+
+bool sync_feature_directory() {
+    const int fd = open(WORKING_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0)
+        return false;
+    const bool synced = fsync(fd) == 0;
+    return close(fd) == 0 && synced;
+}
 
 const std::map<std::string, uint32_t>& get_feature_map() {
     static const std::map<std::string, uint32_t> map = {
@@ -375,8 +385,8 @@ int save_feature_config_files(const std::map<uint32_t, uint64_t>& features) {
         text += std::to_string(it->second);
         text += '\n';
     }
-    if (!write_file(config_path, text)) {
-        LOGE("Failed to open config file for writing");
+    if (!write_file_atomic(config_path, text) || !sync_feature_directory()) {
+        LOGE("Failed to persist text feature configuration");
         return 1;
     }
 
@@ -529,7 +539,7 @@ int feature_set_and_save(const std::string& id, uint64_t value) {
     }
     const auto restore_file = [](const std::string& path, const auto& previous) {
         if (previous) {
-            return write_file(path, *previous);
+            return write_file_atomic(path, *previous) && sync_feature_directory();
         }
         return unlink(path.c_str()) == 0 || errno == ENOENT;
     };
@@ -584,6 +594,34 @@ int feature_check(const std::string& id) {
     }
 }
 
+namespace {
+
+std::map<uint32_t, uint64_t> parse_text_feature_config(const std::string& content) {
+    std::map<uint32_t, uint64_t> features;
+    for_each_line(content, [&](std::string_view raw_line) {
+        const std::string_view line = trim_view(raw_line);
+        if (line.empty() || line[0] == '#')
+            return;
+        const size_t eq = line.find('=');
+        if (eq == std::string_view::npos)
+            return;
+        const std::string key(trim_view(line.substr(0, eq)));
+        const std::string val(trim_view(line.substr(eq + 1)));
+        const auto [feature_id, valid] = parse_feature_id(key);
+        if (!valid)
+            return;
+        uint64_t value = 0;
+        if (!parse_uint64(val, &value)) {
+            LOGW("Invalid value for feature %s: %s", key.c_str(), val.c_str());
+            return;
+        }
+        features[feature_id] = value;
+    });
+    return features;
+}
+
+}  // namespace
+
 int feature_load_config() {
     const SucompatTransitionLock transition;
     if (!transition.locked()) {
@@ -597,7 +635,6 @@ int feature_load_config() {
         return 0;
     }
 
-    // Parse simple key=value format
     std::map<uint32_t, uint64_t> loaded_features;
     for_each_line(*content, [&](std::string_view raw_line) {
         const std::string_view line = trim_view(raw_line);
@@ -684,13 +721,13 @@ int refresh_sucompat_vfs() {
     return 0;
 }
 
-std::map<uint32_t, uint64_t> load_binary_config() {
+std::optional<std::map<uint32_t, uint64_t>> load_binary_config() {
     std::map<uint32_t, uint64_t> features;
 
     const auto blob = read_file(get_feature_config_path());
     if (!blob) {
-        LOGI("Feature binary config not found, using defaults");
-        return features;
+        LOGI("Feature binary config not found");
+        return std::nullopt;
     }
 
     // Fixed-layout record file: magic, version, count, then count*(u32 id, u64
@@ -708,22 +745,30 @@ std::map<uint32_t, uint64_t> load_binary_config() {
     uint32_t magic = 0;
     if (!take(&magic, sizeof(magic)) || magic != FEATURE_MAGIC) {
         LOGW("Invalid feature config magic: expected 0x%08x, got 0x%08x", FEATURE_MAGIC, magic);
-        return features;
+        return std::nullopt;
     }
 
     uint32_t version = 0;
     if (!take(&version, sizeof(version))) {
         LOGW("Feature config truncated before version");
-        return features;
+        return std::nullopt;
     }
     if (version != FEATURE_VERSION) {
         LOGW("Feature config version mismatch: expected %u, got %u", FEATURE_VERSION, version);
+        return std::nullopt;
     }
 
     uint32_t count = 0;
     if (!take(&count, sizeof(count))) {
         LOGW("Feature config truncated before count");
-        return features;
+        return std::nullopt;
+    }
+
+    constexpr size_t record_size = sizeof(uint32_t) + sizeof(uint64_t);
+    if (count != (blob->size() - offset) / record_size ||
+        (blob->size() - offset) % record_size != 0) {
+        LOGW("Feature config has an invalid record count or size");
+        return std::nullopt;
     }
 
     for (uint32_t i = 0; i < count; i++) {
@@ -731,7 +776,7 @@ std::map<uint32_t, uint64_t> load_binary_config() {
         uint64_t value = 0;
         if (!take(&id, sizeof(id)) || !take(&value, sizeof(value))) {
             LOGW("Feature config truncated at entry %u of %u", i, count);
-            break;
+            return std::nullopt;
         }
         features[id] = value;
     }
@@ -761,8 +806,8 @@ int save_binary_config(const std::map<uint32_t, uint64_t>& features) {
         put(&value, sizeof(value));
     }
 
-    if (!write_file(get_feature_config_path(), blob)) {
-        LOGE("Failed to create feature binary config file");
+    if (!write_file_atomic(get_feature_config_path(), blob) || !sync_feature_directory()) {
+        LOGE("Failed to persist binary feature configuration");
         return -1;
     }
 
@@ -823,7 +868,28 @@ int init_features() {
     if (restore_su_path() != 0)
         LOGE("Persisted su path could not be restored");
 
-    auto features = load_binary_config();
+    auto binary_features = load_binary_config();
+    bool recovered_from_text = false;
+    if (!binary_features) {
+        const auto text_config = read_file(FEATURE_CONFIG_PATH);
+        if (text_config) {
+            auto text_features = parse_text_feature_config(*text_config);
+            if (!text_features.empty()) {
+                LOGW("Recovering feature configuration from %s", FEATURE_CONFIG_PATH);
+                binary_features = std::move(text_features);
+                recovered_from_text = true;
+            }
+        }
+    }
+    if (!binary_features) {
+        if (access(get_feature_config_path().c_str(), F_OK) == 0) {
+            LOGE("Invalid feature config without usable text backup");
+            return 1;
+        }
+        LOGI("No persisted feature configuration found");
+        binary_features.emplace();
+    }
+    auto features = std::move(*binary_features);
 
     // Versions before KSU_FEATURE_HIDE_BOOTLOADER used a standalone marker.
     // Import it only when the running kernel supports the formal feature, then
@@ -898,9 +964,10 @@ int init_features() {
     // Save the configuration (excluding managed features). A legacy migration
     // updates the human-readable config too, so a later `feature load` cannot
     // silently drop the migrated value.
-    const int save_result = consume_legacy_hide_bootloader || features != requested_features
-                                ? save_feature_config_files(features)
-                                : save_binary_config(features);
+    const int save_result =
+        recovered_from_text || consume_legacy_hide_bootloader || features != requested_features
+            ? save_feature_config_files(features)
+            : save_binary_config(features);
     if (save_result != 0) {
         LOGW("Failed to save initialized feature configuration");
         return 1;

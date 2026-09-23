@@ -271,6 +271,8 @@
     <string name="settings_auto_jailbreak_summary">开机检测到 Permissive SELinux 时自动使用 Magica 引导 late-load。需要授予本应用自启动权限。</string>
     <string name="settings_soft_reboot">使用软重启代替重启</string>
     <string name="settings_soft_reboot_summary">安装、更新、启用、停用或移除模块后使用软重启。</string>
+    <string name="settings_soft_reboot_kasumi_unavailable">Kasumi 运行期间无法使用软重启；模块变更后将使用完整重启。</string>
+    <string name="soft_reboot_kasumi_unavailable">Kasumi 正在运行，请使用完整重启。</string>
     <string name="settings_adb_root">ADB Root</string>
     <string name="settings_adb_root_summary">让 adbd 以 root 权限运行</string>
     <string name="grant_root_failed">获取 root 失败！</string>

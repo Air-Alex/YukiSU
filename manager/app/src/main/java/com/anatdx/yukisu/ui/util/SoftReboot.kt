@@ -19,4 +19,13 @@ fun setSoftRebootEnabled(context: Context, enabled: Boolean) {
 }
 
 fun isSoftRebootPreferred(context: Context = ksuApp): Boolean =
-    runCatching { Natives.isLateLoadMode }.getOrDefault(false) || isSoftRebootEnabled(context)
+    !isSoftRebootBlockedByKasumi() &&
+        (runCatching { Natives.isLateLoadMode }.getOrDefault(false) || isSoftRebootEnabled(context))
+
+fun isSoftRebootBlockedByKasumi(): Boolean {
+    val runtime = runCatching { Natives.kasumiRuntimeState() }.getOrDefault(-1)
+    if (runtime > 0) return true
+    val requested = runCatching { Natives.getFeature(Natives.FEATURE_KASUMI) }.getOrDefault(-1)
+    val available = runCatching { Natives.kasumiIsInitialized() }.getOrDefault(false)
+    return requested > 0 || (runtime < 0 && (requested >= 0 || available))
+}

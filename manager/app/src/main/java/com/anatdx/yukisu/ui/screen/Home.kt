@@ -82,6 +82,7 @@ import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.anatdx.yukisu.ui.util.LocalSnackbarHost
 import com.anatdx.yukisu.ui.util.checkNewVersion
+import com.anatdx.yukisu.ui.util.isSoftRebootBlockedByKasumi
 import com.anatdx.yukisu.ui.util.module.LatestVersionInfo
 import com.anatdx.yukisu.ui.util.reboot
 import com.anatdx.yukisu.ui.viewmodel.HomeViewModel
@@ -542,8 +543,10 @@ private fun TopBar(
                     Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.kasumi_title))
                 }
                 var showDropdown by remember { mutableStateOf(false) }
+                var softRebootBlocked by remember { mutableStateOf(false) }
                 KsuIsValid {
                     IconButton(onClick = {
+                        softRebootBlocked = isSoftRebootBlockedByKasumi()
                         showDropdown = true
                     }) {
                         YukiIcon(
@@ -556,7 +559,8 @@ private fun TopBar(
                         ) as PowerManager?
                         val rebootOptions = buildList {
                             add(RebootMenuOption(R.string.reboot))
-                            add(RebootMenuOption(R.string.reboot_soft, "soft_reboot"))
+                            if (!softRebootBlocked)
+                                add(RebootMenuOption(R.string.reboot_soft, "soft_reboot"))
                             @Suppress("DEPRECATION")
                             if (
                                 pm?.isRebootingUserspaceSupported == true

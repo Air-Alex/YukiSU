@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 
 namespace ksud {
@@ -16,7 +17,7 @@ int feature_load_config();
 int feature_save_config();
 
 // Binary config management
-std::map<uint32_t, uint64_t> load_binary_config();
+std::optional<std::map<uint32_t, uint64_t>> load_binary_config();
 int save_binary_config(const std::map<uint32_t, uint64_t>& features);
 void apply_config(std::map<uint32_t, uint64_t>& features);
 int refresh_sucompat_vfs();

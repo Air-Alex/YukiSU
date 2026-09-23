@@ -114,6 +114,10 @@ fun SettingScreen(navigator: DestinationsNavigator) {
     var useSoftReboot by rememberSaveable {
         mutableStateOf(isSoftRebootEnabled(context))
     }
+    var softRebootBlocked by remember { mutableStateOf(isSoftRebootBlockedByKasumi()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        softRebootBlocked = isSoftRebootBlockedByKasumi()
+    }
     val isLateLoadMode = remember {
         runCatching { Natives.isLateLoadMode }.getOrDefault(false)
     }
@@ -348,9 +352,12 @@ fun SettingScreen(navigator: DestinationsNavigator) {
                     SwitchItem(
                         icon = Icons.Filled.RestartAlt,
                         title = stringResource(R.string.settings_soft_reboot),
-                        summary = stringResource(R.string.settings_soft_reboot_summary),
-                        enabled = !isLateLoadMode,
-                        checked = isLateLoadMode || useSoftReboot,
+                        summary = stringResource(
+                            if (softRebootBlocked) R.string.settings_soft_reboot_kasumi_unavailable
+                            else R.string.settings_soft_reboot_summary
+                        ),
+                        enabled = !isLateLoadMode && !softRebootBlocked,
+                        checked = !softRebootBlocked && (isLateLoadMode || useSoftReboot),
                         onCheckedChange = { enabled ->
                             setSoftRebootEnabled(context, enabled)
                             useSoftReboot = enabled

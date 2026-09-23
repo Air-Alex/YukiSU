@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.core.net.toUri
 import android.util.Log
+import android.widget.Toast
 import com.anatdx.yukisu.R
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
@@ -1642,6 +1643,10 @@ fun restartAdbd(): Boolean =
 
 fun reboot(reason: String = "") {
     if (reason == "soft_reboot") {
+        if (isSoftRebootBlockedByKasumi()) {
+            Toast.makeText(ksuApp, R.string.soft_reboot_kasumi_unavailable, Toast.LENGTH_LONG).show()
+            return
+        }
         execKsud("soft-reboot", newShell = true)
         return
     }

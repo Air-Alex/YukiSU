@@ -27,6 +27,7 @@ object Natives {
     external fun kasumiKernelSnapshot(): ByteArray
     external fun kasumiRetryUserHide(path: ByteArray): ByteArray
     external fun kasumiIsInitialized(): Boolean
+    external fun kasumiRuntimeState(): Int
     external fun kasumiClearMapsRules()
     external fun kasumiAddMapsRule(numbers: LongArray, path: ByteArray)
     external fun kasumiReadLog(kernel: Boolean): ByteArray

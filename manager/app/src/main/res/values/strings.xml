@@ -275,6 +275,8 @@
     <string name="settings_auto_jailbreak_summary">Automatically use Magica to bootstrap late-load when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
     <string name="settings_soft_reboot" tools:ignore="MissingTranslation">Soft restart instead of reboot</string>
     <string name="settings_soft_reboot_summary" tools:ignore="MissingTranslation">Use a soft restart after installing, updating, enabling, disabling, or removing modules.</string>
+    <string name="settings_soft_reboot_kasumi_unavailable" tools:ignore="MissingTranslation">Unavailable while Kasumi is active; module changes will use a full reboot.</string>
+    <string name="soft_reboot_kasumi_unavailable" tools:ignore="MissingTranslation">Kasumi is active. Use a full reboot.</string>
     <string name="settings_adb_root">ADB Root</string>
     <string name="settings_adb_root_summary">Run adbd with root privileges</string>
     <string name="grant_root_failed">Failed to grant root!</string>

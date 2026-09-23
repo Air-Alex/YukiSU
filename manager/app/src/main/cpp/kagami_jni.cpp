@@ -535,6 +535,12 @@ Java_com_anatdx_yukisu_Natives_kasumiIsInitialized(JNIEnv * /*env*/,
   return ksm::is_available() ? JNI_TRUE : JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_anatdx_yukisu_Natives_kasumiRuntimeState(JNIEnv * /*env*/,
+                                                  jobject /*thiz*/) {
+  return ksm::enabled_state();
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_anatdx_yukisu_Natives_kasumiReadLog(JNIEnv *env, jobject /* thiz */,
                                              jboolean kernel) {

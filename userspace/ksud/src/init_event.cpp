@@ -1,5 +1,6 @@
 #include "init_event.hpp"
 #include "../kagami/include/kagami/embedded.hpp"
+#include "../kagami/include/kagami/kasumi_client.hpp"
 #include "assets.hpp"
 #include "core/feature.hpp"
 #include "core/hide_bootloader.hpp"
@@ -25,6 +26,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <array>
@@ -35,11 +37,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <optional>
-#include <regex>
 #include <string>
 #include <thread>
-#include <unordered_set>
 #include <vector>
 
 namespace ksud {
@@ -140,86 +141,52 @@ bool run_soft_reboot_command(const char* command) {
     return false;
 }
 
-constexpr std::chrono::milliseconds kServicePollInterval{200};
-constexpr std::chrono::seconds kServiceStopTimeout{5};
-
-std::vector<std::string> list_services() {
-    const auto result = exec_command({"/system/bin/service", "list"});
-    if (result.exit_code != 0)
-        return {};
-
-    std::vector<std::string> services;
-    const std::regex entry(R"(^\s*\d+\s+([^\s:]+):\s+\[[^\]]*\]\s*$)");
-    for (size_t begin = 0; begin < result.stdout_str.size();) {
-        const size_t end = result.stdout_str.find('\n', begin);
-        const std::string line =
-            result.stdout_str.substr(begin, end == std::string::npos ? end : end - begin);
-        std::smatch match;
-        if (std::regex_match(line, match, entry))
-            services.emplace_back(match[1].str());
-        if (end == std::string::npos)
-            break;
-        begin = end + 1;
-    }
-    return services;
-}
-
-std::optional<pid_t> service_pid(const std::string& name) {
-    const auto result = exec_command({"/system/bin/service", "call", name, "1599097156"});
+std::optional<pid_t> system_server_pid() {
+    const auto result = exec_command({"/system/bin/pidof", "-s", "system_server"});
     if (result.exit_code != 0)
         return std::nullopt;
 
-    std::smatch match;
-    if (!std::regex_search(result.stdout_str, match,
-                           std::regex(R"(Result:\s+Parcel\(\s*([0-9A-Fa-f]{8}))")))
-        return std::nullopt;
-
+    const char* begin = result.stdout_str.c_str();
     char* end = nullptr;
-    const auto value = std::strtoul(match[1].str().c_str(), &end, 16);
-    if (!end || *end != '\0')
+    errno = 0;
+    const long value = std::strtol(begin, &end, 10);
+    if (errno != 0 || end == begin || value <= 1 || value > std::numeric_limits<pid_t>::max() ||
+        (*end != '\0' && *end != '\n'))
         return std::nullopt;
     return static_cast<pid_t>(value);
 }
 
-std::vector<std::string> collect_system_server_services() {
-    const auto services = list_services();
-    if (services.empty())
-        return {};
-
-    const auto activity_pid = service_pid("activity");
-    std::vector<std::string> tracked;
-    for (const auto& service : services) {
-        if (service == "activity") {
-            tracked.push_back(service);
-            continue;
+void wait_for_system_server_exit(pid_t pid, int pidfd) {
+    constexpr auto timeout = std::chrono::seconds(5);
+    if (pidfd >= 0) {
+        pollfd pfd{pidfd, POLLIN, 0};
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now());
+            const int result = poll(&pfd, 1, static_cast<int>(remaining.count()));
+            if (result > 0 && (pfd.revents & POLLIN)) {
+                close(pidfd);
+                LOGI("system_server exited after stop");
+                return;
+            }
+            if (result < 0 && errno == EINTR)
+                continue;
+            break;
         }
-        const auto pid = service_pid(service);
-        if ((activity_pid && pid && *pid == *activity_pid) ||
-            (!activity_pid && (service == "package" || service == "user")))
-            tracked.push_back(service);
-    }
-    LOGI("Tracking %zu system_server services during soft reboot", tracked.size());
-    return tracked;
-}
-
-void wait_for_system_server_services(const std::vector<std::string>& tracked) {
-    if (tracked.empty())
+        close(pidfd);
+        LOGW("Timed out waiting for system_server to exit");
         return;
-
-    const auto deadline = std::chrono::steady_clock::now() + kServiceStopTimeout;
-    std::unordered_set<std::string> tracked_set(tracked.begin(), tracked.end());
+    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
-        const auto running = list_services();
-        for (const auto& service : running)
-            tracked_set.erase(service);
-        if (tracked_set.empty()) {
-            LOGI("system_server services stopped");
+        if (kill(pid, 0) != 0 && errno == ESRCH) {
+            LOGI("system_server exited after stop");
             return;
         }
-        std::this_thread::sleep_for(kServicePollInterval);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-
-    LOGW("Timed out waiting for system_server services to stop");
+    LOGW("Timed out waiting for system_server to exit");
 }
 
 // Catch boot logs (logcat/dmesg) to file
@@ -671,6 +638,18 @@ int soft_reboot() {
         return 0;
     }
 
+    const bool kasumi_available = kagami::kasumi::is_available();
+    const int kasumi_runtime = kagami::kasumi::enabled_state();
+    const auto [kasumi_requested, kasumi_supported] = get_feature(KSU_FEATURE_KASUMI);
+    if (kasumi_runtime > 0 || (kasumi_supported && kasumi_requested != 0)) {
+        LOGE("Soft reboot is unavailable while Kasumi is active; use a full reboot");
+        return 1;
+    }
+    if (kasumi_runtime < 0 && (kasumi_supported || kasumi_available)) {
+        LOGE("Cannot determine Kasumi runtime state; refusing soft reboot");
+        return 1;
+    }
+
     switch (daemonize_soft_reboot()) {
     case DaemonizeResult::Parent:
         return 0;
@@ -686,12 +665,20 @@ int soft_reboot() {
 
     run_stage("emulated-soft-reboot", true);
 
-    const auto system_server_services = collect_system_server_services();
+    const auto server_pid = system_server_pid();
+    int server_pidfd = -1;
+#if defined(SYS_pidfd_open)
+    if (server_pid)
+        server_pidfd = static_cast<int>(syscall(SYS_pidfd_open, *server_pid, 0));
+#endif
 
     LOGI("Stopping Android services");
     (void)run_soft_reboot_command("stop");
 
-    wait_for_system_server_services(system_server_services);
+    if (server_pid)
+        wait_for_system_server_exit(*server_pid, server_pidfd);
+    else
+        LOGW("Could not identify system_server before stop");
 
     LOGI("Running post-fs-data after stop");
     (void)on_post_data_fs();
