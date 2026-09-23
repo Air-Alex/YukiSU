@@ -789,7 +789,7 @@ fun SwitchItem(
     ) {
         SettingsLeadingIcon(icon = icon, tint = iconTint)
 
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,

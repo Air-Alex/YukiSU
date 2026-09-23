@@ -1145,7 +1145,7 @@ private fun UtsFieldEditorItem(
                     text = stringResource(field.label),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (isExpressiveUi) FontWeight.Normal else null,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).padding(end = 12.dp),
                 )
                 YukiSwitch(
                     checked = selected,

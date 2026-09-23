@@ -227,7 +227,7 @@ fun SwitchSettingItem(
         )
 
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
             verticalArrangement = Arrangement.Center
         ) {
             Text(
