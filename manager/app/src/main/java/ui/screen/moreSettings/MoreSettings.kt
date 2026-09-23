@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
@@ -342,42 +343,41 @@ private fun ModuleDescriptionLinesSetting(
     state: MoreSettingsState,
     handlers: MoreSettingsHandlers
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        YukiIcon(
-            Icons.Filled.Description,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.settings_module_description_max_lines),
-                style = MaterialTheme.typography.titleSmall
+    SettingsControlGroup {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            YukiIcon(
+                Icons.Outlined.Description,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
             )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.settings_module_description_max_lines),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text(
+                    text = stringResource(R.string.settings_module_description_max_lines_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Text(
-                text = stringResource(R.string.settings_module_description_max_lines_summary),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "${state.moduleDescriptionMaxLines} " + stringResource(R.string.unit_lines),
+                style = MaterialTheme.typography.labelMedium
             )
         }
-        Text(
-            text = "${state.moduleDescriptionMaxLines} " + stringResource(R.string.unit_lines),
-            style = MaterialTheme.typography.labelMedium
+        Slider(
+            value = state.moduleDescriptionMaxLines.toFloat(),
+            onValueChange = { handlers.handleModuleDescriptionMaxLinesChange(it.toInt()) },
+            valueRange = 1f..5f,
+            steps = 3
         )
     }
-    Slider(
-        value = state.moduleDescriptionMaxLines.toFloat(),
-        onValueChange = { handlers.handleModuleDescriptionMaxLinesChange(it.toInt()) },
-        valueRange = 1f..5f,
-        steps = 3,
-        modifier = Modifier.padding(horizontal = 16.dp)
-    )
 }
 
 @Composable
