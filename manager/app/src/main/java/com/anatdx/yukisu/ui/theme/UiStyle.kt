@@ -25,9 +25,10 @@ val isExpressiveUi: Boolean
     get() = LocalUiStyle.current == UiStyle.Expressive
 
 val ExpressiveListGroupMinHeight = 64.dp
+val ExpressiveListGroupMinRadius = 7.dp
 
 val ExpressiveShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
+    extraSmall = RoundedCornerShape(ExpressiveListGroupMinRadius),
     small = RoundedCornerShape(14.dp),
     medium = RoundedCornerShape(20.dp),
     large = RoundedCornerShape(28.dp),
