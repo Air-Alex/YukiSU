@@ -249,6 +249,14 @@ private fun AppearanceSettings(
             onClick = { state.showUiStyleDialog = true }
         )
 
+        SwitchSettingItem(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            title = stringResource(R.string.predictive_back_gesture),
+            summary = stringResource(R.string.predictive_back_gesture_summary),
+            checked = state.predictiveBackEnabled,
+            onChange = handlers::handlePredictiveBackChange
+        )
+
         SettingItem(
             icon = Icons.Default.DarkMode,
             title = stringResource(R.string.theme_mode),
@@ -324,14 +332,6 @@ private fun CustomizationSettings(
             summary = stringResource(R.string.kernel_simple_kernel_summary),
             checked = state.isKernelSimpleMode,
             onChange = handlers::handleKernelSimpleModeChange
-        )
-
-        SwitchSettingItem(
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            title = stringResource(R.string.predictive_back_gesture),
-            summary = stringResource(R.string.predictive_back_gesture_summary),
-            checked = state.predictiveBackEnabled,
-            onChange = handlers::handlePredictiveBackChange
         )
 
         HideOptionsSettings(state = state, handlers = handlers)
