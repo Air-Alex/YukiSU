@@ -141,7 +141,7 @@ void start_controller(const std::string &path) {
   char kagami[] = "kagami";
   char daemon[] = "daemon";
   char start[] = "start";
-  char *argv[] = {name, kagami, daemon, start, nullptr};
+  char *const argv[] = {name, kagami, daemon, start, nullptr};
   pid_t pid = -1;
   if (!error)
     error = posix_spawn(&pid, path.c_str(), &actions, nullptr, argv, environ);

@@ -25,7 +25,7 @@ mmrl = "v34242"
 # JitPack publishes v438 (1cd1e76d9438) under the version without the v prefix.
 webuix = "438"
 swiperefreshlayout = "1.2.0"
-ndk = "29.0.14206865"
+ndk = "30.0.16248370"
 foundation = "1.12.1"
 bouncycastle = "1.86"
 ucrop = "2.2.11"
