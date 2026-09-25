@@ -41,6 +41,7 @@ struct RuntimeSnapshot {
     bool enabled = false;
     bool safe_mode = false;
     uint32_t zygote_crashes = 0;
+    uint32_t capabilities = 0;
     std::string safe_mode_zygote;
     std::vector<yz_runtime_record> records;
 };
@@ -170,6 +171,7 @@ bool query_runtime(RuntimeSnapshot* snapshot) {
     result.enabled = yz_feature_enabled();
     result.safe_mode = command.safe_mode != 0;
     result.zygote_crashes = command.zygote_crashes;
+    result.capabilities = command.capabilities;
     result.safe_mode_zygote = bounded_string(command.safe_mode_zygote);
     *snapshot = std::move(result);
     return true;
@@ -448,6 +450,8 @@ json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInven
     root["enabled"] = json::Value(snapshot.enabled);
     root["count"] = json::Value(static_cast<double>(injected_target_count(snapshot)));
     root["safe_mode"] = json::Value(snapshot.safe_mode);
+    root["zygisk_module_monitor"] = json::Value(
+        (snapshot.capabilities & YZ_RUNTIME_CAP_ZYGOTE_MODULE_REPORT) != 0);
     root["zygote_crashes"] = number(snapshot.zygote_crashes);
     root["safe_mode_zygote"] = json::Value(
         snapshot.safe_mode_zygote.empty() ? std::string("zygote") : snapshot.safe_mode_zygote);
@@ -478,7 +482,7 @@ json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInven
         raw["module"] = json::Value(bounded_string(record.module_id));
         root["runtime"].push_back(raw);
 
-        if (record.kind != YZ_RUNTIME_KIND_ZYGOTE)
+        if (record.kind != YZ_RUNTIME_KIND_ZYGOTE || record.module_id[0] != '\0')
             continue;
         const char* state = monitor_state_name(record.state);
         if (state == nullptr)
@@ -487,6 +491,7 @@ json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInven
         const std::string target = bounded_string(record.target);
         json::Value entry = json::Value::object();
         entry["pid"] = number(record.pid);
+        entry["generation"] = number(record.generation);
         entry["name"] = json::Value(target);
         entry["target"] = json::Value(target);
         entry["abi"] = json::Value(abi_name(record.abi));
@@ -623,6 +628,10 @@ int yzctl_run(const std::vector<std::string>& args) {
         }
         if (ksuctl(KSU_IOCTL_YZ_RELOAD, nullptr) != 0) {
             (void)fprintf(stderr, "yzctl: reload failed: %s\n", strerror(errno));
+            return 1;
+        }
+        if (refresh_yukizygisk_early_snapshot() != 0) {
+            (void)fprintf(stderr, "yzctl: early snapshot refresh failed\n");
             return 1;
         }
         printf("YukiZygisk reload signalled\n");

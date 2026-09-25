@@ -19,6 +19,7 @@ static DEFINE_MUTEX(yz_early_native_lock);
 static struct yz_early_native_entry
     yz_early_native_entries[YZ_NATIVE_TARGET_MAX];
 static u32 yz_early_native_count;
+static u16 yz_early_load_flags;
 static bool yz_early_native_loaded;
 static bool yz_early_native_enabled;
 static bool yz_early_native_watchdog;
@@ -220,6 +221,7 @@ static void yz_load_early_native_locked(void)
 	}
 
 	yz_early_dlopen_off = hdr.dlopen_offset;
+	yz_early_load_flags = hdr.load_flags;
 	yz_early_dlsym_off = hdr.dlsym_offset;
 	yz_early_dlopen32_off = hdr.dlopen32_offset;
 	yz_early_dlsym32_off = hdr.dlsym32_offset;
@@ -392,6 +394,7 @@ int yz_stage_early_native_packet(u8 target_type, const char *target,
 	void *packet;
 	size_t packet_size;
 	u32 match_count = 0;
+	u16 load_flags;
 	u32 i;
 	int ret = 0;
 
@@ -409,6 +412,7 @@ int yz_stage_early_native_packet(u8 target_type, const char *target,
 		ret = -ENOENT;
 		goto out_free_matches;
 	}
+	load_flags = yz_early_load_flags;
 	for (i = 0; i < yz_early_native_count; i++) {
 		struct yz_early_native_entry *entry =
 		    &yz_early_native_entries[i];
@@ -442,6 +446,7 @@ int yz_stage_early_native_packet(u8 target_type, const char *target,
 	hdr->version = YZ_EARLY_NATIVE_VERSION;
 	hdr->header_size = sizeof(*hdr);
 	hdr->entry_size = sizeof(*entries);
+	hdr->load_flags = load_flags;
 
 	for (i = 0; i < match_count; i++) {
 		int fd = yz_stage_fd(matches[i].lib_path, YZ_VMA_NAME, NULL);

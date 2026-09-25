@@ -1,10 +1,12 @@
 #include "yukizygisk_snapshot.hpp"
 #include "assets.hpp"
+#include "core/json.hpp"
 #include "core/ksucalls.hpp"
 #include "core/restorecon.hpp"
 #include "defs.hpp"
 #include "log.hpp"
 #include "userspace/zygisk/daemon/native_modules.hpp"
+#include "userspace/zygisk/load_policy.hpp"
 #include "utils.hpp"
 #include "yukizygisk_diagnostics.hpp"
 
@@ -364,7 +366,36 @@ bool yukizygisk_enabled_for_next_boot() {
     return supported && value != 0;
 }
 
+bool early_load_enabled() {
+    const auto contents = read_file(YUKIZYGISK_CONFIG_PATH);
+    if (!contents)
+        return false;
+    const auto root = json::parse(*contents);
+    return root.type == json::Type::Object && root.at("early_load").type == json::Type::Bool &&
+           root.at("early_load").as_bool();
+}
+
+__u16 configured_load_flags() {
+    yz_config config = yukizygisk::config::defaults;
+    const auto contents = read_file(YUKIZYGISK_CONFIG_PATH);
+    if (contents) {
+        const auto root = json::parse(*contents);
+        if (root.type == json::Type::Object) {
+            if (root.at("yukilinker").type == json::Type::Bool)
+                config.yukilinker = root.at("yukilinker").as_bool() ? 1 : 0;
+            if (root.at("anonymous_memory").type == json::Type::Bool)
+                config.memory_type =
+                    root.at("anonymous_memory").as_bool() ? YZ_MEMORY_ANONYMOUS : YZ_MEMORY_FILE;
+        }
+    }
+    return yukizygisk::config::load_flags(config);
+}
+
 }  // namespace
+
+bool yukizygisk_early_load_enabled() {
+    return early_load_enabled();
+}
 
 void clear_yukizygisk_early_snapshot() {
     remove_snapshot_dir(PREINIT_DIR_WATCHDOG);
@@ -376,9 +407,9 @@ bool yukizygisk_has_native_abi32_target() {
 }
 
 int refresh_yukizygisk_early_snapshot() {
-    if (!yukizygisk_enabled_for_next_boot()) {
+    if (!yukizygisk_enabled_for_next_boot() || !early_load_enabled()) {
         clear_yukizygisk_early_snapshot();
-        LOGI("yukizygisk early: snapshot cleared");
+        LOGI("yukizygisk early: snapshot cleared (disabled)");
         return 0;
     }
 
@@ -459,6 +490,7 @@ int refresh_yukizygisk_early_snapshot() {
     header.version = YZ_EARLY_NATIVE_VERSION;
     header.header_size = sizeof(header);
     header.entry_size = sizeof(yz_early_native_entry);
+    header.load_flags = configured_load_flags();
     header.flags = YZ_EARLY_NATIVE_FLAG_ENABLED;
     if (has_abi32)
         header.flags |= YZ_EARLY_NATIVE_FLAG_ABI32;

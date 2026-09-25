@@ -302,13 +302,22 @@ int ksu_yukizygisk_report_runtime(const struct yz_runtime_report_cmd *report)
 	struct yz_runtime_slot *base = NULL;
 	struct yz_runtime_slot *module = NULL;
 	u64 start_boottime;
+	u8 state;
 	u32 i;
 
 	if (!report || !report->pid || !report->generation ||
 	    (report->kind != YZ_RUNTIME_KIND_ZYGOTE &&
 	     report->kind != YZ_RUNTIME_KIND_NATIVE) ||
-	    (report->kind == YZ_RUNTIME_KIND_NATIVE && !report->module_id[0]))
+	    (report->kind == YZ_RUNTIME_KIND_NATIVE && !report->module_id[0]) ||
+	    (report->module_state &&
+	     report->module_state != YZ_RUNTIME_STATE_INJECTED &&
+	     report->module_state != YZ_RUNTIME_STATE_FAILED &&
+	     report->module_state != YZ_RUNTIME_STATE_SAFEMODE) ||
+	    (!report->module_id[0] && report->module_state &&
+	     report->module_state != YZ_RUNTIME_STATE_INJECTED))
 		return -EINVAL;
+	state = report->module_state ? report->module_state :
+				      YZ_RUNTIME_STATE_INJECTED;
 	if (yz_runtime_get_task_start(report->pid, &start_boottime))
 		return -ESRCH;
 
@@ -343,16 +352,20 @@ int ksu_yukizygisk_report_runtime(const struct yz_runtime_report_cmd *report)
 		return -EAGAIN;
 	}
 
-	if (base->record.state != YZ_RUNTIME_STATE_INJECTED) {
+	if ((!report->module_id[0] || report->kind == YZ_RUNTIME_KIND_NATIVE) &&
+	    state == YZ_RUNTIME_STATE_INJECTED &&
+	    base->record.state != YZ_RUNTIME_STATE_INJECTED) {
 		base->record.state = YZ_RUNTIME_STATE_INJECTED;
 		yz_runtime_advance_locked();
 	}
-	if (report->kind == YZ_RUNTIME_KIND_NATIVE) {
+	if (report->module_id[0]) {
 		for (i = 0; i < YZ_RUNTIME_RECORD_MAX; i++) {
 			struct yz_runtime_slot *slot = &yz_runtime_records[i];
 
 			if (slot->record.pid == report->pid &&
-			    slot->record.kind == YZ_RUNTIME_KIND_NATIVE &&
+			    slot->record.kind == report->kind &&
+			    slot->record.generation == report->generation &&
+			    slot->start_boottime == start_boottime &&
 			    !strcmp(slot->record.module_id,
 				    report->module_id)) {
 				module = slot;
@@ -365,14 +378,23 @@ int ksu_yukizygisk_report_runtime(const struct yz_runtime_report_cmd *report)
 			mutex_unlock(&yz_runtime_lock);
 			return -ENOSPC;
 		}
+		/* Keep a failed child load visible for this Zygote generation. */
+		if (report->kind == YZ_RUNTIME_KIND_ZYGOTE &&
+		    module->record.generation == base->record.generation &&
+		    module->start_boottime == base->start_boottime &&
+		    !strcmp(module->record.module_id, report->module_id) &&
+		    (module->record.state == YZ_RUNTIME_STATE_FAILED ||
+		     module->record.state == YZ_RUNTIME_STATE_SAFEMODE))
+			state = module->record.state;
 		if (module->record.generation != base->record.generation ||
-		    module->record.state != YZ_RUNTIME_STATE_INJECTED ||
+		    module->record.state != state ||
+		    strcmp(module->record.module_id, report->module_id) ||
 		    module->start_boottime != base->start_boottime) {
 			struct yz_runtime_record record = base->record;
 
 			yz_copy_name(record.module_id, sizeof(record.module_id),
 				     report->module_id);
-			record.state = YZ_RUNTIME_STATE_INJECTED;
+			record.state = state;
 			memset(module, 0, sizeof(*module));
 			module->record = record;
 			module->start_boottime = base->start_boottime;

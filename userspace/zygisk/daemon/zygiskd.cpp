@@ -2,6 +2,7 @@
 #include "log.hpp"
 #include "native_modules.hpp"
 #include "uapi/yukizygisk.h"
+#include "userspace/zygisk/load_policy.hpp"
 
 #include "core/json.hpp"
 #include "core/restorecon.hpp"
@@ -993,10 +994,10 @@ uint32_t query_flags(uint32_t uid) {
   return flags;
 }
 
-yz_config g_yz_config{1, 0, 0, 0};
+yz_config g_yz_config = yukizygisk::config::defaults;
 
 void read_yzconfig() {
-  yz_config cfg{1, 0, 0, 0};
+  yz_config cfg = yukizygisk::config::defaults;
   int fd = open(ksud::YUKIZYGISK_CONFIG_PATH, O_RDONLY | O_CLOEXEC);
   if (fd >= 0) {
     std::string buf;
@@ -1008,6 +1009,10 @@ void read_yzconfig() {
     if (root.type == json::Type::Object) {
       if (root.contains("yukilinker"))
         cfg.yukilinker = root.at("yukilinker").as_bool() ? 1 : 0;
+      if (root.at("anonymous_memory").type == json::Type::Bool)
+        cfg.memory_type = root.at("anonymous_memory").as_bool()
+                              ? YZ_MEMORY_ANONYMOUS
+                              : YZ_MEMORY_FILE;
       if (root.contains("denylist_mode"))
         cfg.denylist_mode =
             static_cast<__u8>(root.at("denylist_mode").as_number());
@@ -1020,7 +1025,9 @@ void read_yzconfig() {
   yz_yukilinker_cmd yc{};
   yc.enabled = cfg.yukilinker;
   ksud::ksuctl(KSU_IOCTL_YZ_SET_YUKILINKER, &yc);
-  DLOGI("yzconfig: yukilinker=%u denylist_mode=%u dmesg_log=%u", cfg.yukilinker,
+  DLOGI("yzconfig: yukilinker=%u anonymous_memory=%u denylist_mode=%u "
+        "dmesg_log=%u",
+        cfg.yukilinker, yukizygisk::config::anonymous(cfg) ? 1U : 0U,
         cfg.denylist_mode, cfg.dmesg_log);
 }
 
@@ -1032,6 +1039,7 @@ constexpr uint8_t kRuntimeAbi = YZ_RUNTIME_ABI_32;
 
 struct RuntimeSnapshot {
   std::vector<yz_runtime_record> records;
+  uint32_t capabilities = 0;
 };
 
 RuntimeSnapshot query_runtime_snapshot() {
@@ -1049,11 +1057,13 @@ RuntimeSnapshot query_runtime_snapshot() {
 
   if (cmd.count < snapshot.records.size())
     snapshot.records.resize(cmd.count);
+  snapshot.capabilities = cmd.capabilities;
   return snapshot;
 }
 
 bool report_runtime(pid_t pid, uint8_t kind, uint32_t generation,
-                    const char *module_id = nullptr) {
+                    const char *module_id = nullptr,
+                    uint8_t module_state = YZ_RUNTIME_STATE_INJECTED) {
   if (pid <= 0 || generation == 0)
     return false;
 
@@ -1061,6 +1071,7 @@ bool report_runtime(pid_t pid, uint8_t kind, uint32_t generation,
   cmd.pid = static_cast<uint32_t>(pid);
   cmd.generation = generation;
   cmd.kind = kind;
+  cmd.module_state = module_state;
   if (module_id != nullptr)
     (void)snprintf(cmd.module_id, sizeof(cmd.module_id), "%s", module_id);
   return ksud::ksuctl(KSU_IOCTL_YZ_REPORT_RUNTIME, &cmd) == 0;
@@ -1309,6 +1320,47 @@ void reap_terminating_companions() {
   }
 }
 
+bool valid_zygote_module_report(pid_t sender,
+                                const zygiskd::ZygoteModuleReport &report) {
+  if (report.zygote_pid == 0 || report.zygote_pid > INT32_MAX ||
+      report.generation == 0 || report.module_id[0] == '\0' ||
+      memchr(report.module_id, '\0', sizeof(report.module_id)) == nullptr ||
+      (report.state != YZ_RUNTIME_STATE_INJECTED &&
+       report.state != YZ_RUNTIME_STATE_FAILED))
+    return false;
+  if (std::none_of(g_modules.begin(), g_modules.end(),
+                   [&](const Module &module) {
+                     return module.name == report.module_id;
+                   }))
+    return false;
+  const RuntimeSnapshot snapshot = query_runtime_snapshot();
+  if ((snapshot.capabilities & YZ_RUNTIME_CAP_ZYGOTE_MODULE_REPORT) == 0)
+    return false;
+  const bool current_zygote =
+      std::any_of(snapshot.records.begin(), snapshot.records.end(),
+                  [&](const auto &record) {
+                    return record.pid == report.zygote_pid &&
+                           record.generation == report.generation &&
+                           record.kind == YZ_RUNTIME_KIND_ZYGOTE &&
+                           record.abi == kRuntimeAbi &&
+                           record.module_id[0] == '\0' &&
+                           (record.state == YZ_RUNTIME_STATE_REDIRECTED ||
+                            record.state == YZ_RUNTIME_STATE_INJECTED);
+                  });
+  if (!current_zygote)
+    return false;
+  // Modules load after fork; bind reports to the inherited Zygote generation.
+  for (unsigned depth = 0; depth < 32 && sender > 1; ++depth) {
+    if (static_cast<uint32_t>(sender) == report.zygote_pid)
+      return true;
+    const pid_t parent = process_parent_pid(sender);
+    if (parent <= 1 || parent == sender)
+      break;
+    sender = parent;
+  }
+  return false;
+}
+
 bool hyos_control_peer_allowed(int client, pid_t *parent_pid,
                                uint32_t *parent_generation) {
   struct ucred credentials{};
@@ -1363,6 +1415,15 @@ void handle_client(int client) {
     send_module_image(client, fd);
     if (fd >= 0)
       close(fd);
+    break;
+  }
+  case zygiskd::Request::GetModuleInfo: {
+    uint32_t idx = 0;
+    zygiskd::ModuleInfo info{};
+    if (reader.read_exact(&idx, sizeof(idx)) && idx < g_modules.size())
+      (void)snprintf(info.module_id, sizeof(info.module_id), "%s",
+                     g_modules[idx].name.c_str());
+    write_exact(client, &info, sizeof(info));
     break;
   }
   case zygiskd::Request::ConnectCompanion: {
@@ -1490,6 +1551,22 @@ void handle_client(int client) {
         getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
         cr.pid > 0)
       ok = report_runtime(cr.pid, YZ_RUNTIME_KIND_ZYGOTE, generation) ? 1 : 0;
+    write_exact(client, &ok, sizeof(ok));
+    break;
+  }
+  case zygiskd::Request::ReportZygoteModule: {
+    struct ucred cr{};
+    socklen_t crlen = sizeof(cr);
+    zygiskd::ZygoteModuleReport report{};
+    uint8_t ok = 0;
+    if (reader.read_exact(&report, sizeof(report)) &&
+        getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cr, &crlen) == 0 &&
+        cr.pid > 0 && cr.uid == 0 && valid_zygote_module_report(cr.pid, report))
+      ok = report_runtime(static_cast<pid_t>(report.zygote_pid),
+                          YZ_RUNTIME_KIND_ZYGOTE, report.generation,
+                          report.module_id, report.state)
+               ? 1
+               : 0;
     write_exact(client, &ok, sizeof(ok));
     break;
   }

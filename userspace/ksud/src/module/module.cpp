@@ -221,6 +221,10 @@ void warn_regenerate_preinit_rc_failed(int ret) {
 }
 
 void warn_refresh_yukizygisk_early_snapshot_failed() {
+    if (!yukizygisk_early_load_enabled()) {
+        clear_yukizygisk_early_snapshot();
+        return;
+    }
     const int ret = refresh_yukizygisk_early_snapshot();
     if (ret != 0) {
         LOGW("refresh YukiZygisk early snapshot failed: %d", ret);
