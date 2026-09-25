@@ -450,8 +450,8 @@ json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInven
     root["enabled"] = json::Value(snapshot.enabled);
     root["count"] = json::Value(static_cast<double>(injected_target_count(snapshot)));
     root["safe_mode"] = json::Value(snapshot.safe_mode);
-    root["zygisk_module_monitor"] = json::Value(
-        (snapshot.capabilities & YZ_RUNTIME_CAP_ZYGOTE_MODULE_REPORT) != 0);
+    root["zygisk_module_monitor"] =
+        json::Value((snapshot.capabilities & YZ_RUNTIME_CAP_ZYGOTE_MODULE_REPORT) != 0);
     root["zygote_crashes"] = number(snapshot.zygote_crashes);
     root["safe_mode_zygote"] = json::Value(
         snapshot.safe_mode_zygote.empty() ? std::string("zygote") : snapshot.safe_mode_zygote);

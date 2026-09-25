@@ -316,8 +316,8 @@ int ksu_yukizygisk_report_runtime(const struct yz_runtime_report_cmd *report)
 	    (!report->module_id[0] && report->module_state &&
 	     report->module_state != YZ_RUNTIME_STATE_INJECTED))
 		return -EINVAL;
-	state = report->module_state ? report->module_state :
-				      YZ_RUNTIME_STATE_INJECTED;
+	state = report->module_state ? report->module_state
+				     : YZ_RUNTIME_STATE_INJECTED;
 	if (yz_runtime_get_task_start(report->pid, &start_boottime))
 		return -ESRCH;
 
@@ -378,7 +378,7 @@ int ksu_yukizygisk_report_runtime(const struct yz_runtime_report_cmd *report)
 			mutex_unlock(&yz_runtime_lock);
 			return -ENOSPC;
 		}
-		/* Keep a failed child load visible for this Zygote generation. */
+		/* Preserve failed child loads for this Zygote generation. */
 		if (report->kind == YZ_RUNTIME_KIND_ZYGOTE &&
 		    module->record.generation == base->record.generation &&
 		    module->start_boottime == base->start_boottime &&
