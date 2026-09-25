@@ -828,36 +828,26 @@
     <string name="su_request_deny">Deny</string>
     <string name="su_request_failed" tools:ignore="MissingTranslation">The root request expired or could not be submitted.</string>
     <string name="su_request_deny_hide">Deny &amp; hide</string>
-    <string name="yukizygisk_injection_status" tools:ignore="MissingTranslation">Injection status</string>
-    <string name="yukizygisk_kernel_injection" tools:ignore="MissingTranslation">Kernel injection</string>
-    <string name="yukizygisk_status_active" tools:ignore="MissingTranslation">Active</string>
-    <string name="yukizygisk_status_off" tools:ignore="MissingTranslation">Off</string>
-    <string name="yukizygisk_status_safe_mode" tools:ignore="MissingTranslation">Safe mode</string>
-    <string name="yukizygisk_module_loader" tools:ignore="MissingTranslation">Module loader</string>
-    <string name="yukizygisk_loader_anon" tools:ignore="MissingTranslation">yukilinker (anonymous)</string>
-    <string name="yukizygisk_loader_system" tools:ignore="MissingTranslation">System dlopen</string>
-    <string name="yukizygisk_denylist_behaviour" tools:ignore="MissingTranslation">Denylist behaviour</string>
-    <string name="yukizygisk_denylist_force_long" tools:ignore="MissingTranslation">Force unmount + no inject</string>
-    <string name="yukizygisk_denylist_restore_long" tools:ignore="MissingTranslation">Inject + unmount only</string>
-    <string name="yukizygisk_injections_session" tools:ignore="MissingTranslation">Currently injected targets</string>
-    <string name="yukizygisk_zygote_crashes" tools:ignore="MissingTranslation">Zygote crashes</string>
     <string name="yukizygisk_injected_zygotes" tools:ignore="MissingTranslation">Zygote monitor</string>
     <string name="yukizygisk_no_zygotes" tools:ignore="MissingTranslation">No Zygote</string>
+    <string name="yukizygisk_modules" tools:ignore="MissingTranslation">Zygisk modules</string>
+    <string name="yukizygisk_no_modules" tools:ignore="MissingTranslation">No Zygisk modules</string>
     <string name="yukizygisk_zygote_detail" tools:ignore="MissingTranslation">%1$s · pid %2$d</string>
     <string name="yukizygisk_no_native_modules" tools:ignore="MissingTranslation">No Native modules</string>
-    <string name="yukizygisk_native_module_detail" tools:ignore="MissingTranslation">%1$s=%2$s · %3$s</string>
-    <string name="yukizygisk_native_companion" tools:ignore="MissingTranslation">companion</string>
-    <string name="yukizygisk_native_no_companion" tools:ignore="MissingTranslation">no companion</string>
     <string name="yukizygisk_native_injections" tools:ignore="MissingTranslation">Native injection monitor</string>
     <string name="yukizygisk_no_native_injections" tools:ignore="MissingTranslation">No injections</string>
     <string name="yukizygisk_native_mode_module" tools:ignore="MissingTranslation">By module</string>
     <string name="yukizygisk_native_mode_process" tools:ignore="MissingTranslation">By process</string>
     <string name="yukizygisk_native_process_detail" tools:ignore="MissingTranslation">%1$s · pid %2$d</string>
-    <string name="yukizygisk_zygote_injected_message" tools:ignore="MissingTranslation">Zygisk injected.</string>
     <string name="yukizygisk_zygote_unsupported_message" tools:ignore="MissingTranslation">32-bit Zygote is not supported.</string>
     <string name="yukizygisk_zygote_crashed_message" tools:ignore="MissingTranslation">Zygote crashed repeatedly; safe mode stopped injection for this boot.</string>
     <string name="yukizygisk_zygote_failed_message" tools:ignore="MissingTranslation">Safe mode enabled; not injected.</string>
     <string name="yukizygisk_zygote_unknown_message" tools:ignore="MissingTranslation">No active Zygote observation is available.</string>
+    <string name="yukizygisk_zygote_modules_detail" tools:ignore="MissingTranslation">Zygisk modules loaded through this Zygote (%1$d):\n%2$s</string>
+    <string name="yukizygisk_zygote_no_modules_detail" tools:ignore="MissingTranslation">None</string>
+    <string name="yukizygisk_zygote_modules_unavailable" tools:ignore="MissingTranslation">Module injection details are unavailable on this runtime.</string>
+    <string name="yukizygisk_module_supported_abis" tools:ignore="MissingTranslation">Supported ABIs: %1$s</string>
+    <string name="yukizygisk_module_no_supported_abis" tools:ignore="MissingTranslation">No supported ABI</string>
     <string name="yukizygisk_native_process_injected_message" tools:ignore="MissingTranslation">Native modules injected.</string>
     <string name="yukizygisk_native_process_unsupported_message" tools:ignore="MissingTranslation">32-bit Native process is not supported.</string>
     <string name="yukizygisk_native_process_failed_message" tools:ignore="MissingTranslation">Native injection did not complete.</string>
@@ -867,18 +857,28 @@
     <string name="yukizygisk_native_module_unsupported_message" tools:ignore="MissingTranslation">32-bit Native module is not supported.</string>
     <string name="yukizygisk_native_module_failed_message" tools:ignore="MissingTranslation">The target was observed, but module injection did not complete.</string>
     <string name="yukizygisk_native_module_unknown_message" tools:ignore="MissingTranslation">The target process has not been observed during this boot.</string>
-    <string name="yukizygisk_native_target_line" tools:ignore="MissingTranslation">%1$s · %2$s · pid %3$d</string>
+    <string name="yukizygisk_native_scope_status" tools:ignore="MissingTranslation">%1$s</string>
+    <string name="yukizygisk_native_scope_process" tools:ignore="MissingTranslation">%1$s (pid %2$d)</string>
+    <string name="yukizygisk_native_scope_injected" tools:ignore="MissingTranslation">Injected: %1$s</string>
+    <string name="yukizygisk_native_scope_injected_no_process" tools:ignore="MissingTranslation">Injected</string>
+    <string name="yukizygisk_native_scope_unobserved" tools:ignore="MissingTranslation">Not observed</string>
+    <string name="yukizygisk_native_scope_failed" tools:ignore="MissingTranslation">Injection failed</string>
+    <string name="yukizygisk_native_scope_crashed" tools:ignore="MissingTranslation">Process crashed</string>
+    <string name="yukizygisk_native_scope_unsupported" tools:ignore="MissingTranslation">Unsupported</string>
     <string name="yukizygisk_module_loading" tools:ignore="MissingTranslation">Module loading</string>
-    <string name="yukizygisk_anon_loading_title" tools:ignore="MissingTranslation">Anonymous loading (yukilinker)</string>
-    <string name="yukizygisk_anon_loading_summary" tools:ignore="MissingTranslation">yukilinker loading.</string>
-    <string name="yukizygisk_loaded_modules_count" tools:ignore="MissingTranslation">Loaded Zygisk modules: %1$d</string>
-    <string name="yukizygisk_denylist_desc" tools:ignore="MissingTranslation">Denylist mode.</string>
+    <string name="yukizygisk_yukilinker_title" tools:ignore="MissingTranslation">Use YukiLinker</string>
+    <string name="yukizygisk_yukilinker_summary" tools:ignore="MissingTranslation">Prefer the built-in linker for module loading.</string>
+    <string name="yukizygisk_anonymous_memory_title" tools:ignore="MissingTranslation">Anonymous memory</string>
+    <string name="yukizygisk_anonymous_memory_summary" tools:ignore="MissingTranslation">Map runtime cores and modules into anonymous memory.</string>
+    <string name="yukizygisk_early_load_title" tools:ignore="MissingTranslation">Early native loading</string>
+    <string name="yukizygisk_early_load_summary" tools:ignore="MissingTranslation">Load some native modules during early boot.</string>
+    <string name="yukizygisk_config_save_failed" tools:ignore="MissingTranslation">Could not save or apply the YukiZygisk configuration.</string>
     <string name="yukizygisk_denylist_off" tools:ignore="MissingTranslation">Off</string>
     <string name="yukizygisk_denylist_force" tools:ignore="MissingTranslation">Force</string>
     <string name="yukizygisk_denylist_restore" tools:ignore="MissingTranslation">Restore</string>
     <string name="yukizygisk_logging_title" tools:ignore="MissingTranslation">YukiZygisk logs</string>
     <string name="yukizygisk_log_dmesg_title" tools:ignore="MissingTranslation">Mirror to dmesg</string>
-    <string name="yukizygisk_log_dmesg_summary" tools:ignore="MissingTranslation">When enabled, zygiskd logs are also written to dmesg; kernel logs are always written to dmesg.</string>
+    <string name="yukizygisk_log_dmesg_summary" tools:ignore="MissingTranslation">Mirror zygiskd logs to dmesg.</string>
     <string name="module_zygisk_loaded" tools:ignore="MissingTranslation">Loaded</string>
     <string name="module_zygisk_module" tools:ignore="MissingTranslation">Zygisk module</string>
     <string name="module_zn_module" tools:ignore="MissingTranslation">ZN module</string>

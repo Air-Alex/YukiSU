@@ -17,19 +17,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.Adb
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -45,13 +49,13 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,6 +69,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,14 +79,12 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.anatdx.yukisu.R
-import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ui.component.YukiIcon
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
 import com.anatdx.yukisu.ui.theme.CardConfig
 import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.execKsud
-import com.anatdx.yukisu.ui.util.getFeatureValue
 import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
@@ -90,19 +95,23 @@ import com.topjohnwu.superuser.io.SuFileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import ui.screen.moreSettings.component.MoreSettingsItemPosition
 import ui.screen.moreSettings.component.SettingsCard
-import ui.screen.moreSettings.component.SettingsControlGroup
 import ui.screen.moreSettings.component.SwitchSettingItem
 
 private const val TAG = "YukiZygiskScreen"
 private const val YZCONFIG_DIR = "/data/adb/ksu/yukizygisk"
 private const val YZCONFIG_PATH = "$YZCONFIG_DIR/yzconfig.json"
+private val yzConfigWriteMutex = Mutex()
 
 data class YzConfig(
     val yukilinker: Boolean = true,
+    val anonymousMemory: Boolean = true,
+    val earlyLoad: Boolean = false,
     val denylistMode: Int = 0,
     val dmesgLog: Boolean = false,
 )
@@ -118,6 +127,8 @@ private suspend fun readYzConfig(): YzConfig = withContext(Dispatchers.IO) {
         val o = JSONObject(raw)
         YzConfig(
             yukilinker = o.optBoolean("yukilinker", true),
+            anonymousMemory = o.optBoolean("anonymous_memory", true),
+            earlyLoad = o.optBoolean("early_load", false),
             denylistMode = o.optInt("denylist_mode", 0),
             dmesgLog = o.optBoolean("dmesg_log", false),
         )
@@ -126,19 +137,23 @@ private suspend fun readYzConfig(): YzConfig = withContext(Dispatchers.IO) {
     }
 }
 
-private suspend fun writeYzConfig(cfg: YzConfig) = withContext(Dispatchers.IO) {
-    val json = JSONObject().apply {
-        put("yukilinker", cfg.yukilinker)
-        put("denylist_mode", cfg.denylistMode)
-        put("dmesg_log", cfg.dmesgLog)
-    }.toString()
-    // Written as a file rather than echoed into a root shell: this is JSON, and
-    // a shell would have to be trusted to keep its hands off every byte of it.
-    runCatching {
-        SuFile(YZCONFIG_DIR).mkdirs()
-        SuFileOutputStream.open(YZCONFIG_PATH).use { it.write(json.toByteArray()) }
-    }.onFailure { Log.e(TAG, "Failed to write $YZCONFIG_PATH", it) }
-    execKsud("yzctl reload")
+private suspend fun writeYzConfig(cfg: YzConfig): Boolean = yzConfigWriteMutex.withLock {
+    withContext(Dispatchers.IO) {
+        val json = JSONObject().apply {
+            put("yukilinker", cfg.yukilinker)
+            put("anonymous_memory", cfg.anonymousMemory)
+            put("early_load", cfg.earlyLoad)
+            put("denylist_mode", cfg.denylistMode)
+            put("dmesg_log", cfg.dmesgLog)
+        }.toString()
+        runCatching {
+            SuFile(YZCONFIG_DIR).mkdirs()
+            val temporary = "$YZCONFIG_PATH.tmp"
+            SuFileOutputStream.open(temporary).use { it.write(json.toByteArray()) }
+            check(SuFile(temporary).renameTo(SuFile(YZCONFIG_PATH)))
+            check(execKsud("yzctl reload"))
+        }.onFailure { Log.e(TAG, "Failed to apply $YZCONFIG_PATH", it) }.isSuccess
+    }
 }
 
 private enum class MonitorState {
@@ -163,6 +178,7 @@ private fun parseMonitorState(value: String): MonitorState = when (value) {
     "injected" -> MonitorState.Injected
     "unsupported32" -> MonitorState.Unsupported32
     "crashed" -> MonitorState.Crashed
+    "safemode" -> MonitorState.Crashed
     "failed" -> MonitorState.Failed
     else -> MonitorState.Unknown
 }
@@ -172,13 +188,16 @@ private data class ZygoteMonitorEntry(
     val name: String,
     val abi: String,
     val state: MonitorState,
+    val generation: Int = 0,
+    val modules: List<String> = emptyList(),
+    val moduleMonitorAvailable: Boolean = false,
 )
 
 private data class NativeModuleEntry(
+    val name: String,
     val id: String,
     val targetType: String,
     val target: String,
-    val companion: Boolean,
     val state: MonitorState,
 )
 
@@ -189,7 +208,6 @@ private data class NativeInjection(
     val targetType: String,
     val target: String,
     val abi: String,
-    val companion: Boolean,
     val state: MonitorState,
 )
 
@@ -202,30 +220,121 @@ private data class NativeProcessEntry(
 )
 
 private data class NativeModuleMonitorEntry(
+    val name: String,
     val id: String,
+    val scopes: List<NativeModuleScope>,
+    val state: MonitorState,
+)
+
+private data class NativeModuleScope(
     val targetType: String,
     val target: String,
-    val companion: Boolean,
-    val targets: List<NativeInjection>,
     val state: MonitorState,
+    val targets: List<NativeModuleTarget>,
+)
+
+private data class NativeModuleTarget(
+    val process: String,
+    val pid: Int,
 )
 
 private fun nativeProcessDisplayName(value: String): String =
     value.substringAfterLast('/').ifBlank { value }
 
+private fun aggregateMonitorState(states: List<MonitorState>): MonitorState = when {
+    MonitorState.Crashed in states -> MonitorState.Crashed
+    MonitorState.Failed in states -> MonitorState.Failed
+    MonitorState.Injected in states -> MonitorState.Injected
+    MonitorState.Unsupported32 in states -> MonitorState.Unsupported32
+    else -> MonitorState.Unknown
+}
+
+private fun buildNativeModuleRows(
+    modules: List<NativeModuleEntry>,
+    injections: List<NativeInjection>,
+): List<NativeModuleMonitorEntry> {
+    val injectionsByModule = injections.groupBy { it.module }
+    return modules.groupBy { it.id }.map { (id, entries) ->
+        val scopes = entries.groupBy { it.targetType to it.target }.map { (_, scopeEntries) ->
+            val entry = scopeEntries.first()
+            val targets = injectionsByModule[id].orEmpty()
+                .filter {
+                    it.targetType == entry.targetType && it.target == entry.target && it.pid > 0
+                }
+                .map {
+                    NativeModuleTarget(
+                        process = nativeProcessDisplayName(it.process.ifBlank { it.target }),
+                        pid = it.pid,
+                    )
+                }
+                .distinctBy { it.pid }
+                .sortedWith(compareBy<NativeModuleTarget> { it.process }.thenBy { it.pid })
+            NativeModuleScope(
+                targetType = entry.targetType,
+                target = entry.target,
+                state = aggregateMonitorState(scopeEntries.map { it.state }),
+                targets = targets,
+            )
+        }
+        NativeModuleMonitorEntry(
+            name = entries.first().name,
+            id = id,
+            scopes = scopes,
+            state = aggregateMonitorState(scopes.map { it.state }),
+        )
+    }
+}
+
 private data class YzStatus(
-    val enabled: Boolean,
-    val count: Int,
-    val safeMode: Boolean,
-    val zygoteCrashes: Int,
     val zygotes: List<ZygoteMonitorEntry>,
     val modules: List<String>,
+    val runtime: List<RuntimeMonitorEntry>,
     val nativeModules: List<NativeModuleEntry>,
     val nativeInjections: List<NativeInjection>,
 )
 
+private data class ModuleDisplayEntry(
+    val name: String,
+    val id: String,
+    val abis: List<String>,
+    val state: MonitorState,
+)
+
+private data class RuntimeMonitorEntry(
+    val pid: Int,
+    val generation: Int,
+    val kind: String,
+    val abi: String,
+    val module: String,
+    val state: MonitorState,
+)
+
+private fun zygoteModules(
+    runtime: List<RuntimeMonitorEntry>,
+    pid: Int,
+    generation: Int,
+    abi: String,
+): List<String> = runtime.filter {
+    it.kind == "zygote" && it.pid == pid && it.generation == generation &&
+        pid > 0 && generation != 0 && it.abi == abi &&
+        it.module.isNotBlank() && it.state == MonitorState.Injected
+}.map { it.module }.distinct()
+
 private fun parseYzStatus(json: String): YzStatus? = runCatching {
     val o = JSONObject(json)
+    val runtime = o.optJSONArray("runtime")?.let { a ->
+        (0 until a.length()).map { i ->
+            val r = a.getJSONObject(i)
+            RuntimeMonitorEntry(
+                pid = r.optInt("pid", 0),
+                generation = r.optInt("generation", 0),
+                kind = r.optString("kind", ""),
+                abi = r.optString("abi", "unknown"),
+                module = r.optString("module", ""),
+                state = parseMonitorState(r.optString("state", "unknown")),
+            )
+        }
+    } ?: emptyList()
     val modules = o.optJSONArray("modules")?.let { a ->
         (0 until a.length()).map { a.getString(it) }
     } ?: emptyList()
@@ -237,6 +346,11 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 name = z.optString("target").ifBlank { z.optString("name", "zygote") },
                 abi = z.optString("abi", "unknown"),
                 state = MonitorState.Injected,
+                generation = z.optInt("generation", 0),
+                modules = zygoteModules(
+                    runtime, z.optInt("pid", 0), z.optInt("generation", 0), z.optString("abi"),
+                ),
+                moduleMonitorAvailable = o.optBoolean("zygisk_module_monitor", false),
             )
         }
     } ?: emptyList()
@@ -249,6 +363,11 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 name = z.optString("target").ifBlank { z.optString("name", "zygote") },
                 abi = z.optString("abi", "unknown"),
                 state = parseMonitorState(z.optString("state", "unknown")),
+                generation = z.optInt("generation", 0),
+                modules = zygoteModules(
+                    runtime, z.optInt("pid", 0), z.optInt("generation", 0), z.optString("abi"),
+                ),
+                moduleMonitorAvailable = o.optBoolean("zygisk_module_monitor", false),
             )
         }
     } ?: emptyList()
@@ -257,10 +376,10 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
         (0 until a.length()).map { i ->
             val n = a.getJSONObject(i)
             NativeModuleEntry(
+                name = n.optString("name", ""),
                 id = n.optString("id", ""),
                 targetType = n.optString("target_type", "name"),
                 target = n.optString("target", ""),
-                companion = n.optBoolean("companion", false),
                 state = parseMonitorState(n.optString("state", "unknown")),
             )
         }
@@ -275,35 +394,91 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
                 targetType = n.optString("target_type", "name"),
                 target = n.optString("target", ""),
                 abi = n.optString("abi", "unknown"),
-                companion = n.optBoolean("companion", false),
                 state = parseMonitorState(n.optString("state", "unknown")),
             )
         }
     } ?: emptyList()
     YzStatus(
-        o.optBoolean("enabled", false),
-        o.optInt("count", 0),
-        o.optBoolean("safe_mode", false),
-        o.optInt("zygote_crashes", 0),
         zygotes,
         modules,
+        runtime,
         nativeModules,
         nativeInjections,
     )
 }.getOrNull()
 
 private data class YzSnapshot(
-    val enabled: Boolean,
-    val count: Int,
-    val safeMode: Boolean,
-    val zygoteCrashes: Int,
     val zygotes: List<ZygoteMonitorEntry>,
-    val modulesLoadedCount: Int,
+    val modules: List<ModuleDisplayEntry>,
     val nativeModules: List<NativeModuleEntry>,
     val nativeInjections: List<NativeInjection>,
 )
 
 private const val YZ_POLL_INTERVAL_MS = 2000L
+
+private val YZ_MODULE_ABIS = listOf("arm64-v8a", "armeabi-v7a")
+
+private fun readModuleDisplayName(moduleId: String): String {
+    if (moduleId.isBlank()) return moduleId
+    return runCatching {
+        val propFile = SuFile("/data/adb/modules/$moduleId/module.prop")
+        if (!propFile.isFile) return@runCatching moduleId
+        SuFileInputStream.open(propFile).bufferedReader().useLines { lines ->
+            lines.firstNotNullOfOrNull { line ->
+                line.takeIf { it.startsWith("name=") }
+                    ?.substringAfter('=')
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            } ?: moduleId
+        }
+    }.getOrDefault(moduleId)
+}
+
+private fun readModuleDisplayNames(moduleIds: Collection<String>): Map<String, String> =
+    moduleIds.distinct().associateWith(::readModuleDisplayName)
+
+private fun readModuleArchitectures(moduleId: String): List<String> =
+    YZ_MODULE_ABIS.filter { abi ->
+        SuFile("/data/adb/modules/$moduleId/zygisk/$abi.so").isFile
+    }
+
+private fun readModuleArchitectures(moduleIds: Collection<String>): Map<String, List<String>> =
+    moduleIds.distinct().associateWith(::readModuleArchitectures)
+
+private fun zygiskModuleState(
+    moduleId: String,
+    abis: List<String>,
+    zygotes: List<ZygoteMonitorEntry>,
+    runtime: List<RuntimeMonitorEntry>,
+): MonitorState {
+    var injected = false
+    var failed = false
+    for (abi in abis.filter { it in YZ_MODULE_ABIS }) {
+        val matchingZygotes = zygotes.filter { it.abi == abi && it.pid > 0 }
+        if (matchingZygotes.isEmpty()) continue
+        if (matchingZygotes.any { it.state == MonitorState.Crashed || it.state == MonitorState.Failed }) {
+            failed = true
+            continue
+        }
+        val records = runtime.filter {
+            it.kind == "zygote" && it.module == moduleId && it.abi == abi &&
+                matchingZygotes.any { z ->
+                    z.moduleMonitorAvailable && z.generation != 0 &&
+                        z.pid == it.pid && z.generation == it.generation
+                }
+        }
+        if (records.any { it.state == MonitorState.Crashed || it.state == MonitorState.Failed }) {
+            failed = true
+        } else if (records.any { it.state == MonitorState.Injected }) {
+            injected = true
+        }
+    }
+    return when {
+        failed -> MonitorState.Failed
+        injected -> MonitorState.Injected
+        else -> MonitorState.Unknown
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Destination<RootGraph>
@@ -319,12 +494,8 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     val snackBarHost = rememberSnackbarController()
 
     var config by remember { mutableStateOf(YzConfig()) }
-    var injectionActive by remember { mutableStateOf(false) }
-    var safeMode by remember { mutableStateOf(false) }
-    var injectionCount by remember { mutableIntStateOf(0) }
-    var zygoteCrashes by remember { mutableIntStateOf(0) }
     var monitoredZygotes by remember { mutableStateOf<List<ZygoteMonitorEntry>>(emptyList()) }
-    var modulesLoadedCount by remember { mutableIntStateOf(0) }
+    var zygiskModules by remember { mutableStateOf<List<ModuleDisplayEntry>>(emptyList()) }
     var nativeModules by remember { mutableStateOf<List<NativeModuleEntry>>(emptyList()) }
     var nativeInjections by remember { mutableStateOf<List<NativeInjection>>(emptyList()) }
     var nativeMonitorMode by remember { mutableStateOf(NativeMonitorMode.Module) }
@@ -332,41 +503,54 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
 
     LaunchedEffect(Unit) {
         config = readYzConfig()
-        injectionActive = getFeatureValue(Natives.FEATURE_YUKIZYGISK)
     }
 
     LaunchedEffect(Unit) {
+        val moduleNameCache = mutableMapOf<String, String>()
+        val moduleAbiCache = mutableMapOf<String, List<String>>()
         while (true) {
             val snapshot = withContext(Dispatchers.IO) {
                 val st = getYukiZygiskStatusJson()?.let(::parseYzStatus)
                     ?: return@withContext null
+                val moduleIds = st.modules + st.nativeModules.map { it.id } +
+                    st.zygotes.flatMap { it.modules }
+                val missingModuleIds = moduleIds.distinct().filterNot(moduleNameCache::containsKey)
+                if (missingModuleIds.isNotEmpty()) {
+                    moduleNameCache.putAll(readModuleDisplayNames(missingModuleIds))
+                    moduleAbiCache.putAll(readModuleArchitectures(missingModuleIds))
+                }
+                val moduleEntries = st.modules.map { id ->
+                    ModuleDisplayEntry(
+                        name = moduleNameCache[id] ?: id,
+                        id = id,
+                        abis = moduleAbiCache[id].orEmpty(),
+                        state = zygiskModuleState(
+                            id, moduleAbiCache[id].orEmpty(), st.zygotes, st.runtime,
+                        ),
+                    )
+                }
+                val zygotes = st.zygotes.map { zygote ->
+                    zygote.copy(
+                        modules = zygote.modules.map { moduleNameCache[it] ?: it },
+                    )
+                }
                 YzSnapshot(
-                    enabled = st.enabled,
-                    count = st.count,
-                    safeMode = st.safeMode,
-                    zygoteCrashes = st.zygoteCrashes,
-                    zygotes = st.zygotes,
-                    modulesLoadedCount = st.modules.size,
-                    nativeModules = st.nativeModules,
+                    zygotes = zygotes,
+                    modules = moduleEntries,
+                    nativeModules = st.nativeModules.map { module ->
+                        module.copy(name = moduleNameCache[module.id] ?: module.id)
+                    },
                     nativeInjections = st.nativeInjections,
                 )
             }
             if (snapshot != null) {
-                safeMode = snapshot.safeMode
-                injectionActive = snapshot.enabled && !snapshot.safeMode
-                injectionCount = snapshot.count
-                zygoteCrashes = snapshot.zygoteCrashes
                 monitoredZygotes = snapshot.zygotes
-                modulesLoadedCount = snapshot.modulesLoadedCount
+                zygiskModules = snapshot.modules
                 nativeModules = snapshot.nativeModules
                 nativeInjections = snapshot.nativeInjections
             } else {
-                injectionActive = false
-                injectionCount = 0
-                safeMode = false
-                zygoteCrashes = 0
                 monitoredZygotes = emptyList()
-                modulesLoadedCount = 0
+                zygiskModules = emptyList()
                 nativeModules = emptyList()
                 nativeInjections = emptyList()
             }
@@ -374,9 +558,15 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
         }
     }
 
+    val saveFailedMessage = stringResource(R.string.yukizygisk_config_save_failed)
     fun save(newCfg: YzConfig) {
         config = newCfg
-        scope.launch { writeYzConfig(newCfg) }
+        scope.launch {
+            if (!writeYzConfig(newCfg)) {
+                config = readYzConfig()
+                snackBarHost.showSnackbar(saveFailedMessage)
+            }
+        }
     }
 
     monitorDialog?.let { dialog ->
@@ -413,53 +603,6 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 .padding(horizontal = 16.dp)
                 .padding(top = 8.dp),
         ) {
-            val injectionStatusRows = mutableListOf<Pair<String, String>>().apply {
-                add(
-                    stringResource(R.string.yukizygisk_kernel_injection) to when {
-                        safeMode -> stringResource(R.string.yukizygisk_status_safe_mode)
-                        injectionActive -> stringResource(R.string.yukizygisk_status_active)
-                        else -> stringResource(R.string.yukizygisk_status_off)
-                    }
-                )
-                if (safeMode) {
-                    add(
-                        stringResource(R.string.yukizygisk_zygote_crashes) to
-                            zygoteCrashes.toString()
-                    )
-                }
-                add(
-                    stringResource(R.string.yukizygisk_module_loader) to
-                        if (config.yukilinker) {
-                            stringResource(R.string.yukizygisk_loader_anon)
-                        } else {
-                            stringResource(R.string.yukizygisk_loader_system)
-                        }
-                )
-                add(
-                    stringResource(R.string.yukizygisk_denylist_behaviour) to
-                        when (config.denylistMode) {
-                            1 -> stringResource(R.string.yukizygisk_denylist_force_long)
-                            2 -> stringResource(R.string.yukizygisk_denylist_restore_long)
-                            else -> stringResource(R.string.yukizygisk_status_off)
-                        }
-                )
-                add(
-                    stringResource(R.string.yukizygisk_injections_session) to
-                        injectionCount.toString()
-                )
-            }
-
-            SettingsCard(title = stringResource(R.string.yukizygisk_injection_status)) {
-                injectionStatusRows.forEachIndexed { index, (label, value) ->
-                    StatusRow(
-                        label = label,
-                        value = value,
-                        index = index,
-                        count = injectionStatusRows.size,
-                    )
-                }
-            }
-
             SettingsCard(title = stringResource(R.string.yukizygisk_injected_zygotes)) {
                 if (monitoredZygotes.isEmpty()) {
                     EmptyMonitorGroup(stringResource(R.string.yukizygisk_no_zygotes))
@@ -469,6 +612,17 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                         ZygoteMonitorRow(zygote) {
                             monitorDialog = dialog
                         }
+                    }
+                }
+            }
+
+            MonitorCard(title = stringResource(R.string.yukizygisk_modules)) {
+                if (zygiskModules.isEmpty()) {
+                    EmptyMonitorGroup(stringResource(R.string.yukizygisk_no_modules))
+                } else {
+                    zygiskModules.forEach { module ->
+                        val dialog = zygiskModuleDialog(module)
+                        ZygiskModuleRow(module) { monitorDialog = dialog }
                     }
                 }
             }
@@ -515,35 +669,14 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 },
             ) {
                 val moduleRows = remember(nativeModules, nativeInjections) {
-                    nativeModules.map { module ->
-                        val targets = nativeInjections.filter {
-                            it.module == module.id &&
-                                it.targetType == module.targetType &&
-                                it.target == module.target
-                        }
-                        NativeModuleMonitorEntry(
-                            id = module.id,
-                            targetType = module.targetType,
-                            target = module.target,
-                            companion = module.companion,
-                            targets = targets,
-                            state = module.state,
-                        )
-                    }
+                    buildNativeModuleRows(nativeModules, nativeInjections)
                 }
                 val processRows = remember(nativeInjections) {
                     nativeInjections
                         .groupBy { it.pid to it.process }
                         .map { (_, rows) ->
                             val first = rows.first()
-                            val state = when {
-                                rows.any { it.state == MonitorState.Crashed } -> MonitorState.Crashed
-                                rows.any { it.state == MonitorState.Failed } -> MonitorState.Failed
-                                rows.any { it.state == MonitorState.Unsupported32 } ->
-                                    MonitorState.Unsupported32
-                                rows.any { it.state == MonitorState.Injected } -> MonitorState.Injected
-                                else -> MonitorState.Unknown
-                            }
+                            val state = aggregateMonitorState(rows.map { it.state })
                             NativeProcessEntry(
                                 pid = first.pid,
                                 process = nativeProcessDisplayName(
@@ -580,39 +713,35 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
 
             SettingsCard(title = stringResource(R.string.yukizygisk_module_loading)) {
                 SwitchSettingItem(
-                    icon = Icons.Filled.Memory,
-                    title = stringResource(R.string.yukizygisk_anon_loading_title),
-                    summary = stringResource(R.string.yukizygisk_anon_loading_summary),
-                    checked = config.yukilinker,
+                    icon = Icons.Outlined.VisibilityOff,
+                    title = stringResource(R.string.yukizygisk_anonymous_memory_title),
+                    summary = stringResource(R.string.yukizygisk_anonymous_memory_summary),
+                    checked = config.anonymousMemory,
                     groupPosition = MoreSettingsItemPosition.First,
+                    onChange = { save(config.copy(anonymousMemory = it)) },
+                )
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Link,
+                    title = stringResource(R.string.yukizygisk_yukilinker_title),
+                    summary = stringResource(R.string.yukizygisk_yukilinker_summary),
+                    checked = config.yukilinker,
+                    groupPosition = MoreSettingsItemPosition.Middle,
                     onChange = { save(config.copy(yukilinker = it)) },
                 )
-                SettingsControlGroup(groupPosition = MoreSettingsItemPosition.Last) {
-                    Text(
-                        stringResource(
-                            R.string.yukizygisk_loaded_modules_count,
-                            modulesLoadedCount,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-
-            SettingsCard(title = stringResource(R.string.yukizygisk_denylist_behaviour)) {
-                SettingsControlGroup(groupPosition = MoreSettingsItemPosition.Only) {
-                    Text(
-                        stringResource(R.string.yukizygisk_denylist_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
-                    DenylistModeSelector(
-                        mode = config.denylistMode,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { save(config.copy(denylistMode = it)) }
-                }
+                SwitchSettingItem(
+                    icon = Icons.Filled.Bolt,
+                    title = stringResource(R.string.yukizygisk_early_load_title),
+                    summary = stringResource(R.string.yukizygisk_early_load_summary),
+                    checked = config.earlyLoad,
+                    groupPosition = MoreSettingsItemPosition.Last,
+                    onChange = { save(config.copy(earlyLoad = it)) },
+                )
+                DenylistModeSelector(
+                    mode = config.denylistMode,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) { save(config.copy(denylistMode = it)) }
             }
 
             SettingsCard(title = stringResource(R.string.yukizygisk_logging_title)) {
@@ -722,9 +851,11 @@ private fun ZygoteMonitorRow(zygote: ZygoteMonitorEntry, onStatusClick: () -> Un
 }
 
 @Composable
-private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusClick: () -> Unit) {
+private fun ZygiskModuleRow(module: ModuleDisplayEntry, onStatusClick: () -> Unit) {
     ListItem(
-        modifier = Modifier.monitorGroup(),
+        modifier = Modifier
+            .monitorGroup()
+            .clickable(onClick = onStatusClick),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
             YukiIcon(
@@ -741,29 +872,74 @@ private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusCli
             )
         },
         content = {
-            Text(
-                module.id,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        supportingContent = {
-            Text(
-                stringResource(
-                    R.string.yukizygisk_native_module_detail,
-                    module.targetType,
-                    module.target,
-                    if (module.companion) stringResource(R.string.yukizygisk_native_companion)
-                    else stringResource(R.string.yukizygisk_native_no_companion),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column {
+                Text(
+                    module.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    module.id,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         },
         trailingContent = {
-            MonitorStateButton(module.state, onStatusClick)
+            MonitorStateButton(
+                if (module.state == MonitorState.Crashed) MonitorState.Failed else module.state,
+                onStatusClick,
+            )
+        },
+    )
+}
+
+@Composable
+private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier
+            .monitorGroup()
+            .clickable(onClick = onStatusClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            YukiIcon(
+                imageVector = Icons.Filled.Extension,
+                contentDescription = null,
+                tint = if (isExpressiveUi) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier
+                    .padding(4.dp)
+                    .size(28.dp),
+            )
+        },
+        content = {
+            Column {
+                Text(
+                    module.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    module.id,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        trailingContent = {
+            MonitorStateButton(
+                if (module.state == MonitorState.Crashed) MonitorState.Failed else module.state,
+                onStatusClick,
+            )
         },
     )
 }
@@ -916,14 +1092,39 @@ private fun MonitorCard(
 
 @Composable
 private fun zygoteDialog(zygote: ZygoteMonitorEntry): MonitorDialogState {
+    val resources = LocalResources.current
     val message = when (zygote.state) {
-        MonitorState.Injected -> stringResource(R.string.yukizygisk_zygote_injected_message)
+        MonitorState.Injected -> ""
         MonitorState.Unsupported32 -> stringResource(R.string.yukizygisk_zygote_unsupported_message)
         MonitorState.Crashed -> stringResource(R.string.yukizygisk_zygote_crashed_message)
         MonitorState.Failed -> stringResource(R.string.yukizygisk_zygote_failed_message)
         MonitorState.Unknown -> stringResource(R.string.yukizygisk_zygote_unknown_message)
     }
-    return MonitorDialogState(zygote.name, message)
+    val modules = if (!zygote.moduleMonitorAvailable) {
+        resources.getString(R.string.yukizygisk_zygote_modules_unavailable)
+    } else resources.getString(
+        R.string.yukizygisk_zygote_modules_detail,
+        zygote.modules.size,
+        zygote.modules.joinToString("\n").ifBlank {
+            resources.getString(R.string.yukizygisk_zygote_no_modules_detail)
+        },
+    )
+    return MonitorDialogState(
+        zygote.name,
+        listOf(message, modules).filter(String::isNotBlank).joinToString("\n"),
+    )
+}
+
+@Composable
+private fun zygiskModuleDialog(module: ModuleDisplayEntry): MonitorDialogState {
+    val resources = LocalResources.current
+    val abis = module.abis.joinToString(", ").ifBlank {
+        resources.getString(R.string.yukizygisk_module_no_supported_abis)
+    }
+    return MonitorDialogState(
+        module.name,
+        resources.getString(R.string.yukizygisk_module_supported_abis, abis),
+    )
 }
 
 @Composable
@@ -946,13 +1147,27 @@ private fun nativeProcessDialog(process: NativeProcessEntry): MonitorDialogState
 @Composable
 private fun nativeModuleDialog(module: NativeModuleMonitorEntry): MonitorDialogState {
     val resources = LocalResources.current
-    val targets = module.targets.joinToString("\n") {
-        resources.getString(
-            R.string.yukizygisk_native_target_line,
-            it.process.ifEmpty { it.target },
-            it.abi,
-            it.pid,
-        )
+    val scopes = module.scopes.joinToString("\n") { scope ->
+        val status = when (scope.state) {
+            MonitorState.Injected -> {
+                val processes = scope.targets.joinToString(", ") {
+                    resources.getString(R.string.yukizygisk_native_scope_process, it.process, it.pid)
+                }
+                if (processes.isBlank()) {
+                    resources.getString(R.string.yukizygisk_native_scope_injected_no_process)
+                } else {
+                    resources.getString(R.string.yukizygisk_native_scope_injected, processes)
+                }
+            }
+            MonitorState.Unsupported32 ->
+                resources.getString(R.string.yukizygisk_native_scope_unsupported)
+            MonitorState.Crashed -> resources.getString(R.string.yukizygisk_native_scope_crashed)
+            MonitorState.Failed -> resources.getString(R.string.yukizygisk_native_scope_failed)
+            MonitorState.Unknown -> resources.getString(R.string.yukizygisk_native_scope_unobserved)
+        }
+        val target = nativeProcessDisplayName(scope.target)
+        val detail = if (scope.targets.isEmpty() && target.isNotBlank()) "$target: $status" else status
+        resources.getString(R.string.yukizygisk_native_scope_status, detail)
     }
     val base = when (module.state) {
         MonitorState.Injected -> stringResource(R.string.yukizygisk_native_module_injected_message)
@@ -962,59 +1177,11 @@ private fun nativeModuleDialog(module: NativeModuleMonitorEntry): MonitorDialogS
         MonitorState.Failed -> stringResource(R.string.yukizygisk_native_module_failed_message)
         MonitorState.Unknown -> stringResource(R.string.yukizygisk_native_module_unknown_message)
     }
-    return MonitorDialogState(module.id, appendDetail(base, targets))
+    return MonitorDialogState(module.name, appendDetail(base, scopes))
 }
 
 private fun appendDetail(base: String, detail: String): String =
     if (detail.isBlank()) base else "$base\n$detail"
-
-@Composable
-private fun StatusRow(label: String, value: String, index: Int, count: Int) {
-    val expressiveShape = if (count == 1) {
-        MaterialTheme.shapes.large
-    } else {
-        ListItemDefaults.segmentedShapes(index, count).shape
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isExpressiveUi) {
-                    Modifier
-                        .padding(
-                            horizontal = 6.dp,
-                            vertical = ListItemDefaults.SegmentedGap / 2,
-                        )
-                        .defaultMinSize(minHeight = 56.dp)
-                        .clip(expressiveShape)
-                        .background(
-                            MaterialTheme.colorScheme.surfaceContainer.copy(
-                                alpha = CardConfig.cardAlpha,
-                            )
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                } else {
-                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                }
-            ),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 12.dp),
-        )
-    }
-}
 
 @Composable
 private fun Modifier.monitorGroup(): Modifier = if (isExpressiveUi) {
@@ -1070,14 +1237,38 @@ private fun DenylistModeSelector(
         stringResource(R.string.yukizygisk_denylist_force),
         stringResource(R.string.yukizygisk_denylist_restore),
     )
-    SingleChoiceSegmentedButtonRow(modifier = modifier) {
-        options.forEachIndexed { index, label ->
-            SegmentedButton(
-                selected = mode == index,
-                onClick = { onSelect(index) },
-                shape = SegmentedButtonDefaults.itemShape(index, options.size),
-            ) {
-                Text(label)
+    if (isExpressiveUi) {
+        Row(
+            modifier = modifier.selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        ) {
+            options.forEachIndexed { index, label ->
+                ToggleButton(
+                    checked = mode == index,
+                    onCheckedChange = { onSelect(index) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { role = Role.RadioButton },
+                    shapes = when (index) {
+                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                    },
+                ) {
+                    Text(label)
+                }
+            }
+        }
+    } else {
+        SingleChoiceSegmentedButtonRow(modifier = modifier) {
+            options.forEachIndexed { index, label ->
+                SegmentedButton(
+                    selected = mode == index,
+                    onClick = { onSelect(index) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                ) {
+                    Text(label)
+                }
             }
         }
     }

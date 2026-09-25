@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.system.Os
 import android.widget.Toast
+import androidx.annotation.DrawableRes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
@@ -1022,6 +1023,7 @@ private fun HomeInfoItem(
     label: String,
     content: String,
     icon: ImageVector? = null,
+    @DrawableRes iconRes: Int? = null,
     contentColor: Color = Color.Unspecified,
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
@@ -1096,20 +1098,29 @@ private fun HomeInfoItem(
                 }
             )
     ) {
-        if (icon != null) {
-            YukiIcon(
-                imageVector = icon,
-                contentDescription = label,
-                modifier = if (expressive) {
-                    Modifier
-                        .size(32.dp)
-                        .padding(4.dp)
-                } else {
-                    Modifier
-                        .size(28.dp)
-                        .padding(vertical = 4.dp)
-                },
-            )
+        if (icon != null || iconRes != null) {
+            val iconModifier = if (expressive) {
+                Modifier
+                    .size(32.dp)
+                    .padding(4.dp)
+            } else {
+                Modifier
+                    .size(28.dp)
+                    .padding(vertical = 4.dp)
+            }
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = label,
+                    modifier = iconModifier,
+                )
+            } else {
+                YukiIcon(
+                    imageVector = icon!!,
+                    contentDescription = label,
+                    modifier = iconModifier,
+                )
+            }
         }
         Spacer(modifier = Modifier.width(if (expressive) 12.dp else 16.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -1148,6 +1159,7 @@ private data class HomeInfoEntry(
     val label: String,
     val content: String,
     val icon: ImageVector? = null,
+    @DrawableRes val iconRes: Int? = null,
     val contentColor: Color = Color.Unspecified,
     val onClick: (() -> Unit)? = null,
     val trailing: (@Composable () -> Unit)? = null,
@@ -1317,7 +1329,7 @@ private fun InfoCard(
             add(HomeInfoEntry(
                 label = stringResource(R.string.home_zygisk_implement),
                 content = systemInfo.zygiskImplement,
-                icon = Icons.Default.Adb,
+                iconRes = R.drawable.ms_syringe,
                 trailing = if (isYukiZygisk) {
                     {
                         YukiIcon(
@@ -1355,6 +1367,7 @@ private fun InfoCard(
                     label = entry.label,
                     content = entry.content,
                     icon = entry.icon,
+                    iconRes = entry.iconRes,
                     contentColor = entry.contentColor,
                     onClick = entry.onClick,
                     trailing = entry.trailing,
@@ -1379,6 +1392,7 @@ private fun InfoCard(
                         label = entry.label,
                         content = entry.content,
                         icon = entry.icon,
+                        iconRes = entry.iconRes,
                         contentColor = entry.contentColor,
                         onClick = entry.onClick,
                         trailing = entry.trailing,
