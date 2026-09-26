@@ -4,8 +4,12 @@
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
+#include <climits>
+#include <csignal>
 #include <cstring>
 
 namespace ksud {
@@ -60,15 +64,10 @@ private:
     }
     _exit(127);
 }
-}  // namespace
-
-ExecResult exec_command(const std::vector<std::string>& args) {
-    return exec_command(args, "");
-}
-
-ExecResult exec_command(const std::vector<std::string>& args, const std::string& workdir) {
+ExecResult exec_command_impl(const std::vector<std::string>& args, const std::string& workdir,
+                             std::optional<std::chrono::milliseconds> timeout) {
     ExecResult result{-1, "", ""};
-    if (args.empty() || args[0].empty()) {
+    if (args.empty() || args[0].empty() || (timeout && timeout->count() <= 0)) {
         result.error_number = EINVAL;
         return result;
     }
@@ -82,6 +81,12 @@ ExecResult exec_command(const std::vector<std::string>& args, const std::string&
         result.error_number = EINVAL;
         return result;
     }
+    const auto deadline =
+        std::chrono::steady_clock::now() + timeout.value_or(std::chrono::milliseconds(0));
+    const auto remaining_ms = [&] {
+        return std::chrono::ceil<std::chrono::milliseconds>(deadline -
+                                                            std::chrono::steady_clock::now());
+    };
     std::vector<char*> argv;
     argv.reserve(args.size() + 1);
     for (const auto& arg : args)
@@ -130,7 +135,18 @@ ExecResult exec_command(const std::vector<std::string>& args, const std::string&
     std::array<char, sizeof(int)> exec_error{};
     size_t error_bytes = 0;
     while (remaining) {
-        const int ready = poll(descriptors.data(), descriptors.size(), -1);
+        const auto left = remaining_ms();
+        if (timeout && left.count() <= 0) {
+            result.error_number = ETIMEDOUT;
+            break;
+        }
+        const int poll_timeout =
+            timeout ? static_cast<int>(std::min<int64_t>(left.count(), INT_MAX)) : -1;
+        const int ready = poll(descriptors.data(), descriptors.size(), poll_timeout);
+        if (ready == 0) {
+            result.error_number = ETIMEDOUT;
+            break;
+        }
         if (ready < 0) {
             if (errno == EINTR)
                 continue;
@@ -155,6 +171,13 @@ ExecResult exec_command(const std::vector<std::string>& args, const std::string&
                     break;
                 }
                 const auto size = static_cast<size_t>(count);
+                constexpr size_t capture_limit = 1024UL * 1024;
+                if (timeout && i < 2 &&
+                    (i == 0 ? result.stdout_str.size() : result.stderr_str.size()) + size >
+                        capture_limit) {
+                    result.error_number = EOVERFLOW;
+                    break;
+                }
                 if (i == 0)
                     result.stdout_str.append(buffer.data(), size);
                 else if (i == 1)
@@ -165,15 +188,33 @@ ExecResult exec_command(const std::vector<std::string>& args, const std::string&
                 } else
                     result.error_number = EIO;
             }
+            if (timeout && result.error_number)
+                break;
         }
+        if (timeout && result.error_number)
+            break;
     }
     for (auto& pipe : pipes)
         pipe.close_end(0);
     int status = 0;
     pid_t waited;
-    do {
-        waited = waitpid(pid, &status, 0);
-    } while (waited < 0 && errno == EINTR);
+    bool terminate = timeout && result.error_number != 0;
+    for (;;) {
+        if (terminate)
+            (void)kill(pid, SIGKILL);
+        waited = waitpid(pid, &status, timeout && !terminate ? WNOHANG : 0);
+        if (waited < 0 && errno == EINTR)
+            continue;
+        if (waited != 0)
+            break;
+        const auto left = remaining_ms();
+        if (left.count() <= 0) {
+            result.error_number = ETIMEDOUT;
+            terminate = true;
+            continue;
+        }
+        (void)poll(nullptr, 0, static_cast<int>(std::min<int64_t>(left.count(), 10)));
+    }
     if (waited < 0)
         result.error_number = errno;
     else if (WIFEXITED(status))
@@ -189,5 +230,18 @@ ExecResult exec_command(const std::vector<std::string>& args, const std::string&
     if (result.error_number && result.exit_code == 0)
         result.exit_code = -1;
     return result;
+}
+}  // namespace
+
+ExecResult exec_command(const std::vector<std::string>& args) {
+    return exec_command_impl(args, "", std::nullopt);
+}
+
+ExecResult exec_command(const std::vector<std::string>& args, const std::string& workdir) {
+    return exec_command_impl(args, workdir, std::nullopt);
+}
+
+ExecResult exec_command(const std::vector<std::string>& args, std::chrono::milliseconds timeout) {
+    return exec_command_impl(args, "", timeout);
 }
 }  // namespace ksud

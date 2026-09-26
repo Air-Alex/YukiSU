@@ -17,6 +17,7 @@
 #include "module/module_config.hpp"
 #include "plugin/lua_engine.hpp"
 #include "profile/profile.hpp"
+#include "soft_reboot_waiter.hpp"
 #include "sulog.hpp"
 #include "umount.hpp"
 #include "utils.hpp"
@@ -26,21 +27,16 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/stat.h>
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <array>
 #include <cerrno>
-#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
-#include <optional>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace ksud {
@@ -139,54 +135,6 @@ bool run_soft_reboot_command(const char* command) {
 
     LOGW("%s failed with exit code %d: %s", command, result.exit_code, result.stderr_str.c_str());
     return false;
-}
-
-std::optional<pid_t> system_server_pid() {
-    const auto result = exec_command({"/system/bin/pidof", "-s", "system_server"});
-    if (result.exit_code != 0)
-        return std::nullopt;
-
-    const char* begin = result.stdout_str.c_str();
-    char* end = nullptr;
-    errno = 0;
-    const long value = std::strtol(begin, &end, 10);
-    if (errno != 0 || end == begin || value <= 1 || value > std::numeric_limits<pid_t>::max() ||
-        (*end != '\0' && *end != '\n'))
-        return std::nullopt;
-    return static_cast<pid_t>(value);
-}
-
-void wait_for_system_server_exit(pid_t pid, int pidfd) {
-    constexpr auto timeout = std::chrono::seconds(5);
-    if (pidfd >= 0) {
-        pollfd pfd{pidfd, POLLIN, 0};
-        const auto deadline = std::chrono::steady_clock::now() + timeout;
-        while (std::chrono::steady_clock::now() < deadline) {
-            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now());
-            const int result = poll(&pfd, 1, static_cast<int>(remaining.count()));
-            if (result > 0 && (pfd.revents & POLLIN)) {
-                close(pidfd);
-                LOGI("system_server exited after stop");
-                return;
-            }
-            if (result < 0 && errno == EINTR)
-                continue;
-            break;
-        }
-        close(pidfd);
-        LOGW("Timed out waiting for system_server to exit");
-        return;
-    }
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (kill(pid, 0) != 0 && errno == ESRCH) {
-            LOGI("system_server exited after stop");
-            return;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-    LOGW("Timed out waiting for system_server to exit");
 }
 
 // Catch boot logs (logcat/dmesg) to file
@@ -665,20 +613,13 @@ int soft_reboot() {
 
     run_stage("emulated-soft-reboot", true);
 
-    const auto server_pid = system_server_pid();
-    int server_pidfd = -1;
-#if defined(SYS_pidfd_open)
-    if (server_pid)
-        server_pidfd = static_cast<int>(syscall(SYS_pidfd_open, *server_pid, 0));
-#endif
-
-    LOGI("Stopping Android services");
-    (void)run_soft_reboot_command("stop");
-
-    if (server_pid)
-        wait_for_system_server_exit(*server_pid, server_pidfd);
-    else
-        LOGW("Could not identify system_server before stop");
+    {
+        SoftRebootWaiter waiter;
+        waiter.prepare();
+        LOGI("Stopping Android services");
+        (void)run_soft_reboot_command("stop");
+        waiter.wait();
+    }
 
     LOGI("Running post-fs-data after stop");
     (void)on_post_data_fs();

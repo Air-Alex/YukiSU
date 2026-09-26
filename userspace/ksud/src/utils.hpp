@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -221,6 +222,7 @@ struct ExecResult {
 };
 ExecResult exec_command(const std::vector<std::string>& args);
 ExecResult exec_command(const std::vector<std::string>& args, const std::string& workdir);
+ExecResult exec_command(const std::vector<std::string>& args, std::chrono::milliseconds timeout);
 /** Run built-in magiskboot in a forked child. argv[0] is set to "magiskboot";
  *  magiskboot_path is ignored (magiskboot is linked into this binary). */
 ExecResult exec_command_magiskboot(const std::string& magiskboot_path,
