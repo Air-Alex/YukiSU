@@ -216,7 +216,7 @@ class MainActivity : ComponentActivity() {
                             bottomBar = {
                                 if (!predictiveBackEnabled) {
                                     AnimatedBottomBar.AnimatedBottomBarWrapper(
-                                        showBottomBar = currentDestination?.route != ExecuteModuleActionScreenDestination.route,
+                                        showBottomBar = currentDestination?.route in bottomBarRoutes,
                                         content = { BottomBar(navController) },
                                     )
                                 }
@@ -239,7 +239,7 @@ class MainActivity : ComponentActivity() {
                                         bottomBar = {
                                             if (predictive) {
                                                 AnimatedBottomBar.AnimatedBottomBarWrapper(
-                                                    showBottomBar = route != ExecuteModuleActionScreenDestination.route,
+                                                    showBottomBar = route in bottomBarRoutes,
                                                     content = { BottomBar(navController) },
                                                 )
                                             }
