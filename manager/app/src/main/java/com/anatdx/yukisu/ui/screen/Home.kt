@@ -97,7 +97,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.random.Random
 
 /**
  * @author ShirkNeko
@@ -932,13 +931,10 @@ private fun ExpressiveHomeTextGroup(
 @Composable
 fun ContributionCard() {
     val uriHandler = LocalUriHandler.current
-    val links = listOf("https://github.com/ShirkNeko", "https://github.com/udochina")
+    val link = "https://github.com/Rouyashiki/YukiSU"
     val title = stringResource(R.string.home_ContributionCard_kernelsu)
     val content = stringResource(R.string.home_click_to_ContributionCard_kernelsu)
-    val onClick = {
-        val randomIndex = Random.nextInt(links.size)
-        uriHandler.openUri(links[randomIndex])
-    }
+    val onClick = { uriHandler.openUri(link) }
 
     if (isExpressiveUi) {
         ExpressiveHomeTextGroup(
