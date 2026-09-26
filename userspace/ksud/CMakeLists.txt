@@ -250,10 +250,11 @@ endif()
 set(ASSETS_DIR ${CMAKE_SOURCE_DIR}/assets)
 set(GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
 set(ASSETS_CPP ${GENERATED_DIR}/assets_data.cpp)
-set(VERSION_CPP ${CMAKE_SOURCE_DIR}/src/defs.cpp)
+set(VERSION_CPP ${GENERATED_DIR}/defs.cpp)
 file(MAKE_DIRECTORY ${GENERATED_DIR})
 
-# Generate version file at configure time
+# Generate version file before every ksud build so Git and staged LKM state are
+# reflected in the final daemon even when the CMake build directory is reused.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # readelf_toyboxAlone: a minimal Android 16 Toybox readelf applet. Its
@@ -273,14 +274,13 @@ add_subdirectory(
 set(TOYBOX_READELF_AVAILABLE 1)
 message(STATUS "readelf_toyboxAlone: building ksud multi-call applet")
 
-execute_process(
+add_custom_target(ksud_version
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_version.py ${VERSION_CPP}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    RESULT_VARIABLE VERSION_RESULT
+    BYPRODUCTS ${VERSION_CPP}
+    COMMENT "Generating ksud version..."
+    VERBATIM
 )
-if(NOT VERSION_RESULT EQUAL 0)
-    message(WARNING "Failed to generate version file, using defaults")
-endif()
 
 # Run embed_assets.py to generate assets_data.cpp from everything in assets/. All
 # assets (ko and ksuinit) are staged into assets/ by build.sh before configure,
@@ -374,7 +374,7 @@ set(KSUD_OUR_SOURCES
     src/cli.cpp
     src/cli_args.cpp
     src/terminal.cpp
-    src/defs.cpp
+    ${VERSION_CPP}
     src/log.cpp
     src/utils.cpp
     src/command_exec.cpp
@@ -501,6 +501,7 @@ endif()
 # compilation database supplies the real target sysroot and flags to clang-tidy.
 list(APPEND KSUD_OUR_SOURCES ${REPO_ROOT}/userspace/common/cxx_slim.cpp)
 add_library(ksud_our_objs OBJECT ${KSUD_OUR_SOURCES})
+add_dependencies(ksud_our_objs ksud_version)
 target_include_directories(ksud_our_objs PRIVATE ${KSUD_INCLUDE_DIRS})
 target_compile_definitions(ksud_our_objs PRIVATE ${KSUD_DEFINES})
 target_compile_features(ksud_our_objs PUBLIC cxx_std_17)

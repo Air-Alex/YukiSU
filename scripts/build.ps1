@@ -453,17 +453,7 @@ try {
         Copy-Item -LiteralPath $lkmOutput -Destination (Join-Path $assetsDirectory (Split-Path -Leaf $lkmOutput)) -Force
     }
     Write-Host "    staged LKMs: $($kmiTargets -join ', ')"
-    # generate_version.py intentionally rewrites src/defs.cpp at configure
-    # time. Preserve the developer's exact pre-build contents so a local build
-    # does not leave the tracked source tree dirty.
-    $defsSource = Join-Path $ksudDirectory 'src\defs.cpp'
-    $originalDefs = [IO.File]::ReadAllBytes($defsSource)
-    try {
-        Build-CMakeProject -Name 'ksud' -SourceDirectory $ksudDirectory -AndroidApi 31 -NeedsPython
-    }
-    finally {
-        [IO.File]::WriteAllBytes($defsSource, $originalDefs)
-    }
+    Build-CMakeProject -Name 'ksud' -SourceDirectory $ksudDirectory -AndroidApi 31 -NeedsPython
     $ksudOutput = Join-Path $ksudDirectory 'build\ksud'
     if (-not (Test-Path -LiteralPath $ksudOutput)) { throw "Expected build output was not produced: $ksudOutput" }
     $ksudSize = (Get-Item -LiteralPath $ksudOutput).Length

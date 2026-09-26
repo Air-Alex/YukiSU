@@ -152,28 +152,38 @@ object KsuCli {
         BuildConfig.KSUD_BUNDLED_VERSION.takeIf { it.isNotBlank() }
 
     /**
-     * Normalize ksud version string to app-style display: vx.x.x-xxxxxxxx.
-     * e.g. "1.3.0-1-g56b0efb0" -> "v1.3.0-56b0efb0"
+     * Normalize ksud version string to app-style display: vx.x.x-xxxxxxxx[-nc].
+     * e.g. "1.3.0-1-g56b0efb0-nc" -> "v1.3.0-56b0efb0-nc"
      */
     fun formatKsudVersionForDisplay(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
         val s = raw.trim().removePrefix("v")
-        // Match x.x.x optionally followed by -anything; capture semver and trailing alphanumeric for 8-char
+        // Match x.x.x optionally followed by a describe hash and the dirty marker.
         val semverMatch = Regex("""^(\d+\.\d+\.\d+)""").find(s) ?: return "v$s"
         val semver = semverMatch.value
         val rest = s.drop(semver.length).trimStart('-')
+        val isDirty = Regex("""(?:^|-)nc$""").containsMatchIn(rest)
+        val versionRest = when {
+            rest == "nc" -> ""
+            isDirty -> rest.removeSuffix("-nc")
+            else -> rest
+        }
         val describeHash = Regex("""(?:^|-)g([a-fA-F0-9]{7,40})""")
-            .find(rest)
+            .find(versionRest)
             ?.groupValues
             ?.get(1)
         val hashPart = describeHash
-            ?: Regex("""[a-fA-F0-9]{7,40}""").find(rest)?.value
+            ?: Regex("""[a-fA-F0-9]{7,40}""").find(versionRest)?.value
         val suffix = when {
             hashPart != null -> hashPart.take(8)
-            rest.isNotEmpty() -> rest.filter { it.isLetterOrDigit() }.take(8)
+            versionRest.isNotEmpty() -> versionRest.filter { it.isLetterOrDigit() }.take(8)
             else -> ""
         }
-        return if (suffix.isNotEmpty()) "v$semver-$suffix" else "v$semver"
+        return buildString {
+            append("v$semver")
+            if (suffix.isNotEmpty()) append("-$suffix")
+            if (isDirty) append("-nc")
+        }
     }
 
     fun getKsudIntegrityStatus(): KsudIntegrityStatus {
@@ -185,7 +195,7 @@ object KsuCli {
 
     /**
      * Public helper for UI: get ksud versions (APK-bundled and installed daemon),
-     * formatted as vx.x.x-xxxxxxxx. Returns (formattedApk, formattedInstalled).
+     * formatted as vx.x.x-xxxxxxxx[-nc]. Returns (formattedApk, formattedInstalled).
      */
     suspend fun getKsudVersionsForUi(): Pair<String?, String?> = withContext(Dispatchers.IO) {
         val apk = getApkKsudVersion()
