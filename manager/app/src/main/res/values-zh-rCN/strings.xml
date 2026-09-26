@@ -348,7 +348,7 @@
     <string name="allowlist_backup_success">应用列表备份成功</string>
     <string name="allowlist_backup_failed">应用列表备份失败：%1$s</string>
     <string name="allowlist_restore_confirm_title">确认还原应用列表</string>
-    <string name="allowlist_restore_confirm_message">此操作将覆盖当前的应用列表，是否继续？</string>
+    <string name="allowlist_restore_confirm_message">将覆盖应用配置，未备份的应用恢复默认。管理器配置不变。</string>
     <string name="allowlist_restore_success">应用列表还原成功</string>
     <string name="allowlist_restore_failed">应用列表还原失败：%1$s</string>
     <string name="backup_allowlist">备份应用列表</string>
@@ -938,4 +938,7 @@
     <string name="require_manager_version">需要更新管理器</string>
     <string name="no_such_module">模块 %1$s 不存在</string>
     <string name="module_unavailable">模块 %1$s 被禁用、待更新或待卸载</string>
+    <string name="allowlist_json_restore_confirm">包名与 UID 须匹配；部分设置需重启生效。</string>
+    <string name="allowlist_rollback_success">已恢复之前的设置。</string>
+    <string name="allowlist_rollback_failed">部分设置未能回滚，请检查应用授权与默认卸载模块设置。</string>
 </resources>

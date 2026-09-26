@@ -10,10 +10,13 @@ import android.util.Log
 import androidx.compose.runtime.*
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.anatdx.yukisu.Natives
 import com.anatdx.yukisu.ksuApp
 import com.anatdx.yukisu.ui.KsuService
 import com.anatdx.yukisu.ui.util.*
+import com.anatdx.yukisu.ui.util.module.AllowlistBackup
+import com.anatdx.yukisu.ui.util.module.AllowlistRestore
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -83,6 +86,7 @@ class SuperUserViewModel : ViewModel() {
         private const val BATCH_SIZE = 20
         private const val PER_USER_RANGE = 100000
         private val fetchAppListMutex = Mutex()
+        private val allowlistBackupMutex = Mutex()
         private val ksuServiceLock = Any()
         // Keep one process-wide binding so ordinary reads reuse the service package snapshot.
         private var ksuServiceBinder: IBinder? = null
@@ -426,6 +430,107 @@ class SuperUserViewModel : ViewModel() {
         } finally {
             isRefreshing = false
         }
+    }
+
+    internal suspend fun exportAllowlist(): String = withContext(Dispatchers.IO) {
+        allowlistBackupMutex.withLock {
+            val service = backupService()
+            service.refreshPackages()
+            val profiles = readAllowlistSnapshot()
+            val protected = protectedProfileAppIds()
+            val entries = profiles.values.filter {
+                it.currentUid != AllowlistRestore.DEFAULT_UID &&
+                    it.currentUid % PER_USER_RANGE !in protected
+            }.map { profile ->
+                val packages = service.getUidPackagesForBackup(profile.currentUid).toList()
+                AllowlistBackup.Entry(packages, profile.copy(rules = service.readProfileRulesForBackup(profile.name)))
+            }
+            val document = AllowlistBackup.Document(
+                profiles[AllowlistRestore.DEFAULT_UID]?.umountModules ?: false, entries
+            )
+            AllowlistBackup.validateAgainst(
+                document,
+                entries.associate { it.profile.currentUid to it.packages },
+                protected
+            )
+            check(readAllowlistSnapshot() == profiles) { "Profiles changed during backup; retry" }
+            AllowlistBackup.encode(document)
+        }
+    }
+
+    internal suspend fun validateAllowlist(document: AllowlistBackup.Document) = withContext(Dispatchers.IO) {
+        allowlistBackupMutex.withLock {
+            validateBackup(document, backupService())
+        }
+    }
+
+    internal suspend fun restoreAllowlist(document: AllowlistBackup.Document) = withContext(Dispatchers.IO) {
+        allowlistBackupMutex.withLock {
+            val service = backupService()
+            validateBackup(document, service)
+            val protected = protectedProfileAppIds()
+            val before = readAllowlistSnapshot()
+            before.values.filter {
+                it.currentUid != AllowlistRestore.DEFAULT_UID &&
+                    it.currentUid % PER_USER_RANGE !in protected
+            }.forEach { profile ->
+                check(profile.name in service.getUidPackagesForBackup(profile.currentUid)) {
+                    "Existing profile package/UID mismatch: ${profile.currentUid}"
+                }
+            }
+            check(readAllowlistSnapshot() == before) { "Profiles changed before restore; retry" }
+            withContext(NonCancellable) {
+                try {
+                    AllowlistRestore.apply(document, before, protected, object : AllowlistRestore.Store {
+                        override fun read(uid: Int) = Natives.readAppProfile(uid)
+                        override fun write(profile: Natives.Profile) = Natives.setAppProfile(profile)
+                        override fun readRules(key: String) = service.readProfileRulesForBackup(key)
+                        override fun writeRules(key: String, rules: String) = service.writeProfileRulesForBackup(key, rules)
+                    })
+                } finally {
+                    viewModelScope.launch {
+                        runCatching {
+                            withTimeout(30_000) { refreshAppConfigurations() }
+                        }.onFailure { error ->
+                            Log.e(TAG, "Failed to refresh app configurations after restore", error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun validateBackup(document: AllowlistBackup.Document, service: IKsuInterface) {
+        service.refreshPackages()
+        val installed = document.apps.associate { entry ->
+            entry.profile.currentUid to service.getUidPackagesForBackup(entry.profile.currentUid).toList()
+        }
+        AllowlistBackup.validateAgainst(document, installed, protectedProfileAppIds())
+    }
+
+    private suspend fun backupService(): IKsuInterface {
+        check(Natives.isManager && !Natives.checkUapiMismatch()) { "Compatible manager/kernel access is required" }
+        check(KsuCli.SHELL.isRoot) { "Root access is required" }
+        return IKsuInterface.Stub.asInterface(connectKsuService() ?: error("Package service is unavailable"))
+    }
+
+    private fun protectedProfileAppIds(): Set<Int> =
+        Natives.getProtectedProfileAppIds().toSet() + (ksuApp.applicationInfo.uid % PER_USER_RANGE)
+
+    private fun readAllowlistSnapshot(): Map<Int, Natives.Profile> {
+        val uids = (Natives.getProfileUids(true).toList() + Natives.getProfileUids(false).toList()).sorted()
+        check(uids.distinct().size == uids.size) { "Profile list changed while reading" }
+        val result = uids.associateWith { uid -> Natives.readAppProfile(uid) ?: error("Profile disappeared: $uid") }.toMutableMap()
+        val defaults = Natives.readAppProfile(AllowlistRestore.DEFAULT_UID)
+        if (defaults != null) {
+            check(defaults.name == AllowlistRestore.DEFAULT_KEY && !defaults.allowSu) {
+                "Invalid default umount profile"
+            }
+            result[AllowlistRestore.DEFAULT_UID] = defaults
+        } else {
+            check(AllowlistRestore.DEFAULT_UID !in result) { "Default profile changed while reading" }
+        }
+        return result
     }
 
     private suspend fun fetchAppListFromService(forceRefresh: Boolean) {

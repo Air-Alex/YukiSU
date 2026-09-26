@@ -354,7 +354,7 @@
     <string name="allowlist_backup_success">Allowlist backed up successfully</string>
     <string name="allowlist_backup_failed">Failed to backup allowlist: %1$s</string>
     <string name="allowlist_restore_confirm_title">Confirm Allowlist Restoration</string>
-    <string name="allowlist_restore_confirm_message">This operation will overwrite the current allowlist. Continue?</string>
+    <string name="allowlist_restore_confirm_message">Overwrite app settings and reset unlisted apps to defaults. Manager settings stay unchanged.</string>
     <string name="allowlist_restore_success">Allowlist restored successfully</string>
     <string name="allowlist_restore_failed">Allowlist restore failed: %1$s</string>
     <string name="backup_allowlist">Backup Allowlist</string>
@@ -944,4 +944,7 @@
     <string name="require_manager_version">Manager update required</string>
     <string name="no_such_module">Module %1$s does not exist</string>
     <string name="module_unavailable">Module %1$s is disabled, updating, or pending removal</string>
+    <string name="allowlist_json_restore_confirm" tools:ignore="MissingTranslation">Packages and UIDs must match; some changes require a restart.</string>
+    <string name="allowlist_rollback_success" tools:ignore="MissingTranslation">The previous settings were restored.</string>
+    <string name="allowlist_rollback_failed" tools:ignore="MissingTranslation">Some previous settings could not be restored. Check app permissions and the default unmount setting.</string>
 </resources>

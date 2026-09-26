@@ -14,15 +14,16 @@ import androidx.compose.ui.res.stringResource
 import com.anatdx.yukisu.ui.util.SnackbarController
 import com.anatdx.yukisu.R
 import com.anatdx.yukisu.ui.component.YukiAlertDialog
-import com.anatdx.yukisu.ksu.KsuPaths
-import com.topjohnwu.superuser.io.SuFileInputStream
-import com.topjohnwu.superuser.io.SuFileOutputStream
+import com.anatdx.yukisu.ui.component.LoadingDialogHandle
+import com.anatdx.yukisu.ui.component.rememberLoadingDialog
+import com.anatdx.yukisu.ui.viewmodel.SuperUserViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -43,7 +44,8 @@ object ModuleModify {
                 },
                 text = {
                     Text(
-                        text = stringResource(R.string.allowlist_restore_confirm_message),
+                        text = stringResource(R.string.allowlist_restore_confirm_message) + "\n\n" +
+                            stringResource(R.string.allowlist_json_restore_confirm),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 },
@@ -61,14 +63,18 @@ object ModuleModify {
         }
     }
 
-    suspend fun backupAllowlist(context: Context, snackBarHost: SnackbarController, uri: Uri) {
+    suspend fun backupAllowlist(
+        context: Context,
+        snackBarHost: SnackbarController,
+        viewModel: SuperUserViewModel,
+        uri: Uri
+    ) {
         withContext(Dispatchers.IO) {
             try {
-                SuFileInputStream.open(KsuPaths.ALLOWLIST).use { input ->
-                    context.contentResolver.openOutputStream(uri)?.use { output ->
-                        input.copyTo(output)
-                    } ?: throw IOException("Failed to open output uri")
-                }
+                val json = viewModel.exportAllowlist()
+                context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                    output.write(json.toByteArray(Charsets.UTF_8))
+                } ?: throw IOException("Failed to open output uri")
 
                 withContext(Dispatchers.Main) {
                     snackBarHost.showSnackbar(
@@ -78,6 +84,7 @@ object ModuleModify {
                 }
 
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e("AllowlistBackup", context.getString(R.string.allowlist_backup_failed, ""), e)
                 withContext(Dispatchers.Main) {
                     snackBarHost.showSnackbar(
@@ -92,60 +99,88 @@ object ModuleModify {
     suspend fun restoreAllowlist(
         context: Context,
         snackBarHost: SnackbarController,
+        viewModel: SuperUserViewModel,
         uri: Uri,
         showConfirmDialog: (Boolean) -> Unit,
-        confirmResult: CompletableDeferred<Boolean>
+        confirmResult: CompletableDeferred<Boolean>,
+        loadingDialog: LoadingDialogHandle
     ) {
+        val document = try {
+            loadingDialog.withLoading {
+                Log.i("AllowlistRestore", "Reading backup document")
+                val parsed = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use(AllowlistBackup::read)
+                        ?: throw IOException("Failed to open input uri")
+                }
+                Log.i("AllowlistRestore", "Validating ${parsed.apps.size} backup profiles")
+                viewModel.validateAllowlist(parsed)
+                parsed
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("AllowlistRestore", "Backup validation failed", e)
+            withContext(Dispatchers.Main) {
+                snackBarHost.showSnackbar(
+                    context.getString(R.string.allowlist_restore_failed, restoreError(context, e)),
+                    duration = SnackbarDuration.Long
+                )
+            }
+            return
+        }
+
         withContext(Dispatchers.Main) {
+            Log.i("AllowlistRestore", "Backup validated; waiting for confirmation")
             showConfirmDialog(true)
         }
 
         val userConfirmed = confirmResult.await()
         if (!userConfirmed) return
 
-        withContext(Dispatchers.IO) {
-            try {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    SuFileOutputStream.open(KsuPaths.ALLOWLIST).use { output ->
-                        input.copyTo(output)
-                    }
-                } ?: throw IOException("Failed to open input uri")
+        try {
+            loadingDialog.withLoading { viewModel.restoreAllowlist(document) }
 
-                withContext(Dispatchers.Main) {
-                    snackBarHost.showSnackbar(
-                        context.getString(R.string.allowlist_restore_success),
-                        duration = SnackbarDuration.Long
-                    )
-                }
+            snackBarHost.showSnackbar(
+                context.getString(R.string.allowlist_restore_success),
+                duration = SnackbarDuration.Long
+            )
 
-            } catch (e: Exception) {
-                Log.e(
-                    "AllowlistRestore",
-                    context.getString(R.string.allowlist_restore_failed, ""),
-                    e
-                )
-                withContext(Dispatchers.Main) {
-                    snackBarHost.showSnackbar(
-                        context.getString(R.string.allowlist_restore_failed, e.message),
-                        duration = SnackbarDuration.Long
-                    )
-                }
-            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(
+                "AllowlistRestore",
+                context.getString(R.string.allowlist_restore_failed, ""),
+                e
+            )
+            snackBarHost.showSnackbar(
+                context.getString(R.string.allowlist_restore_failed, restoreError(context, e)),
+                duration = SnackbarDuration.Long
+            )
         }
+    }
+
+    private fun restoreError(context: Context, error: Exception): String = when (error) {
+        is AllowlistRestore.Failure -> context.getString(
+            if (error.rollbackFailed) R.string.allowlist_rollback_failed else R.string.allowlist_rollback_success
+        )
+        else -> error.message ?: error.javaClass.simpleName
     }
 
     @Composable
     fun rememberAllowlistBackupLauncher(
         context: Context,
         snackBarHost: SnackbarController,
+        viewModel: SuperUserViewModel,
         scope: CoroutineScope = rememberCoroutineScope()
-    ) = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.data?.let { uri ->
-                scope.launch {
-                    backupAllowlist(context, snackBarHost, uri)
+    ): ActivityResultLauncher<Intent> {
+        val loadingDialog = rememberLoadingDialog()
+        return rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                result.data?.data?.let { uri ->
+                    scope.launch {
+                        loadingDialog.withLoading { backupAllowlist(context, snackBarHost, viewModel, uri) }
+                    }
                 }
             }
         }
@@ -155,8 +190,10 @@ object ModuleModify {
     fun rememberAllowlistRestoreLauncher(
         context: Context,
         snackBarHost: SnackbarController,
+        viewModel: SuperUserViewModel,
         scope: CoroutineScope = rememberCoroutineScope()
     ): ActivityResultLauncher<Intent> {
+        val loadingDialog = rememberLoadingDialog()
         var showAllowlistRestoreDialog by remember { mutableStateOf(false) }
         var allowlistRestoreConfirmResult by remember {
             mutableStateOf<CompletableDeferred<Boolean>?>(
@@ -188,9 +225,11 @@ object ModuleModify {
                         restoreAllowlist(
                             context = context,
                             snackBarHost = snackBarHost,
+                            viewModel = viewModel,
                             uri = uri,
                             showConfirmDialog = { show -> showAllowlistRestoreDialog = show },
-                            confirmResult = confirmResult
+                            confirmResult = confirmResult,
+                            loadingDialog = loadingDialog
                         )
                     }
                 }
@@ -201,16 +240,16 @@ object ModuleModify {
     fun createAllowlistBackupIntent(): Intent {
         return Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/octet-stream"
+            type = "application/json"
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            putExtra(Intent.EXTRA_TITLE, "ksu_allowlist_backup_$timestamp.dat")
+            putExtra(Intent.EXTRA_TITLE, "yukisu_allowlist_backup_$timestamp.json")
         }
     }
 
     fun createAllowlistRestoreIntent(): Intent {
         return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/octet-stream"
+            type = "application/json"
         }
     }
 }

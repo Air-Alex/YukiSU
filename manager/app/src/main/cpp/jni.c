@@ -144,24 +144,8 @@ static void fillArrayWithList(JNIEnv *env, jobject list, int *data, int count) {
   }
 }
 
-NativeBridge(getAppProfile, jobject, jstring pkg, jint uid) {
-  if (GetEnvironment()->GetStringLength(env, pkg) > KSU_MAX_PACKAGE_NAME) {
-    return NULL;
-  }
-
-  char key[KSU_MAX_PACKAGE_NAME] = {0};
-  const char *cpkg = GetEnvironment()->GetStringUTFChars(env, pkg, nullptr);
-  strcpy(key, cpkg);
-  GetEnvironment()->ReleaseStringUTFChars(env, pkg, cpkg);
-
-  struct app_profile profile = {0};
-  profile.version = KSU_APP_PROFILE_VER;
-
-  strcpy(profile.key, key);
-  profile.curr_uid = uid;
-
-  bool useDefaultProfile = get_app_profile(&profile) != 0;
-
+static jobject app_profile_to_java(JNIEnv *env, struct app_profile profile,
+                                   bool useDefaultProfile) {
   jclass cls =
       GetEnvironment()->FindClass(env, "com/anatdx/yukisu/Natives$Profile");
   jmethodID constructor =
@@ -202,7 +186,7 @@ NativeBridge(getAppProfile, jobject, jstring pkg, jint uid) {
   if (useDefaultProfile) {
     // no profile found, so just use default profile:
     // don't allow root and use default profile!
-    LogDebug("use default profile for: %s, %d", key, uid);
+    LogDebug("use default profile for: %s, %d", profile.key, profile.curr_uid);
 
     // allow_su = false
     // non root use default = true
@@ -244,6 +228,21 @@ NativeBridge(getAppProfile, jobject, jstring pkg, jint uid) {
       }
     }
 
+    const char *extra_caps[] = {"capabilitiesPermitted",
+                                "capabilitiesInheritable"};
+    const uint64_t extra_bits[] = {
+        profile.rp_config.profile.capabilities.permitted,
+        profile.rp_config.profile.capabilities.inheritable};
+    for (size_t c = 0; c < 2; ++c) {
+      jobject list = GetEnvironment()->GetObjectField(
+          env, obj,
+          GetEnvironment()->GetFieldID(env, cls, extra_caps[c],
+                                       "Ljava/util/List;"));
+      for (int i = 0; i <= CAP_LAST_CAP; ++i)
+        if (extra_bits[c] & (1ULL << i))
+          addIntToList(env, list, i);
+    }
+
     // Apps on the default root profile report an empty selinux_domain (the
     // kernel zeros rp_config for use_default). Surface the default su domain so
     // switching such an app to a custom profile carries a valid, non-empty
@@ -268,6 +267,108 @@ NativeBridge(getAppProfile, jobject, jstring pkg, jint uid) {
   }
 
   return obj;
+}
+
+NativeBridge(getAppProfile, jobject, jstring pkg, jint uid) {
+  if (!pkg ||
+      GetEnvironment()->GetStringUTFLength(env, pkg) >= KSU_MAX_PACKAGE_NAME) {
+    return NULL;
+  }
+
+  char key[KSU_MAX_PACKAGE_NAME] = {0};
+  const char *cpkg = GetEnvironment()->GetStringUTFChars(env, pkg, nullptr);
+  strcpy(key, cpkg);
+  GetEnvironment()->ReleaseStringUTFChars(env, pkg, cpkg);
+
+  struct app_profile profile = {0};
+  profile.version = KSU_APP_PROFILE_VER;
+
+  strcpy(profile.key, key);
+  profile.curr_uid = uid;
+
+  bool useDefaultProfile = get_app_profile(&profile) != 0;
+
+  return app_profile_to_java(env, profile, useDefaultProfile);
+}
+
+static void profile_read_error(JNIEnv *env, const char *message) {
+  jclass type = GetEnvironment()->FindClass(env, "java/io/IOException");
+  if (type)
+    GetEnvironment()->ThrowNew(env, type, message);
+}
+
+NativeBridge(getProfileUids, jintArray, jboolean allow) {
+  const size_t capacity = UINT16_MAX;
+  struct ksu_new_get_allow_list_cmd *cmd =
+      calloc(1, sizeof(*cmd) + (capacity * sizeof(__u32)));
+  if (!cmd) {
+    profile_read_error(env, "Cannot allocate profile list");
+    return NULL;
+  }
+  cmd->count = capacity;
+  int result = ksu_kasumi_ioctl(
+      allow ? KSU_IOCTL_NEW_GET_ALLOW_LIST : KSU_IOCTL_NEW_GET_DENY_LIST, cmd);
+  jintArray array = NULL;
+  if (result || cmd->count != cmd->total_count) {
+    profile_read_error(env, "Cannot read complete profile list");
+  } else {
+    array = GetEnvironment()->NewIntArray(env, cmd->count);
+    if (array)
+      GetEnvironment()->SetIntArrayRegion(env, array, 0, cmd->count,
+                                          (const jint *)cmd->uids);
+  }
+  free(cmd);
+  return array;
+}
+
+NativeBridge(readAppProfile, jobject, jint uid) {
+  struct ksu_get_app_profile_cmd cmd = {};
+  cmd.profile.curr_uid = uid;
+  if (ksu_kasumi_ioctl(KSU_IOCTL_GET_APP_PROFILE, &cmd) != 0) {
+    if (errno != ENOENT)
+      profile_read_error(env, "Cannot read app profile");
+    return NULL;
+  }
+  const struct app_profile *p = &cmd.profile;
+  const uint64_t supported_caps = (1ULL << (CAP_LAST_CAP + 1)) - 1;
+  if (p->allow_su && ((p->rp_config.profile.capabilities.effective |
+                       p->rp_config.profile.capabilities.permitted |
+                       p->rp_config.profile.capabilities.inheritable) &
+                      ~supported_caps)) {
+    profile_read_error(env, "Unsupported capability bits in app profile");
+    return NULL;
+  }
+  if (p->version != KSU_APP_PROFILE_VER ||
+      strnlen(p->key, sizeof(p->key)) == sizeof(p->key) ||
+      (p->allow_su && (p->rp_config.profile.groups_count > KSU_MAX_GROUPS ||
+                       strnlen(p->rp_config.template_name,
+                               KSU_MAX_PACKAGE_NAME) == KSU_MAX_PACKAGE_NAME ||
+                       strnlen(p->rp_config.profile.selinux_domain,
+                               KSU_SELINUX_DOMAIN) == KSU_SELINUX_DOMAIN))) {
+    profile_read_error(env, "Invalid kernel app profile");
+    return NULL;
+  }
+  return app_profile_to_java(env, cmd.profile, false);
+}
+
+NativeBridgeNP(getProtectedProfileAppIds, jintArray) {
+  struct ksu_dynamic_manager_app apps[KSU_DYNAMIC_MANAGER_MAX_APPS] = {};
+  struct ksu_get_dynamic_managers_cmd cmd = {};
+  cmd.count = KSU_DYNAMIC_MANAGER_MAX_APPS;
+  cmd.apps = (uint64_t)(uintptr_t)apps;
+  if (ksu_kasumi_ioctl(KSU_IOCTL_GET_DYNAMIC_MANAGERS, &cmd) != 0 ||
+      cmd.count > KSU_DYNAMIC_MANAGER_MAX_APPS ||
+      cmd.count != cmd.total_count) {
+    profile_read_error(env, "Cannot verify protected manager UIDs");
+    return NULL;
+  }
+  jint ids[KSU_DYNAMIC_MANAGER_MAX_APPS] = {};
+  for (uint32_t i = 0; i < cmd.count; ++i)
+    ids[i] = apps[i].appid;
+  jintArray result = GetEnvironment()->NewIntArray(env, cmd.count);
+  if (result)
+    GetEnvironment()->SetIntArrayRegion(env, result, 0, cmd.count, ids);
+  return result;
 }
 
 NativeBridge(setAppProfile, jboolean, jobject profile) {
@@ -306,7 +407,7 @@ NativeBridge(setAppProfile, jboolean, jobject profile) {
   if (!key) {
     return false;
   }
-  if (GetEnvironment()->GetStringLength(env, (jstring)key) >
+  if (GetEnvironment()->GetStringUTFLength(env, (jstring)key) >=
       KSU_MAX_PACKAGE_NAME) {
     return false;
   }
@@ -344,6 +445,9 @@ NativeBridge(setAppProfile, jboolean, jobject profile) {
     jobject templateName =
         GetEnvironment()->GetObjectField(env, profile, rootTemplateField);
     if (templateName) {
+      if (GetEnvironment()->GetStringUTFLength(env, (jstring)templateName) >=
+          KSU_MAX_PACKAGE_NAME)
+        return false;
       const char *ctemplateName = GetEnvironment()->GetStringUTFChars(
           env, (jstring)templateName, nullptr);
       strcpy(p.rp_config.template_name, ctemplateName);
@@ -364,7 +468,20 @@ NativeBridge(setAppProfile, jboolean, jobject profile) {
 
     p.rp_config.profile.capabilities.effective =
         capListToBits(env, capabilities);
+    p.rp_config.profile.capabilities.permitted = capListToBits(
+        env, GetEnvironment()->GetObjectField(
+                 env, profile,
+                 GetEnvironment()->GetFieldID(env, cls, "capabilitiesPermitted",
+                                              "Ljava/util/List;")));
+    p.rp_config.profile.capabilities.inheritable = capListToBits(
+        env, GetEnvironment()->GetObjectField(
+                 env, profile,
+                 GetEnvironment()->GetFieldID(
+                     env, cls, "capabilitiesInheritable", "Ljava/util/List;")));
 
+    if (!domain || GetEnvironment()->GetStringUTFLength(env, (jstring)domain) >=
+                       KSU_SELINUX_DOMAIN)
+      return false;
     const char *cdomain =
         GetEnvironment()->GetStringUTFChars(env, (jstring)domain, nullptr);
     strcpy(p.rp_config.profile.selinux_domain, cdomain);

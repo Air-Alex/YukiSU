@@ -103,6 +103,9 @@ object Natives {
      */
     external fun getAppProfile(key: String?, uid: Int): Profile
     external fun setAppProfile(profile: Profile?): Boolean
+    external fun getProfileUids(allow: Boolean): IntArray
+    external fun readAppProfile(uid: Int): Profile?
+    external fun getProtectedProfileAppIds(): IntArray
 
     /**
      * `su` compat mode can be disabled temporarily.
@@ -256,6 +259,7 @@ object Natives {
             NON_ROOT_DEFAULT_PROFILE_KEY,
             NOBODY_UID,
             false,
+            nonRootUseDefault = false,
             umountModules = umountModules
         ).let {
             return setAppProfile(it)
@@ -290,6 +294,8 @@ object Natives {
         val gid: Int = ROOT_GID,
         val groups: List<Int> = mutableListOf(),
         val capabilities: List<Int> = mutableListOf(),
+        val capabilitiesPermitted: List<Int> = mutableListOf(),
+        val capabilitiesInheritable: List<Int> = mutableListOf(),
         val context: String = KERNEL_SU_DOMAIN,
         val namespace: Int = Namespace.INHERITED.ordinal,
         // root_profile.flags bitmask. Neutral by default; the per-profile UI

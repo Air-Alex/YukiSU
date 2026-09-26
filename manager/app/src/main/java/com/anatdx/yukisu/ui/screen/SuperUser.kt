@@ -125,8 +125,16 @@ fun SuperUserScreen(navigator: DestinationsNavigator) {
     )
     var showBottomSheet by remember { mutableStateOf(false) }
 
-    val backupLauncher = ModuleModify.rememberAllowlistBackupLauncher(context, snackBarHostState)
-    val restoreLauncher = ModuleModify.rememberAllowlistRestoreLauncher(context, snackBarHostState)
+    val backupLauncher = ModuleModify.rememberAllowlistBackupLauncher(
+        context,
+        snackBarHostState,
+        viewModel
+    )
+    val restoreLauncher = ModuleModify.rememberAllowlistRestoreLauncher(
+        context,
+        snackBarHostState,
+        viewModel
+    )
 
     LaunchedEffect(navigator) {
         viewModel.search = ""
