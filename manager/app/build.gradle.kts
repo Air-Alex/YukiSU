@@ -832,4 +832,5 @@ dependencies {
     implementation(libs.yukifb)
 
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

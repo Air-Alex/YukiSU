@@ -102,7 +102,7 @@ interface ConfirmDialogHandle : DialogHandle {
     ): ConfirmResult
 }
 
-private abstract class DialogHandleBase(
+internal abstract class DialogHandleBase(
     val visible: MutableState<Boolean>,
     val coroutineScope: CoroutineScope
 ) : DialogHandle {
@@ -126,19 +126,19 @@ private abstract class DialogHandleBase(
     }
 }
 
-private class LoadingDialogHandleImpl(
+internal class LoadingDialogHandleImpl(
     visible: MutableState<Boolean>,
     coroutineScope: CoroutineScope
 ) : LoadingDialogHandle, DialogHandleBase(visible, coroutineScope) {
     override suspend fun <R> withLoading(block: suspend () -> R): R {
-        return coroutineScope.async {
+        return withContext(Dispatchers.Main.immediate) {
             try {
                 visible.value = true
                 block()
             } finally {
                 visible.value = false
             }
-        }.await()
+        }
     }
 
     override fun showLoading() {
