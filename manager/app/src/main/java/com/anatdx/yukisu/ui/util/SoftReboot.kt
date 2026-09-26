@@ -27,5 +27,5 @@ fun isSoftRebootBlockedByKasumi(): Boolean {
     if (runtime > 0) return true
     val requested = runCatching { Natives.getFeature(Natives.FEATURE_KASUMI) }.getOrDefault(-1)
     val available = runCatching { Natives.kasumiIsInitialized() }.getOrDefault(false)
-    return requested > 0 || (runtime < 0 && (requested >= 0 || available))
+    return requested > 0 || (runtime < 0 && requested < 0 && available)
 }

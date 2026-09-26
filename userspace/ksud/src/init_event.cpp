@@ -593,10 +593,12 @@ int soft_reboot() {
         LOGE("Soft reboot is unavailable while Kasumi is active; use a full reboot");
         return 1;
     }
-    if (kasumi_runtime < 0 && (kasumi_supported || kasumi_available)) {
+    if (kasumi_runtime < 0 && kasumi_requested < 0 && (kasumi_supported || kasumi_available)) {
         LOGE("Cannot determine Kasumi runtime state; refusing soft reboot");
         return 1;
     }
+    if (kasumi_runtime < 0 && kasumi_requested == 0)
+        LOGW("Kasumi runtime state is unavailable while the feature is disabled; continuing");
 
     switch (daemonize_soft_reboot()) {
     case DaemonizeResult::Parent:
