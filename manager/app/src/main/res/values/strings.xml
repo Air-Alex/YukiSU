@@ -848,6 +848,9 @@
     <string name="yukizygisk_zygote_modules_unavailable" tools:ignore="MissingTranslation">Module injection details are unavailable on this runtime.</string>
     <string name="yukizygisk_module_supported_abis" tools:ignore="MissingTranslation">Supported ABIs: %1$s</string>
     <string name="yukizygisk_module_no_supported_abis" tools:ignore="MissingTranslation">No supported ABI</string>
+    <string name="yukizygisk_module_crash_badge" tools:ignore="MissingTranslation">Found in crash backtrace</string>
+    <string name="yukizygisk_module_crash_explanation" tools:ignore="MissingTranslation">This module appeared in these crash backtraces during this boot. A matching frame does not establish the cause of the crash.</string>
+    <string name="yukizygisk_module_crash_evidence" tools:ignore="MissingTranslation">%1$s (PID %2$d, %3$s)\n%4$s · %5$s</string>
     <string name="yukizygisk_native_process_injected_message" tools:ignore="MissingTranslation">Native modules injected.</string>
     <string name="yukizygisk_native_process_unsupported_message" tools:ignore="MissingTranslation">32-bit Native process is not supported.</string>
     <string name="yukizygisk_native_process_failed_message" tools:ignore="MissingTranslation">Native injection did not complete.</string>
@@ -947,4 +950,8 @@
     <string name="allowlist_json_restore_confirm" tools:ignore="MissingTranslation">Packages and UIDs must match; some changes require a restart.</string>
     <string name="allowlist_rollback_success" tools:ignore="MissingTranslation">The previous settings were restored.</string>
     <string name="allowlist_rollback_failed" tools:ignore="MissingTranslation">Some previous settings could not be restored. Check app permissions and the default unmount setting.</string>
+    <string name="yukizygisk_crash_protection_title" tools:ignore="MissingTranslation">Module crash protection</string>
+    <string name="yukizygisk_crash_protection_summary" tools:ignore="MissingTranslation">Isolate Zygisk modules that crash the Android framework and retry system startup.</string>
+    <string name="yukizygisk_module_suspended" tools:ignore="MissingTranslation">Caused a system crash; isolated for protection</string>
+    <string name="yukizygisk_module_suspended_detail" tools:ignore="MissingTranslation">This module caused a system crash. Injection has been paused.</string>
 </resources>

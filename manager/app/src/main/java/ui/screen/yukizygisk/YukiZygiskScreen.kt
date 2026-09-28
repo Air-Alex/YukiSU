@@ -86,12 +86,12 @@ import com.anatdx.yukisu.ui.theme.ExpressiveListGroupMinHeight
 import com.anatdx.yukisu.ui.util.rememberSnackbarController
 import com.anatdx.yukisu.ui.util.execKsud
 import com.anatdx.yukisu.ui.util.getYukiZygiskStatusJson
+import com.anatdx.yukisu.ui.util.ksudReadString
 import com.anatdx.yukisu.ui.theme.getCardColors
 import com.anatdx.yukisu.ui.theme.getCardElevation
 import com.anatdx.yukisu.ui.theme.isExpressiveUi
 import com.topjohnwu.superuser.io.SuFile
 import com.topjohnwu.superuser.io.SuFileInputStream
-import com.topjohnwu.superuser.io.SuFileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -104,8 +104,6 @@ import ui.screen.moreSettings.component.SettingsCard
 import ui.screen.moreSettings.component.SwitchSettingItem
 
 private const val TAG = "YukiZygiskScreen"
-private const val YZCONFIG_DIR = "/data/adb/ksu/yukizygisk"
-private const val YZCONFIG_PATH = "$YZCONFIG_DIR/yzconfig.json"
 private val yzConfigWriteMutex = Mutex()
 
 data class YzConfig(
@@ -114,13 +112,12 @@ data class YzConfig(
     val earlyLoad: Boolean = false,
     val denylistMode: Int = 0,
     val dmesgLog: Boolean = false,
+    val crashProtection: Boolean = false,
 )
 
 private suspend fun readYzConfig(): YzConfig = withContext(Dispatchers.IO) {
     val raw = runCatching {
-        val file = SuFile(YZCONFIG_PATH)
-        if (!file.isFile) return@runCatching null
-        SuFileInputStream.open(file).use { it.readBytes().toString(Charsets.UTF_8) }
+        ksudReadString("yzctl config get")
     }.getOrNull()
     if (raw.isNullOrBlank()) return@withContext YzConfig()
     try {
@@ -131,6 +128,7 @@ private suspend fun readYzConfig(): YzConfig = withContext(Dispatchers.IO) {
             earlyLoad = o.optBoolean("early_load", false),
             denylistMode = o.optInt("denylist_mode", 0),
             dmesgLog = o.optBoolean("dmesg_log", false),
+            crashProtection = o.optBoolean("crash_protection", false),
         )
     } catch (_: Exception) {
         YzConfig()
@@ -139,20 +137,14 @@ private suspend fun readYzConfig(): YzConfig = withContext(Dispatchers.IO) {
 
 private suspend fun writeYzConfig(cfg: YzConfig): Boolean = yzConfigWriteMutex.withLock {
     withContext(Dispatchers.IO) {
-        val json = JSONObject().apply {
-            put("yukilinker", cfg.yukilinker)
-            put("anonymous_memory", cfg.anonymousMemory)
-            put("early_load", cfg.earlyLoad)
-            put("denylist_mode", cfg.denylistMode)
-            put("dmesg_log", cfg.dmesgLog)
-        }.toString()
         runCatching {
-            SuFile(YZCONFIG_DIR).mkdirs()
-            val temporary = "$YZCONFIG_PATH.tmp"
-            SuFileOutputStream.open(temporary).use { it.write(json.toByteArray()) }
-            check(SuFile(temporary).renameTo(SuFile(YZCONFIG_PATH)))
-            check(execKsud("yzctl reload"))
-        }.onFailure { Log.e(TAG, "Failed to apply $YZCONFIG_PATH", it) }.isSuccess
+            check(execKsud(
+                "yzctl config set yukilinker ${cfg.yukilinker}" +
+                    " anonymous_memory ${cfg.anonymousMemory} early_load ${cfg.earlyLoad}" +
+                    " denylist_mode ${cfg.denylistMode} dmesg_log ${cfg.dmesgLog}" +
+                    " crash_protection ${cfg.crashProtection}"
+            ))
+        }.onFailure { Log.e(TAG, "Failed to apply YukiZygisk configuration", it) }.isSuccess
     }
 }
 
@@ -224,6 +216,7 @@ private data class NativeModuleMonitorEntry(
     val id: String,
     val scopes: List<NativeModuleScope>,
     val state: MonitorState,
+    val crashEvidence: List<CrashEvidence>,
 )
 
 private data class NativeModuleScope(
@@ -236,6 +229,18 @@ private data class NativeModuleScope(
 private data class NativeModuleTarget(
     val process: String,
     val pid: Int,
+)
+
+private data class CrashEvidence(
+    val module: String,
+    val process: String,
+    val tombstone: String,
+    val frame: String,
+    val zygotePid: Int,
+    val generation: Int,
+    val pid: Int,
+    val abi: String,
+    val timestamp: String,
 )
 
 private fun nativeProcessDisplayName(value: String): String =
@@ -252,6 +257,7 @@ private fun aggregateMonitorState(states: List<MonitorState>): MonitorState = wh
 private fun buildNativeModuleRows(
     modules: List<NativeModuleEntry>,
     injections: List<NativeInjection>,
+    crashEvidence: List<CrashEvidence>,
 ): List<NativeModuleMonitorEntry> {
     val injectionsByModule = injections.groupBy { it.module }
     return modules.groupBy { it.id }.map { (id, entries) ->
@@ -281,6 +287,7 @@ private fun buildNativeModuleRows(
             id = id,
             scopes = scopes,
             state = aggregateMonitorState(scopes.map { it.state }),
+            crashEvidence = crashEvidence.filter { it.module == id },
         )
     }
 }
@@ -291,6 +298,8 @@ private data class YzStatus(
     val runtime: List<RuntimeMonitorEntry>,
     val nativeModules: List<NativeModuleEntry>,
     val nativeInjections: List<NativeInjection>,
+    val crashEvidence: List<CrashEvidence>,
+    val suspendedModules: Set<String>,
 )
 
 private data class ModuleDisplayEntry(
@@ -298,6 +307,8 @@ private data class ModuleDisplayEntry(
     val id: String,
     val abis: List<String>,
     val state: MonitorState,
+    val crashEvidence: List<CrashEvidence> = emptyList(),
+    val suspended: Boolean = false,
 )
 
 private data class RuntimeMonitorEntry(
@@ -398,12 +409,32 @@ private fun parseYzStatus(json: String): YzStatus? = runCatching {
             )
         }
     } ?: emptyList()
+    val crashEvidence = o.optJSONArray("crash_evidence")?.let { a ->
+        (0 until a.length()).mapNotNull { i ->
+            val e = a.optJSONObject(i) ?: return@mapNotNull null
+            CrashEvidence(
+                module = e.optString("module", ""),
+                process = e.optString("process", ""),
+                tombstone = e.optString("tombstone", ""),
+                frame = e.optString("frame", ""),
+                zygotePid = e.optInt("zygote_pid", 0),
+                generation = e.optInt("generation", 0),
+                pid = e.optInt("pid", 0),
+                abi = e.optString("abi", ""),
+                timestamp = e.optString("timestamp", ""),
+            )
+        }
+    } ?: emptyList()
     YzStatus(
         zygotes,
         modules,
         runtime,
         nativeModules,
         nativeInjections,
+        crashEvidence,
+        o.optJSONArray("suspended_modules")?.let { a ->
+            (0 until a.length()).map { a.getString(it) }.toSet()
+        } ?: emptySet(),
     )
 }.getOrNull()
 
@@ -412,6 +443,7 @@ private data class YzSnapshot(
     val modules: List<ModuleDisplayEntry>,
     val nativeModules: List<NativeModuleEntry>,
     val nativeInjections: List<NativeInjection>,
+    val crashEvidence: List<CrashEvidence>,
 )
 
 private const val YZ_POLL_INTERVAL_MS = 2000L
@@ -498,6 +530,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
     var zygiskModules by remember { mutableStateOf<List<ModuleDisplayEntry>>(emptyList()) }
     var nativeModules by remember { mutableStateOf<List<NativeModuleEntry>>(emptyList()) }
     var nativeInjections by remember { mutableStateOf<List<NativeInjection>>(emptyList()) }
+    var crashEvidence by remember { mutableStateOf<List<CrashEvidence>>(emptyList()) }
     var nativeMonitorMode by remember { mutableStateOf(NativeMonitorMode.Module) }
     var monitorDialog by remember { mutableStateOf<MonitorDialogState?>(null) }
 
@@ -527,6 +560,8 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                         state = zygiskModuleState(
                             id, moduleAbiCache[id].orEmpty(), st.zygotes, st.runtime,
                         ),
+                        crashEvidence = st.crashEvidence.filter { it.module == id },
+                        suspended = id in st.suspendedModules,
                     )
                 }
                 val zygotes = st.zygotes.map { zygote ->
@@ -541,6 +576,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                         module.copy(name = moduleNameCache[module.id] ?: module.id)
                     },
                     nativeInjections = st.nativeInjections,
+                    crashEvidence = st.crashEvidence,
                 )
             }
             if (snapshot != null) {
@@ -548,11 +584,13 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                 zygiskModules = snapshot.modules
                 nativeModules = snapshot.nativeModules
                 nativeInjections = snapshot.nativeInjections
+                crashEvidence = snapshot.crashEvidence
             } else {
                 monitoredZygotes = emptyList()
                 zygiskModules = emptyList()
                 nativeModules = emptyList()
                 nativeInjections = emptyList()
+                crashEvidence = emptyList()
             }
             delay(YZ_POLL_INTERVAL_MS)
         }
@@ -573,7 +611,7 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
         YukiAlertDialog(
             onDismissRequest = { monitorDialog = null },
             title = { Text(dialog.title) },
-            text = { Text(dialog.message) },
+            text = { Text(dialog.message, modifier = Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = {
                 TextButton(onClick = { monitorDialog = null }) {
                     Text(stringResource(R.string.close))
@@ -668,8 +706,8 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                     }
                 },
             ) {
-                val moduleRows = remember(nativeModules, nativeInjections) {
-                    buildNativeModuleRows(nativeModules, nativeInjections)
+                val moduleRows = remember(nativeModules, nativeInjections, crashEvidence) {
+                    buildNativeModuleRows(nativeModules, nativeInjections, crashEvidence)
                 }
                 val processRows = remember(nativeInjections) {
                     nativeInjections
@@ -733,8 +771,16 @@ fun YukiZygiskScreen(navigator: DestinationsNavigator) {
                     title = stringResource(R.string.yukizygisk_early_load_title),
                     summary = stringResource(R.string.yukizygisk_early_load_summary),
                     checked = config.earlyLoad,
-                    groupPosition = MoreSettingsItemPosition.Last,
+                    groupPosition = MoreSettingsItemPosition.Middle,
                     onChange = { save(config.copy(earlyLoad = it)) },
+                )
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Warning,
+                    title = stringResource(R.string.yukizygisk_crash_protection_title),
+                    summary = stringResource(R.string.yukizygisk_crash_protection_summary),
+                    checked = config.crashProtection,
+                    groupPosition = MoreSettingsItemPosition.Last,
+                    onChange = { save(config.copy(crashProtection = it)) },
                 )
                 DenylistModeSelector(
                     mode = config.denylistMode,
@@ -888,11 +934,30 @@ private fun ZygiskModuleRow(module: ModuleDisplayEntry, onStatusClick: () -> Uni
                 )
             }
         },
+        supportingContent = {
+            if (module.suspended || module.crashEvidence.isNotEmpty()) {
+                Text(
+                    stringResource(if (module.suspended) R.string.yukizygisk_module_suspended
+                        else R.string.yukizygisk_module_crash_badge),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        },
         trailingContent = {
-            MonitorStateButton(
-                if (module.state == MonitorState.Crashed) MonitorState.Failed else module.state,
-                onStatusClick,
-            )
+            if (module.suspended) {
+                MonitorStatusButton(
+                    icon = Icons.Outlined.Warning,
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onStatusClick,
+                    contentDescription = stringResource(R.string.yukizygisk_module_suspended),
+                )
+            } else {
+                MonitorStateButton(
+                    if (module.state == MonitorState.Crashed) MonitorState.Failed else module.state,
+                    onStatusClick,
+                )
+            }
         },
     )
 }
@@ -932,6 +997,15 @@ private fun NativeModuleMonitorRow(module: NativeModuleMonitorEntry, onStatusCli
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        supportingContent = {
+            if (module.crashEvidence.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.yukizygisk_module_crash_badge),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
         },
@@ -1015,6 +1089,16 @@ private fun MonitorStateButton(state: MonitorState, onClick: () -> Unit) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         }
     }
+    MonitorStatusButton(icon, tint, onClick)
+}
+
+@Composable
+private fun MonitorStatusButton(
+    icon: ImageVector,
+    tint: Color,
+    onClick: () -> Unit,
+    contentDescription: String? = null,
+) {
     IconButton(
         onClick = onClick,
         modifier = Modifier
@@ -1023,7 +1107,7 @@ private fun MonitorStateButton(state: MonitorState, onClick: () -> Unit) {
     ) {
         YukiIcon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = contentDescription,
             tint = tint,
             modifier = Modifier.size(22.dp),
         )
@@ -1116,14 +1200,37 @@ private fun zygoteDialog(zygote: ZygoteMonitorEntry): MonitorDialogState {
 }
 
 @Composable
+private fun crashEvidenceMessage(evidence: List<CrashEvidence>): String {
+    if (evidence.isEmpty()) return ""
+    val resources = LocalResources.current
+    val details = evidence.joinToString("\n\n") {
+        resources.getString(
+            R.string.yukizygisk_module_crash_evidence,
+            it.process,
+            it.pid,
+            it.abi,
+            it.timestamp,
+            it.tombstone,
+        ) + "\n" + it.frame
+    }
+    return resources.getString(R.string.yukizygisk_module_crash_explanation) + "\n\n" + details
+}
+
+@Composable
 private fun zygiskModuleDialog(module: ModuleDisplayEntry): MonitorDialogState {
     val resources = LocalResources.current
     val abis = module.abis.joinToString(", ").ifBlank {
         resources.getString(R.string.yukizygisk_module_no_supported_abis)
     }
+    val crash = crashEvidenceMessage(module.crashEvidence)
     return MonitorDialogState(
         module.name,
-        resources.getString(R.string.yukizygisk_module_supported_abis, abis),
+        listOf(
+            resources.getString(R.string.yukizygisk_module_supported_abis, abis),
+            if (module.suspended) resources.getString(R.string.yukizygisk_module_suspended_detail)
+                else "",
+            crash,
+        ).filter { it.isNotBlank() }.joinToString("\n"),
     )
 }
 
@@ -1177,7 +1284,10 @@ private fun nativeModuleDialog(module: NativeModuleMonitorEntry): MonitorDialogS
         MonitorState.Failed -> stringResource(R.string.yukizygisk_native_module_failed_message)
         MonitorState.Unknown -> stringResource(R.string.yukizygisk_native_module_unknown_message)
     }
-    return MonitorDialogState(module.name, appendDetail(base, scopes))
+    return MonitorDialogState(
+        module.name,
+        appendDetail(appendDetail(base, scopes), crashEvidenceMessage(module.crashEvidence)),
+    )
 }
 
 private fun appendDetail(base: String, detail: String): String =

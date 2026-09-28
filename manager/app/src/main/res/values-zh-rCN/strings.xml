@@ -843,6 +843,9 @@
     <string name="yukizygisk_zygote_modules_unavailable">当前运行时不提供模块注入详情。</string>
     <string name="yukizygisk_module_supported_abis">支持架构：%1$s</string>
     <string name="yukizygisk_module_no_supported_abis">无支持的架构</string>
+    <string name="yukizygisk_module_crash_badge">出现在崩溃回溯中</string>
+    <string name="yukizygisk_module_crash_explanation">本次开机期间，此模块出现在以下崩溃回溯中。命中栈帧不代表已确认崩溃原因。</string>
+    <string name="yukizygisk_module_crash_evidence">%1$s（PID %2$d，%3$s）\n%4$s · %5$s</string>
     <string name="yukizygisk_native_process_injected_message">已注入 Native 模块。</string>
     <string name="yukizygisk_native_process_unsupported_message">暂不支持 32 位 Native 进程。</string>
     <string name="yukizygisk_native_process_failed_message">Native 注入未完成。</string>
@@ -941,4 +944,8 @@
     <string name="allowlist_json_restore_confirm">包名与 UID 须匹配；部分设置需重启生效。</string>
     <string name="allowlist_rollback_success">已恢复之前的设置。</string>
     <string name="allowlist_rollback_failed">部分设置未能回滚，请检查应用授权与默认卸载模块设置。</string>
+    <string name="yukizygisk_crash_protection_title">模块崩溃保护</string>
+    <string name="yukizygisk_crash_protection_summary">当 Zygisk 模块导致系统框架崩溃时，隔离此模块并重试启动系统。</string>
+    <string name="yukizygisk_module_suspended">触发系统崩溃，已隔离保护</string>
+    <string name="yukizygisk_module_suspended_detail">检测到模块导致系统崩溃，已暂停此模块注入。</string>
 </resources>
