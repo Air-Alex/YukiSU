@@ -221,6 +221,8 @@ u32 yz_runtime_begin(u8 kind, u8 abi, u8 target_type, u32 flags,
 	yz_copy_name(slot->record.target, sizeof(slot->record.target), target);
 	slot->start_boottime = start_boottime;
 	i = slot->record.generation;
+	if (kind == YZ_RUNTIME_KIND_ZYGOTE)
+		yz_zygote_exit_track(pid, start_boottime, i, abi);
 	mutex_unlock(&yz_runtime_lock);
 	return i;
 }

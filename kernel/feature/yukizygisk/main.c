@@ -35,10 +35,17 @@ int yz_feature_set_enabled(bool enabled)
 			yz_exec_disable();
 			goto out;
 		}
+		ret = yz_zygote_exit_enable();
+		if (ret)
+			pr_warn(
+			    "yukizygisk: exit diagnostics unavailable: %d\n",
+			    ret);
+		ret = 0;
 		WRITE_ONCE(yukizygisk_enabled, true);
 	} else {
 		WRITE_ONCE(yukizygisk_enabled, false);
 		yz_early_native_disable();
+		yz_zygote_exit_disable();
 		yz_lifecycle_disable();
 		yz_exec_disable();
 	}

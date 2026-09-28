@@ -12,12 +12,23 @@ enum yz_event_type {
   YZ_EV_SPECIALIZE = 1,
   YZ_EV_RELOAD = 2,
   YZ_EV_SAFEMODE = 3,
+  YZ_EV_ZYGOTE_EXIT = 5,
 };
 
 struct yz_event {
   __u32 type;
   __u32 pid;
   __u32 appid;
+};
+
+/* Only YZ_EV_ZYGOTE_EXIT uses this extended payload. */
+struct yz_zygote_exit_event {
+  struct yz_event event;
+  __u32 generation;
+  __aligned_u64 start_boottime;
+  __aligned_u64 observed_boottime;
+  __u8 abi;
+  __u8 reserved[7];
 };
 
 #define YZ_MAX_MODULE_FDS 8
