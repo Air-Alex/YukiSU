@@ -33,6 +33,7 @@
 #include "kasumi_path_policy.h"
 #include "kasumi_proc_read_hooks.h"
 #include "kasumi_fake_mountinfo.h"
+#include "kasumi_owner.h"
 #include "kasumi_vnode.h"
 #include "feature/kernel_umount.h"
 #include "policy/allowlist.h"
@@ -99,6 +100,7 @@ struct kasumi_mount_file_proxy {
 	struct mnt_namespace *original_mnt_ns;
 	bool mountinfo_checked;
 	bool mountinfo_native;
+	uid_t mountinfo_owner;
 	int mountinfo_error;
 	struct kasumi_mi_snapshot *mountinfo_snapshot;
 };
@@ -298,6 +300,7 @@ static void kasumi_fd_install_file(struct file *file)
 
 	if (!READ_ONCE(kasumi_enabled) && !ksu_is_unshare_mnt_enabled())
 		return;
+	kasumi_owner_observe(file);
 	fops = file ? READ_ONCE(file->f_op) : NULL;
 	if (!fops || READ_ONCE(fops->release) == kasumi_mount_proxy_release)
 		return;
@@ -641,10 +644,12 @@ kasumi_mount_proxy_prepare_mountinfo(struct kasumi_mount_file_proxy *proxy,
 {
 	if (!proxy->mountinfo_snapshot &&
 	    (!proxy->mountinfo_checked ||
-	     (!proxy->mountinfo_native && kasumi_fake_mi_cached()))) {
+	     (!proxy->mountinfo_native &&
+	      kasumi_fake_mi_cached(proxy->mountinfo_owner)))) {
 		proxy->mountinfo_error = kasumi_fake_mi_get_snapshot(
 		    file, proxy->orig_fops, proxy->mountinfo_native,
-		    &proxy->original_mnt_ns, &proxy->mountinfo_snapshot);
+		    proxy->mountinfo_owner, &proxy->original_mnt_ns,
+		    &proxy->mountinfo_snapshot);
 		proxy->mountinfo_checked = true;
 	}
 	return proxy->mountinfo_error;
@@ -1078,7 +1083,8 @@ kasumi_mount_proxy_poll(struct file *file, struct poll_table_struct *wait)
 		return mask;
 	}
 	kasumi_fake_mi_poll_wait(file, wait);
-	cached = proxy->mountinfo_snapshot || kasumi_fake_mi_cached();
+	cached = proxy->mountinfo_snapshot ||
+		 kasumi_fake_mi_cached(proxy->mountinfo_owner);
 	if (proxy->mountinfo_error && !cached) {
 		mask = EPOLLERR;
 	} else if (!cached && proxy->orig_fops->poll) {
@@ -1156,8 +1162,11 @@ static int kasumi_mount_proxy_install_file(struct file *file,
 	proxy->orig_fops = orig_fops;
 	proxy->kind = kind;
 	if (kind == KASUMI_PROC_PROXY_MOUNTINFO ||
-	    kind == KASUMI_PROC_PROXY_MOUNTS)
+	    kind == KASUMI_PROC_PROXY_MOUNTS) {
 		proxy->mountinfo_native = kasumi_fake_mi_native_view(file);
+		if (!proxy->mountinfo_native)
+			proxy->mountinfo_owner = kasumi_owner_freeze();
+	}
 	proxy->scope = scope;
 	proxy->orig_f_mode = READ_ONCE(file->f_mode);
 	proxy->proxy_fops = *orig_fops;

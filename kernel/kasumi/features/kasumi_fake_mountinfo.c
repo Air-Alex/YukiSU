@@ -1,4 +1,5 @@
 #include "kasumi_fake_mountinfo.h"
+#include "kasumi_owner.h"
 #include "kasumi_entrypoints.h"
 #include "kasumi_path_policy.h"
 #include "kasumi_runtime.h"
@@ -8,6 +9,7 @@
 
 #include <linux/cred.h>
 #include <linux/fs_struct.h>
+#include <linux/hashtable.h>
 #include <linux/jhash.h>
 #include <linux/mnt_namespace.h>
 #include <linux/nsproxy.h>
@@ -84,10 +86,11 @@ static bool kasumi_mountinfo_donor_live(struct task_struct *task)
 	       task->mm && task->fs && task->nsproxy && task->nsproxy->mnt_ns;
 }
 
-static struct task_struct *kasumi_mountinfo_pick_app(uid_t *selected_uid)
+static struct task_struct *kasumi_mountinfo_pick_app(uid_t owner,
+						     uid_t *selected_uid)
 {
 	struct task_struct *group, *task, *selected = NULL;
-	u32 seed = get_random_u32();
+	u32 seed = owner ? 0 : get_random_u32();
 	u32 best = 0;
 
 	rcu_read_lock();
@@ -98,12 +101,12 @@ static struct task_struct *kasumi_mountinfo_pick_app(uid_t *selected_uid)
 		u32 score;
 		bool live;
 
-		if (appid < 10000 || appid > 19999 ||
+		if ((owner && uid != owner) || appid < 10000 || appid > 19999 ||
 		    !kasumi_policy_uid_is_spoof_target(uid))
 			continue;
-		/* All processes of one UID share a score, avoiding
-		 * process-count bias. */
-		score = jhash_1word(uid, seed);
+		/* Fallback is UID-balanced; an owner view prefers the lowest
+		 * PID. */
+		score = owner ? (u32)task_pid_nr(task) : jhash_1word(uid, seed);
 		if (selected && score >= best)
 			continue;
 		task_lock(task);
@@ -124,7 +127,8 @@ static struct task_struct *kasumi_mountinfo_pick_app(uid_t *selected_uid)
 
 /* Called before the first seq read or seek that can start mount traversal. */
 static KASUMI_NOCFI bool
-kasumi_fake_mi_redirect(struct file *file, struct mnt_namespace **original_ns)
+kasumi_fake_mi_redirect(struct file *file, uid_t owner,
+			struct mnt_namespace **original_ns)
 {
 	struct seq_file *seq = file->private_data;
 	struct kasumi_proc_mounts_prefix *pm;
@@ -141,7 +145,7 @@ kasumi_fake_mi_redirect(struct file *file, struct mnt_namespace **original_ns)
 	pm = seq->private;
 	if (!pm || !pm->ns || !pm->root.mnt || !pm->root.dentry || !pm->show)
 		return false;
-	task = kasumi_mountinfo_pick_app(&uid);
+	task = kasumi_mountinfo_pick_app(owner, &uid);
 	if (!task)
 		return false;
 	task_lock(task);
@@ -185,7 +189,47 @@ KASUMI_NOCFI void kasumi_fake_mi_put_ns(struct mnt_namespace *ns)
 static DEFINE_MUTEX(kasumi_mi_snapshot_lock);
 /* The first successful snapshot is retained until Kasumi exits. */
 static struct kasumi_mi_snapshot *kasumi_mi_snapshot;
-static bool kasumi_mi_snapshot_ready;
+struct kasumi_owner_view {
+	struct hlist_node node;
+	uid_t uid;
+	bool fallback;
+	struct kasumi_mi_snapshot *snapshot;
+};
+
+static DEFINE_HASHTABLE(kasumi_owner_views, 8);
+static unsigned int kasumi_owner_view_count;
+static size_t kasumi_owner_snapshot_bytes;
+#define KASUMI_OWNER_VIEW_LIMIT 4096
+#define KASUMI_OWNER_SNAPSHOT_LIMIT (16UL * 1024 * 1024)
+
+static struct kasumi_owner_view *kasumi_owner_view_find(uid_t uid)
+{
+	struct kasumi_owner_view *view;
+
+	hash_for_each_possible(kasumi_owner_views, view, node, uid)
+	{
+		if (view->uid == uid)
+			return view;
+	}
+	return NULL;
+}
+
+static struct kasumi_owner_view *kasumi_owner_view_get(uid_t uid)
+{
+	struct kasumi_owner_view *view = kasumi_owner_view_find(uid);
+
+	if (view)
+		return view;
+	if (kasumi_owner_view_count >= KASUMI_OWNER_VIEW_LIMIT)
+		return NULL;
+	view = kzalloc(sizeof(*view), GFP_KERNEL);
+	if (!view)
+		return NULL;
+	view->uid = uid;
+	hash_add(kasumi_owner_views, &view->node, uid);
+	kasumi_owner_view_count++;
+	return view;
+}
 
 void kasumi_fake_mi_put_snapshot(struct kasumi_mi_snapshot *snapshot)
 {
@@ -708,11 +752,13 @@ static KASUMI_NOCFI int kasumi_mi_render(struct file *file,
 
 int KASUMI_NOCFI kasumi_fake_mi_get_snapshot(struct file *file,
 					     const struct file_operations *ops,
-					     bool native_view,
+					     bool native_view, uid_t owner,
 					     struct mnt_namespace **original_ns,
 					     struct kasumi_mi_snapshot **out)
 {
 	struct kasumi_mi_snapshot *snapshot = NULL;
+	struct kasumi_mi_snapshot **slot = &kasumi_mi_snapshot;
+	struct kasumi_owner_view *view = NULL;
 	struct seq_file *seq = file->private_data;
 	struct kasumi_proc_mounts_prefix *pm = NULL;
 	kasumi_mi_show_fn original_show = NULL;
@@ -722,18 +768,48 @@ int KASUMI_NOCFI kasumi_fake_mi_get_snapshot(struct file *file,
 
 	*out = NULL;
 	mutex_lock(&kasumi_mi_snapshot_lock);
-	/* Cache hits never consult donor liveness or UID policy again. */
-	if (!native_view && kasumi_mi_snapshot) {
-		refcount_inc(&kasumi_mi_snapshot->refs);
-		*out = kasumi_mi_snapshot;
+	if (!native_view && owner) {
+		view = kasumi_owner_view_get(owner);
+		if (!view) {
+			ret = -ENOMEM;
+			goto unlock;
+		}
+		if (!view->fallback)
+			slot = &view->snapshot;
+	}
+	if (!native_view && *slot) {
+		refcount_inc(&(*slot)->refs);
+		*out = *slot;
 		goto unlock;
 	}
 	if (!ops->llseek) {
 		ret = native_view ? -EOPNOTSUPP : 0;
 		goto unlock;
 	}
-	if (!native_view && !kasumi_fake_mi_redirect(file, original_ns))
-		goto unlock;
+	if (!native_view) {
+		bool redirected = false;
+
+		if (view && !view->fallback) {
+			if (kasumi_owner_snapshot_bytes +
+				2UL * (size_t)KASUMI_MI_MAX_SIZE <=
+			    KASUMI_OWNER_SNAPSHOT_LIMIT)
+				redirected = kasumi_fake_mi_redirect(
+				    file, owner, original_ns);
+			if (!redirected) {
+				view->fallback = true;
+				slot = &kasumi_mi_snapshot;
+			}
+		}
+		if (!redirected) {
+			if (*slot) {
+				refcount_inc(&(*slot)->refs);
+				*out = *slot;
+				goto unlock;
+			}
+			if (!kasumi_fake_mi_redirect(file, 0, original_ns))
+				goto unlock;
+		}
+	}
 	pm = seq ? seq->private : NULL;
 	if (!pm || !pm->ns || !pm->root.mnt || !pm->root.dentry || !pm->show) {
 		ret = -EINVAL;
@@ -806,14 +882,16 @@ int KASUMI_NOCFI kasumi_fake_mi_get_snapshot(struct file *file,
 		snapshot = NULL;
 		goto unlock;
 	}
-	kasumi_mi_snapshot = snapshot;
+	*slot = snapshot;
+	if (view && !view->fallback)
+		kasumi_owner_snapshot_bytes += mi_capacity + mo_capacity;
 	refcount_inc(&snapshot->refs);
 	*out = snapshot;
 	snapshot = NULL;
-	smp_store_release(&kasumi_mi_snapshot_ready, true);
 	kasumi_fake_mi_invalidate_all();
-	kasumi_log("mountinfo: published shared snapshot mi=%zu mounts=%zu\n",
-		   (*out)->len, (*out)->mounts_len);
+	kasumi_log("mountinfo: published owner=%u snapshot mi=%zu mounts=%zu\n",
+		   view && !view->fallback ? owner : 0, (*out)->len,
+		   (*out)->mounts_len);
 unlock:
 	if (original_show)
 		WRITE_ONCE(pm->show, original_show);
@@ -822,9 +900,22 @@ unlock:
 	return ret;
 }
 
-bool kasumi_fake_mi_cached(void)
+bool kasumi_fake_mi_cached(uid_t owner)
 {
-	return smp_load_acquire(&kasumi_mi_snapshot_ready);
+	struct kasumi_owner_view *view;
+	bool cached = false;
+
+	mutex_lock(&kasumi_mi_snapshot_lock);
+	if (!owner) {
+		cached = kasumi_mi_snapshot != NULL;
+	} else {
+		view = kasumi_owner_view_find(owner);
+		if (view)
+			cached = view->fallback ? kasumi_mi_snapshot != NULL
+						: view->snapshot != NULL;
+	}
+	mutex_unlock(&kasumi_mi_snapshot_lock);
+	return cached;
 }
 
 void kasumi_fake_mi_invalidate_all(void)
@@ -853,6 +944,9 @@ int kasumi_fake_mi_init(void)
 	    !kasumi_mi_mountinfo_raw || !kasumi_mi_mounts_raw)
 		return -ENOSYS;
 	atomic64_set(&fake_mi_view_gen, 1);
+	if (kasumi_owner_init())
+		pr_warn("kasumi: owner tracking unavailable; using shared "
+			"mount fallback\n");
 	WRITE_ONCE(fake_mi_initialized, true);
 	return 0;
 }
@@ -860,10 +954,22 @@ int kasumi_fake_mi_init(void)
 void kasumi_fake_mi_exit(void)
 {
 	struct kasumi_mi_snapshot *snapshot;
+	struct kasumi_owner_view *view;
+	struct hlist_node *tmp;
+	unsigned int bucket;
+
+	kasumi_owner_exit();
 
 	mutex_lock(&kasumi_mi_snapshot_lock);
 	WRITE_ONCE(fake_mi_initialized, false);
-	smp_store_release(&kasumi_mi_snapshot_ready, false);
+	hash_for_each_safe(kasumi_owner_views, bucket, tmp, view, node)
+	{
+		hash_del(&view->node);
+		kasumi_fake_mi_put_snapshot(view->snapshot);
+		kfree(view);
+	}
+	kasumi_owner_view_count = 0;
+	kasumi_owner_snapshot_bytes = 0;
 	snapshot = kasumi_mi_snapshot;
 	kasumi_mi_snapshot = NULL;
 	mutex_unlock(&kasumi_mi_snapshot_lock);

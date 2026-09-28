@@ -22,11 +22,11 @@ bool kasumi_fake_mi_native_view(struct file *file);
 int kasumi_mi_normalize_groups(char *data, size_t *len);
 int kasumi_fake_mi_get_snapshot(struct file *file,
 				const struct file_operations *ops,
-				bool native_view,
+				bool native_view, uid_t owner,
 				struct mnt_namespace **original_ns,
 				struct kasumi_mi_snapshot **out);
 void kasumi_fake_mi_put_snapshot(struct kasumi_mi_snapshot *snapshot);
-bool kasumi_fake_mi_cached(void);
+bool kasumi_fake_mi_cached(uid_t owner);
 void kasumi_fake_mi_put_ns(struct mnt_namespace *ns);
 void kasumi_fake_mi_invalidate_all(void);
 u64 kasumi_fake_mi_generation(void);
