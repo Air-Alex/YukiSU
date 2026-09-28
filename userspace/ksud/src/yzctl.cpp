@@ -1,8 +1,11 @@
 #include "yzctl.hpp"
+#include "userspace/zygisk/crash_protection.hpp"
+#include "userspace/zygisk/settings.hpp"
 
 #include "core/json.hpp"
 #include "core/ksucalls.hpp"
 #include "defs.hpp"
+#include "userspace/zygisk/crash_evidence.hpp"
 #include "userspace/zygisk/daemon/native_modules.hpp"
 #include "utils.hpp"
 #include "yukizygisk_snapshot.hpp"
@@ -462,6 +465,12 @@ json::Value build_status_json(const RuntimeSnapshot& snapshot, const ModuleInven
     root["modules"] = json::Value::array();
     root["native_modules"] = json::Value::array();
     root["native_injections"] = json::Value::array();
+    root["crash_evidence"] = yukizygisk::crash::read_evidence(YUKIZYGISK_CURRENT_DIAGNOSTICS_DIR);
+    const bool protection = yukizygisk::settings::protection_enabled(YUKIZYGISK_CONFIG_PATH);
+    root["crash_protection"] = protection;
+    root["suspended_modules"] =
+        protection ? yukizygisk::crash::suspended_modules(YUKIZYGISK_CURRENT_DIAGNOSTICS_DIR)
+                   : json::Value::array();
 
     for (const yz_runtime_record& record : snapshot.records) {
         json::Value raw = json::Value::object();
@@ -534,6 +543,9 @@ void print_usage(FILE* stream) {
     (void)fprintf(stream, "Commands:\n");
     (void)fprintf(stream, "  status [--json]    Read the kernel runtime snapshot\n");
     (void)fprintf(stream, "  reload             Notify daemons to reload configuration\n");
+    (void)fprintf(stream, "  config get         Read configuration as JSON\n");
+    (void)fprintf(stream,
+                  "  config set KEY VALUE [KEY VALUE ...]  Save and reload configuration\n");
     (void)fprintf(stream, "  refresh-snapshot   Rebuild the early native snapshot\n");
 }
 
@@ -593,6 +605,28 @@ int yzctl_run(const std::vector<std::string>& args) {
     if (args.empty() || args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
         print_usage(stdout);
         return args.empty() ? 1 : 0;
+    }
+
+    if (args[0] == "config") {
+        if (args.size() == 2 && args[1] == "get") {
+            json::Value config;
+            if (!yukizygisk::settings::read(YUKIZYGISK_CONFIG_PATH, &config)) {
+                (void)fprintf(stderr, "yzctl: configuration read failed: %s\n", strerror(errno));
+                return 1;
+            }
+            printf("%s\n", json::dump(config).c_str());
+            return 0;
+        }
+        if (args.size() < 4 || args[1] != "set" || args.size() % 2 != 0) {
+            (void)fprintf(stderr,
+                          "yzctl: expected config get or config set KEY VALUE [KEY VALUE ...]\n");
+            return 1;
+        }
+        if (!yukizygisk::settings::update(YUKIZYGISK_CONFIG_PATH, {args.begin() + 2, args.end()})) {
+            (void)fprintf(stderr, "yzctl: configuration save failed: %s\n", strerror(errno));
+            return 1;
+        }
+        return yzctl_run({"reload"});
     }
 
     if (args[0] == "status") {
